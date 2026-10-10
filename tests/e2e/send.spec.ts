@@ -458,6 +458,72 @@ test("categories show a labelled picker and set report.category; without them th
   expect(await categories()).toEqual(["absent"]);
 });
 
+// The hint and Send sit side by side, under the note box, inside the dialog.
+async function footer(page: Page): Promise<void> {
+  const root = page.locator("visual-feedback");
+  type Rect = { x: number; y: number; width: number; height: number };
+  const [panel, box, hint, send] = (await Promise.all(
+    [
+      page.getByRole("dialog"),
+      root.locator(".composer"),
+      root.locator(".footer .hint"),
+      sendButton(page),
+    ].map(async (at) => (await at.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 }),
+  )) as [Rect, Rect, Rect, Rect];
+  for (const part of [hint, send]) {
+    expect(part.width).toBeGreaterThan(0);
+    expect(part.y).toBeGreaterThanOrEqual(box.y + box.height);
+    expect(part.x).toBeGreaterThanOrEqual(panel.x);
+    expect(part.x + part.width).toBeLessThanOrEqual(panel.x + panel.width);
+    expect(part.y + part.height).toBeLessThanOrEqual(panel.y + panel.height);
+  }
+  expect(hint.x + hint.width).toBeLessThanOrEqual(send.x);
+  expect(Math.abs(hint.y + hint.height / 2 - (send.y + send.height / 2))).toBeLessThan(4);
+}
+
+test("Send sits in a footer under the note, with the hint, and Tab goes note, category, Send", async ({
+  page,
+}) => {
+  await opened(page, { submit: "ok", categories: true });
+  const root = page.locator("visual-feedback");
+  await expect(root.locator(".composer .send")).toHaveCount(0);
+  await expect(root.locator(".footer .send")).toHaveCount(1);
+  await expect(root.locator(".footer .hint")).toHaveText("Esc to cancel");
+  await footer(page);
+  await note(page).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("combobox", { name: "Type" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(sendButton(page)).toBeFocused();
+});
+
+test("without categories, the footer still holds the hint and Send, and Tab goes note, Send", async ({
+  page,
+}) => {
+  await opened(page, { submit: "ok" });
+  await footer(page);
+  await note(page).focus();
+  await page.keyboard.press("Tab");
+  await expect(sendButton(page)).toBeFocused();
+});
+
+test("in a short window the panel scrolls: its top is not cut off and Send can be reached", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await opened(page, { submit: "ok", categories: true });
+  const root = page.locator("visual-feedback");
+  // Scrolled to the top, the whole panel is reachable: centring never pushes it above the window.
+  const top = await root.locator(".dialog").evaluate((panel) => {
+    (panel.parentElement as HTMLElement).scrollTop = 0;
+    return panel.getBoundingClientRect().top;
+  });
+  expect(top).toBeGreaterThanOrEqual(0);
+  await note(page).fill("short window");
+  await sendButton(page).click();
+  await expect(page.getByRole("status")).toBeVisible();
+});
+
 test("the category picker is in the Tab order, after the note", async ({ page }) => {
   await opened(page, { submit: "ok", categories: true });
   await page.keyboard.press("Tab");

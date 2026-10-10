@@ -97,6 +97,7 @@ export function annotate(
   let selected: number | null = null;
   // The selected mark as it was when the drag began, and where the drag began.
   let dragging: { id: number; start: Point; mark: Mark } | null = null;
+  let hovered: Point | null = null;
   let frame: HTMLDivElement | null = null;
   let current: { id: number; start: Point; mark: Line } | null = null;
   // The label being typed, and where it goes in image pixels.
@@ -115,6 +116,7 @@ export function annotate(
     target.lineCap = "round";
     target.lineJoin = "round";
     outlineSelection();
+    hover();
     for (const mark of current ? [...marks, current.mark] : marks) {
       if (mark.tool !== "text") {
         stroke(target, mark);
@@ -252,9 +254,16 @@ export function annotate(
     onChange();
   }
 
+  // A key or a button can move or remove the mark under a pointer that has not moved.
+  function hover(): void {
+    if (tool !== "select" || dragging) return;
+    canvas.style.cursor = hovered !== null && hit(hovered) !== null ? "grab" : "default";
+  }
+
   function finishDrag(): void {
     const before = dragging?.mark;
     dragging = null;
+    if (before) hover();
     if (!before || selected === null) return;
     if (marks[selected] !== before) history.push({ kind: "move", index: selected, mark: before });
     onChange();
@@ -357,6 +366,7 @@ export function annotate(
       if (index === null) return;
       canvas.setPointerCapture(event.pointerId);
       dragging = { id: event.pointerId, start, mark: marks[index] as Mark };
+      canvas.style.cursor = "grabbing";
       return;
     }
     if (tool === "text") {
@@ -392,6 +402,8 @@ export function annotate(
   }
 
   canvas.addEventListener("pointermove", (event) => {
+    hovered = point(event);
+    hover();
     if (dragging?.id === event.pointerId && selected !== null) {
       if (event.buttons === 0) return finishDrag();
       const [x, y] = point(event);
@@ -411,6 +423,9 @@ export function annotate(
     if (current?.id !== event.pointerId) return;
     extend(event);
     end();
+  });
+  canvas.addEventListener("pointerleave", () => {
+    hovered = null;
   });
   // The browser took the pointer (a gesture, a lost capture): keep what was drawn, not its last point.
   for (const type of ["pointercancel", "lostpointercapture"]) {
@@ -450,6 +465,9 @@ export function annotate(
       if (next === "select") canvas.tabIndex = 0;
       else canvas.removeAttribute("tabindex");
       select(null);
+      // Drawing tools keep the stylesheet's crosshair.
+      if (next === "select") hover();
+      else canvas.style.cursor = "";
     },
     marks,
     get canUndo() {

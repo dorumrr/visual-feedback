@@ -41,7 +41,7 @@ visual-feedback {
 ## 3. `::part()`
 Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`, `backdrop`,
 `dialog`, `header`, `title`, `body`, `image`, `toolbar`, `tool`, `tool-active`, `divider`, `undo`,
-`clear`, `remove`, `icon`, `text-input`, `selection`, `label`, `composer`, `note`, `composer-bar`, `category`, `actions`, `cancel`, `send`,
+`clear`, `remove`, `icon`, `text-input`, `selection`, `label`, `composer`, `note`, `composer-bar`, `category`, `footer`, `actions`, `cancel`, `send`,
 `hint`, `status`, `error`, `retry`, `send-without`.
 
 ```css

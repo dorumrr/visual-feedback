@@ -19,7 +19,7 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
   screenshot" (annotating with no image: no toolbar, `image: null`, no marks) and Cancel or Esc
   (idle).
 - **annotating:** a full-viewport overlay shows the image with a tool rail beside it, and the note
-  field with Send inside it. A close button in the header and Esc cancel.
+  field, with Send in a footer row under it. A close button in the header and Esc cancel.
 - **sending:** the note, the category and the tools are disabled, and the Send button shows
   progress. Cancel and Esc still close the dialog.
 - **sent:** a short confirmation, then idle.

@@ -116,6 +116,9 @@ const middle = (mark: Mark | undefined): Point => {
   return mark.points[Math.floor(mark.points.length / 2)] as Point;
 };
 
+// Two screen pixels in image pixels: the image is shown at about half size in the default window.
+const SLACK = 4;
+
 /** A point on the page background, away from every mark these tests draw. */
 const AWAY: Point = [5, 5];
 
@@ -126,7 +129,10 @@ test("the shown image keeps its shape when the window's height limits it", async
       canvas.clientWidth / canvas.clientHeight,
       canvas.width / canvas.height,
       canvas.clientHeight,
-      innerHeight * 0.6,
+      Math.min(
+        innerHeight * 0.6,
+        innerHeight - 22 * Number.parseFloat(getComputedStyle(canvas).fontSize),
+      ),
     ],
   );
   // The height limit is the one that applies here.
@@ -792,8 +798,8 @@ test("the Text tool places a label where it is clicked: Enter keeps it, in the i
   expect(marks).toHaveLength(1);
   const mark = marks[0];
   expect(mark?.tool === "text" && mark.text).toBe("Broken");
-  expect(mark?.tool === "text" && Math.abs(mark.x - width * 0.3)).toBeLessThan(3);
-  expect(mark?.tool === "text" && Math.abs(mark.y - height * 0.4)).toBeLessThan(3);
+  expect(mark?.tool === "text" && Math.abs(mark.x - width * 0.3)).toBeLessThan(SLACK);
+  expect(mark?.tool === "text" && Math.abs(mark.y - height * 0.4)).toBeLessThan(SLACK);
   // The letters are painted in the mark colour with a white outline, right of where it was placed.
   const x = mark?.tool === "text" ? mark.x : 0;
   const y = mark?.tool === "text" ? mark.y : 0;
@@ -1102,8 +1108,8 @@ test("arrow keys move a selected text label, Shift by ten, and the report has it
   if (mark?.tool !== "text") return;
   // One step is a whole number of image pixels, about one screen pixel.
   const step = Math.max(1, Math.round(ratio));
-  expect(Math.abs(mark.x - (width * 0.3 + 5 * step))).toBeLessThan(3);
-  expect(Math.abs(mark.y - (height * 0.3 + 10 * step))).toBeLessThan(3);
+  expect(Math.abs(mark.x - (width * 0.3 + 5 * step))).toBeLessThan(SLACK);
+  expect(Math.abs(mark.y - (height * 0.3 + 10 * step))).toBeLessThan(SLACK);
 });
 
 test("a mark dragged past the edge stays whole inside the image", async ({ page }) => {
@@ -1125,7 +1131,7 @@ test("a mark dragged past the edge stays whole inside the image", async ({ page 
   if (box?.tool !== "box") return;
   expect(box.x).toBeGreaterThan(width * 0.65);
   // Moved, not shrunk.
-  expect(Math.abs(box.width - width * 0.2)).toBeLessThan(3);
+  expect(Math.abs(box.width - width * 0.2)).toBeLessThan(SLACK);
   expect(box.x + box.width).toBeLessThanOrEqual(width);
   expect(box.y + box.height).toBeLessThanOrEqual(height);
 });
@@ -1158,9 +1164,9 @@ test("a click on empty image or a change of tool clears the selection; arrows an
   expect(marks.map((mark) => mark.tool)).toEqual(["arrow"]);
   const arrow = marks[0];
   if (arrow?.tool !== "arrow") return;
-  expect(Math.abs(arrow.from[0] - width * 0.2)).toBeLessThan(3);
-  expect(Math.abs(arrow.from[1] - height * 0.2)).toBeLessThan(3);
-  expect(Math.abs(arrow.to[0] - width * 0.5)).toBeLessThan(3);
+  expect(Math.abs(arrow.from[0] - width * 0.2)).toBeLessThan(SLACK);
+  expect(Math.abs(arrow.from[1] - height * 0.2)).toBeLessThan(SLACK);
+  expect(Math.abs(arrow.to[0] - width * 0.5)).toBeLessThan(SLACK);
 });
 
 test("a click inside a box selects nothing, and the outline of a selected mark is not in the sent image", async ({
@@ -1219,8 +1225,8 @@ test("Undo of a removal puts the mark back in its place among others; a pen line
   const ys = marks.map((mark) => (mark.tool === "pen" ? mark.points[0]?.[1] : -1) ?? -1);
   // The middle line is back in the middle of the list, the order they were drawn in.
   expect(ys).toHaveLength(3);
-  expect(Math.abs((ys[0] ?? 0) - height * 0.3)).toBeLessThan(3);
-  expect(Math.abs((ys[1] ?? 0) - height * 0.5)).toBeLessThan(3);
+  expect(Math.abs((ys[0] ?? 0) - height * 0.3)).toBeLessThan(SLACK);
+  expect(Math.abs((ys[1] ?? 0) - height * 0.5)).toBeLessThan(SLACK);
   expect(Math.abs((ys[2] ?? 0) - (height * 0.7 + 30 * ratio))).toBeLessThan(4);
 });
 
@@ -1333,4 +1339,59 @@ test("with Select listed first, the dialog still opens on the first drawing tool
     [0.5, 0.5],
   ]);
   expect((await send(page)).map((mark) => mark.tool)).toEqual(["pen"]);
+});
+
+test("with Select, the cursor is a hand over a mark, a closed hand while dragging, and an arrow elsewhere", async ({
+  page,
+}) => {
+  await opened(page);
+  await tool(page, "Box").click();
+  await drag(page, [
+    [0.2, 0.2],
+    [0.5, 0.5],
+  ]);
+  const cursor = () => image(page).evaluate((canvas) => getComputedStyle(canvas).cursor);
+  await tool(page, "Select").click();
+  const [edge, empty] = await on(page, [
+    [0.2, 0.35],
+    [0.8, 0.8],
+  ]);
+  await page.mouse.move(...(edge as Point));
+  await expect.poll(cursor).toBe("grab");
+  await page.mouse.move(...(empty as Point));
+  await expect.poll(cursor).toBe("default");
+  await page.mouse.move(...(edge as Point));
+  await expect.poll(cursor).toBe("grab");
+  await page.mouse.down();
+  await page.mouse.move((edge?.[0] ?? 0) + 20, edge?.[1] ?? 0, { steps: 3 });
+  await expect.poll(cursor).toBe("grabbing");
+  await page.mouse.up();
+  await expect.poll(cursor).toBe("grab");
+  for (const name of ["Draw", "Box", "Arrow", "Text"]) {
+    await tool(page, name).click();
+    await expect.poll(cursor).toBe("crosshair");
+  }
+});
+
+test("with Select, the cursor follows a mark that a key moves or removes under a still pointer", async ({
+  page,
+}) => {
+  await opened(page);
+  await tool(page, "Box").click();
+  await drag(page, [
+    [0.2, 0.2],
+    [0.5, 0.5],
+  ]);
+  const cursor = () => image(page).evaluate((canvas) => getComputedStyle(canvas).cursor);
+  await tool(page, "Select").click();
+  const [edge] = await on(page, [[0.2, 0.35]]);
+  await page.mouse.click(...(edge as Point));
+  await expect.poll(cursor).toBe("grab");
+  // Shift steps are 10 image pixels; the box leaves the still pointer.
+  for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(cursor).toBe("default");
+  for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
+  await expect.poll(cursor).toBe("grab");
+  await page.keyboard.press("Delete");
+  await expect.poll(cursor).toBe("default");
 });
