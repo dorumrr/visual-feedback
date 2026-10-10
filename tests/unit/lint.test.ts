@@ -25,7 +25,8 @@ function lint(source: string) {
 it("npm run check runs the lint first, and stops on its failure", () => {
   const pkg = JSON.parse(readFileSync(join(repo, "package.json"), "utf8"));
   expect(pkg.scripts.lint).toBe("biome check .");
-  expect(pkg.scripts.check).toMatch(/^npm run lint && /);
+  expect(pkg.scripts.check).toMatch(/^npm run check:static && /);
+  expect(pkg.scripts["check:static"]).toMatch(/^npm run lint && /);
 });
 
 it("the lint passes clean code and fails on a planted lint error", () => {

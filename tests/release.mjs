@@ -146,10 +146,35 @@ async function main() {
 
     // GitHub gives a step's log only once the run ends, so this shows the steps as they go.
     if (!run("gh", ["run", "watch", id, "--exit-status", "--interval", "5"]).ok) {
-      console.log("\nWhat failed:");
-      const log = run("gh", ["run", "view", id, "--log-failed"], true).out.split("\n");
-      console.log(log.slice(-80).join("\n"));
-      throw new Error(`The publish run failed: gh run view ${id} --log-failed`);
+      // A publish that waited on a failed check says only that: the check run has the reason.
+      const sha = must("git", ["rev-parse", "HEAD"], true);
+      const check = run(
+        "gh",
+        [
+          "run",
+          "list",
+          "--workflow",
+          "check.yml",
+          "--commit",
+          sha,
+          "--limit",
+          "1",
+          "--json",
+          "databaseId",
+          "--jq",
+          ".[0].databaseId",
+        ],
+        true,
+      ).out;
+      const failed = check && check !== "null" ? check : id;
+      console.log(`\nWhat failed (gh run view ${failed} --log-failed):`);
+      console.log(
+        run("gh", ["run", "view", failed, "--log-failed"], true)
+          .out.split("\n")
+          .slice(-80)
+          .join("\n"),
+      );
+      throw new Error(`The publish run failed: gh run view ${failed} --log-failed`);
     }
 
     for (let i = 0; i < 30; i++) {

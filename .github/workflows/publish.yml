@@ -5,12 +5,14 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Pack and check everything, publish nothing
+        description: Wait for check on this commit, pack, publish nothing
         type: boolean
         default: true
 
 permissions:
   contents: read
+  # Reads check.yml's runs, to publish only a commit that passed it.
+  actions: read
   # Signs the provenance: the record that the package was built from this commit.
   id-token: write
 
@@ -30,12 +32,23 @@ jobs:
           node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version: v2.x
       - run: npm ci
-      - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npm run check
+      # check.yml already tests every pushed commit; this waits for its verdict instead of a rerun.
+      - name: This commit passed check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 "${CHECK_TRIES:-75}"); do
+            state=$(gh run list --workflow check.yml --commit "$GITHUB_SHA" --limit 1 \
+              --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"' || true)
+            case "$state" in
+              "completed success") echo "check passed on $GITHUB_SHA"; exit 0 ;;
+              completed*) echo "check did not pass on $GITHUB_SHA: $state"; exit 1 ;;
+            esac
+            sleep "${CHECK_WAIT:-20}"
+          done
+          echo "check did not finish on $GITHUB_SHA within 25 minutes"
+          exit 1
       # A dry run only warns, so it can rehearse before the version is bumped.
       - name: The version has its CHANGELOG entry
         continue-on-error: ${{ inputs.dry_run }}
