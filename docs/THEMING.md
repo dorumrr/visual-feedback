@@ -26,7 +26,7 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 | `--vf-mark` | `#e5243b` | marks on the screenshot |
 | `--vf-backdrop` | `rgb(0 0 0 / 45%)` | overlay behind the image |
 | `--vf-shadow` | `0 12px 32px -12px rgb(0 0 0 / 35%)` | trigger, panel and draft bar |
-| `--vf-trigger-size` | `2.5em`, 40px on a 16px site | trigger height |
+| `--vf-trigger-size` | `2.5em`, 40px on a 16px site | trigger height, and its width when it shows the icon alone |
 | `--vf-offset` | `16px` | trigger and draft bar distance from the edges |
 | `--vf-z` | `2147483000` | stacking |
 

@@ -174,7 +174,8 @@ test("destroy during the capture, while drawing, and while sending leaves nothin
   page,
 }) => {
   const before = await snapshot(page);
-  await mount(page, { shortcut: "Alt+Shift+F" });
+  // In memory: a draft destroy() keeps would come back in the next mount here.
+  await mount(page, { shortcut: "Alt+Shift+F", draft: "memory" });
   // Destroyed before the dialog code arrives: the capture never runs.
   await page.evaluate(async () => {
     const widget = (window as unknown as Mounted).vf;
@@ -185,7 +186,7 @@ test("destroy during the capture, while drawing, and while sending leaves nothin
   await nothingLeft(page, false);
   expect(await snapshot(page)).toEqual(before);
 
-  await mount(page, { shortcut: "Alt+Shift+F" });
+  await mount(page, { shortcut: "Alt+Shift+F", draft: "memory" });
   await page.getByRole("button", { name: "Send feedback" }).click();
   const image = page.locator("visual-feedback").locator(".image");
   const box = await image.boundingBox();
@@ -204,7 +205,7 @@ test("destroy during the capture, while drawing, and while sending leaves nothin
       w.release = resolve;
     });
   });
-  await mount(page, { shortcut: "Alt+Shift+F" });
+  await mount(page, { shortcut: "Alt+Shift+F", draft: "memory" });
   await page.getByRole("button", { name: "Send feedback" }).click();
   await page.getByLabel("Your note").fill("A note");
   await page.getByRole("button", { name: "Send", exact: true }).click();

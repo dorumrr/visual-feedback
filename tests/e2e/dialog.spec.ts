@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/widget/");
 });
 
-test("the trigger is a named pill with its text in the chosen corner, and none draws nothing", async ({
+test("the trigger is a named round icon button in the chosen corner, and none draws nothing", async ({
   page,
 }) => {
   await mount(page);
@@ -18,10 +18,10 @@ test("the trigger is a named pill with its text in the chosen corner, and none d
   expect(box && viewport).toBeTruthy();
   if (!box || !viewport) return;
   expect(box.height).toBe(40);
-  expect(box.width).toBeGreaterThan(box.height);
+  expect(box.width).toBe(40);
   expect(Math.round(viewport.width - box.x - box.width)).toBe(16);
   expect(Math.round(viewport.height - box.y - box.height)).toBe(16);
-  await expect(trigger(page)).toHaveText("Feedback");
+  await expect(trigger(page)).toHaveText("");
   await expect(trigger(page)).toHaveCSS("border-top-left-radius", "999px");
 
   for (const position of ["top-left", "top-right", "bottom-left", "bottom-right"]) {
@@ -167,7 +167,8 @@ test("destroy() removes everything, restores the page and makes later calls do n
   });
   await expect(page.locator("visual-feedback")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe("");
-  expect(await events(page)).toEqual(["open", "close"]);
+  // The draft stays kept for the next widget, so it did not end: no close.
+  expect(await events(page)).toEqual(["open"]);
 });
 
 function withoutAdoptedStyleSheets(): void {
@@ -363,7 +364,8 @@ test("removing the element while the dialog is open closes it and unlocks the pa
   expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe("hidden");
   await page.evaluate(() => document.querySelector("visual-feedback")?.remove());
   await expect.poll(() => page.evaluate(() => document.documentElement.style.overflow)).toBe("");
-  expect(await events(page)).toEqual(["open", "close"]);
+  // Kept for the next widget, as at a route change: the draft did not end.
+  expect(await events(page)).toEqual(["open"]);
 });
 
 test("moving the element keeps the dialog open", async ({ page }) => {
@@ -386,7 +388,7 @@ test("two copies of the package share one scroll lock and the removal hook", asy
     const w = window as unknown as Mounted & { copy: Mounted["vf"] };
     // A query string makes the browser load a second, separate copy of the module.
     const { createFeedback } = await import("/dist/index.mjs?copy" as string);
-    w.copy = createFeedback({ trigger: "none" });
+    w.copy = createFeedback({ trigger: "none", draft: "memory" });
     w.copy.on("close", () => w.events.push("copy close"));
     await w.vf.open();
     await w.copy.open();
@@ -403,7 +405,8 @@ test("two copies of the package share one scroll lock and the removal hook", asy
 test("a throwing close handler is reported, and cannot stop destroy() from removing the widget", async ({
   page,
 }) => {
-  await mount(page);
+  // In memory, so destroy() ends the draft and close fires.
+  await mount(page, { draft: "memory" });
   const thrown = await page.evaluate(async () => {
     const w = window as unknown as Mounted;
     const reported: string[] = [];

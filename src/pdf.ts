@@ -27,10 +27,12 @@ export async function pdf(pages: HTMLCanvasElement[], encode: Encode): Promise<B
   const kids = pages.map((_, i) => `${3 + 3 * i} 0 R`).join(" ");
   begin(2, `<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>\nendobj`);
   for (const [i, page] of pages.entries()) {
+    // Read first: the caller may free the canvas once it is encoded.
+    const { width, height: tall } = page;
     const jpeg = new Uint8Array(
       await (await encode(page, { type: "image/jpeg", quality: 0.9 })).arrayBuffer(),
     );
-    const height = ((page.height * WIDTH) / page.width).toFixed(2);
+    const height = ((tall * WIDTH) / width).toFixed(2);
     const n = 3 + 3 * i;
     begin(
       n,
@@ -40,7 +42,7 @@ export async function pdf(pages: HTMLCanvasElement[], encode: Encode): Promise<B
     begin(n + 1, `<< /Length ${draw.length} >>\nstream\n${draw}\nendstream\nendobj`);
     begin(
       n + 2,
-      `<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream`,
+      `<< /Type /XObject /Subtype /Image /Width ${width} /Height ${tall} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream`,
     );
     add(jpeg);
     add("\nendstream\nendobj\n");

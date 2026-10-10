@@ -306,7 +306,7 @@ test("each screenshot's image has its own marks painted in", async ({ page }) =>
   expect(second?.counted).toBeGreaterThan(50);
 });
 
-test("close() and destroy() end a draft kept in the bar", async ({ page }) => {
+test("close() ends a draft kept in the bar, and destroy() takes the bar away", async ({ page }) => {
   await mount(page);
   await trigger(page).click();
   await expect(image(page)).toBeVisible();
@@ -322,7 +322,8 @@ test("close() and destroy() end a draft kept in the bar", async ({ page }) => {
   await expect(bar(page)).toBeVisible();
   await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
   await expect(page.locator("visual-feedback")).toHaveCount(0);
-  expect(await events(page)).toEqual(["open", "close", "open", "close"]);
+  // destroy() keeps the folded draft for the next widget: it did not end, so no close.
+  expect(await events(page)).toEqual(["open", "close", "open"]);
 });
 
 test("the draft bar sits in the trigger's corner, and shows with trigger none too", async ({

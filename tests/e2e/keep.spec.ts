@@ -309,15 +309,139 @@ test("every kind of mark comes back, painted in, and Undo starts after them", as
   ]);
 });
 
-test("destroy() ends a folded draft too: nothing stays on the device", async ({ page }) => {
+test("destroy(), as at a route change, keeps a folded draft for the next widget of the page", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Kept across a route");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Kept across a route");
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await expect(page.locator("visual-feedback")).toHaveCount(0);
+  expect(await stored(page)).toBe(1);
+  await mount(page);
+  await expect(bar(page)).toBeVisible();
+  expect(await events(page)).toEqual(["open"]);
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Kept across a route");
+});
+
+test("destroy() with the dialog open keeps the draft as it is, marks and note included", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await stroke(page);
+  await note(page).fill("Never folded");
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  // Straight away, as a route's next component would: the write may still be under way.
+  await mount(page);
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Never folded");
+  await button(page, "Send").click();
+  await finish(page);
+  expect((await sent(page)).screenshots.map((shot) => shot.marks.length)).toEqual([1]);
+  await expect.poll(() => stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+});
+
+test("an element the host removes keeps its draft: no close fires, and the next widget brings it back", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Removed with the route");
+  await page.evaluate(() => document.querySelector("visual-feedback")?.remove());
+  // Kept, not ended: no close.
+  await expect.poll(() => storedNote(page)).toBe("Removed with the route");
+  expect(await events(page)).toEqual(["open"]);
+  await mount(page);
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Removed with the route");
+});
+
+test("close() still ends the draft, and a removal after a Send keeps nothing", async ({ page }) => {
   await mount(page);
   await trigger(page).click();
   await expect(image(page)).toBeVisible();
   await page.keyboard.press("Escape");
   await expect.poll(() => stored(page)).toBe(1);
-  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await page.evaluate(() => (window as unknown as Mounted).vf.close());
   await expect.poll(() => stored(page)).toBe(0);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Sent");
+  await button(page, "Send").click();
+  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await page.waitForTimeout(500);
   expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  expect(await stored(page)).toBe(0);
+});
+
+test("of two widgets with one tag, the first owns the kept draft; the second keeps its own in memory", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(async () => {
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    (window as unknown as { second: unknown }).second = createFeedback({
+      onSubmit: async () => {},
+      position: "top-left",
+    });
+  });
+  const triggers = page.getByRole("button", { name: "Send feedback" });
+  await expect(triggers).toHaveCount(2);
+  await triggers.first().click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("First widget");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("First widget");
+  // The second folds its own draft: it must not take the first one's place.
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Second widget");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toHaveCount(2);
+  await page.waitForTimeout(500);
+  expect(await stored(page)).toBe(1);
+  expect(await storedNote(page)).toBe("First widget");
+  await page.reload();
+  await mount(page);
+  await page.evaluate(async () => {
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    createFeedback({ onSubmit: async () => {}, position: "top-left" });
+  });
+  // Only the owner, the first, in the bottom-right corner, brings it back.
+  const back = page.getByRole("region", { name: "Feedback draft" });
+  await expect(back).toHaveCount(1);
+  const box = await back.boundingBox();
+  expect((box?.x ?? 0) > (page.viewportSize()?.width ?? 0) / 2).toBe(true);
+});
+
+test("a widget made after the owner was destroyed owns the tag, so a StrictMode remount restores", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.reload();
+  // StrictMode in development: create, destroy at once, create again.
+  await page.evaluate(async () => {
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    createFeedback({ onSubmit: async () => {} }).destroy();
+  });
+  await mount(page);
+  await expect(bar(page)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toHaveCount(1);
 });
 
 test("a kept category the host no longer offers falls back to the first one", async ({ page }) => {
@@ -649,4 +773,319 @@ test("storage that throws at load leaves the widget working, with the draft in m
   await expect(bar(page)).toBeVisible();
   await button(page, "Open").click();
   await expect(image(page)).toBeVisible();
+});
+
+test("a widget made while the removed one still writes the draft waits for it, and brings it back", async ({
+  page,
+}) => {
+  // The first PNG encode, the draft's own copy of the screenshot, is held until let go.
+  await page.evaluate(() => {
+    const w = window as unknown as { letGo: () => void };
+    const held = new Promise<void>((done) => {
+      w.letGo = done;
+    });
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    let first = true;
+    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+      if (type !== "image/png" || !first) return toBlob.call(this, callback, type, quality);
+      first = false;
+      void held.then(() => toBlob.call(this, callback, type, quality));
+    };
+  });
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Written late");
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await mount(page);
+  // The new widget is reading the draft back while the old one cannot finish writing it.
+  await page.waitForTimeout(300);
+  await page.evaluate(() => (window as unknown as { letGo: () => void }).letGo());
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Written late");
+});
+
+test("a click with a draft still kept in this tab opens that draft, not a new capture", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Kept, then clicked");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Kept, then clicked");
+  await page.reload();
+  // close() while the load brings it back: the draft stays kept, and the trigger shows.
+  await page.route("**/dist/dialog-*.mjs", async (route) => {
+    await new Promise((done) => setTimeout(done, 400));
+    await route.continue();
+  });
+  await mount(page);
+  await page.evaluate(() => (window as unknown as Mounted).vf.close());
+  await page.unroute("**/dist/dialog-*.mjs");
+  await expect(trigger(page)).toBeVisible();
+  await trigger(page).click();
+  await expect(note(page)).toHaveValue("Kept, then clicked");
+  await expect(dialog(page)).toBeVisible();
+  expect(await stored(page)).toBe(1);
+});
+
+test("a second widget ending its own draft leaves the owner's kept draft alone", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(async () => {
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    createFeedback({ onSubmit: async () => {}, position: "top-left" });
+  });
+  await page.getByRole("button", { name: "Send feedback" }).first().click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Owner");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Owner");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Discard", exact: true }).last().click();
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toHaveCount(1);
+  await page.waitForTimeout(300);
+  expect(await storedNote(page)).toBe("Owner");
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toHaveLength(1);
+});
+
+test("destroy() while a load still reads the draft back, the dialog already in, keeps it", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Read back late");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Read back late");
+  await page.reload();
+  await page.route("**/dist/keep-*.mjs", async (route) => {
+    await new Promise((done) => setTimeout(done, 600));
+    await route.continue();
+  });
+  await mount(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        performance
+          .getEntriesByType("resource")
+          .some((entry) => /\/dist\/dialog-/.test(entry.name)),
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await page.waitForTimeout(1200);
+  expect(await storedNote(page)).toBe("Read back late");
+  expect(await events(page)).not.toContain("close");
+  await page.unroute("**/dist/keep-*.mjs");
+  await mount(page);
+  await expect(bar(page)).toBeVisible();
+});
+
+test("when the owner leaves, a widget already in the page takes over and opens the kept draft", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(async () => {
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    createFeedback({ onSubmit: async () => {}, position: "top-left" });
+  });
+  await page.getByRole("button", { name: "Send feedback" }).first().click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("From the owner");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("From the owner");
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  await expect(note(page)).toHaveValue("From the owner");
+});
+
+test('a draft: "memory" widget made first does not stop the next one from keeping its draft', async ({
+  page,
+}) => {
+  await page.evaluate(async () => {
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    createFeedback({ onSubmit: async () => {}, position: "top-left", draft: "memory" });
+  });
+  await mount(page);
+  await page.getByRole("button", { name: "Send feedback" }).last().click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Kept by the second");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Kept by the second");
+});
+
+test("destroy() after Send was handed to the host keeps nothing, so the next widget cannot send it twice", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted;
+    w.hold = new Promise((resolve) => {
+      w.release = resolve;
+    });
+  });
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Under way");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Under way");
+  await button(page, "Open").click();
+  await button(page, "Send").click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as Mounted).reports.length))
+    .toBe(1);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted;
+    // On before destroy(): a late sent or error would land in the same list, after close.
+    const list = w.events;
+    w.vf.on("sent", () => list.push("sent"));
+    w.vf.on("error", () => list.push("error"));
+    w.vf.destroy();
+  });
+  // Not kept, so it ended: close fires.
+  expect(await events(page)).toEqual(["open", "close"]);
+  await expect.poll(() => stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  // The destroyed widget's own list: mount() gives the next widget a new one.
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted & { before: string[] };
+    w.before = w.events;
+  });
+  await mount(page);
+  await page.waitForTimeout(500);
+  await expect(bar(page)).toHaveCount(0);
+  await page.evaluate(() => (window as unknown as Mounted).release?.());
+  await page.waitForTimeout(300);
+  // close stays the last event of the destroyed widget: no sent after it.
+  expect(await page.evaluate(() => (window as unknown as { before: string[] }).before)).toEqual([
+    "open",
+    "close",
+  ]);
+});
+
+test("open() from idle with a kept id whose draft is gone starts a new capture", async ({
+  page,
+}) => {
+  await mount(page, { trigger: "none" });
+  await page.evaluate(() => sessionStorage.setItem("visual-feedback:visual-feedback", "gone"));
+  await page.evaluate(() => (window as unknown as Mounted).vf.open());
+  await expect(image(page)).toBeVisible();
+  await expect(note(page)).toHaveValue("");
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+});
+
+test("a widget that takes over folds its own draft in memory, and never over the one still kept", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(async () => {
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    createFeedback({ onSubmit: async () => {}, position: "top-left" });
+  });
+  await page.getByRole("button", { name: "Send feedback" }).first().click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Kept by the owner");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Kept by the owner");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("The second's own");
+  // The owner leaves while the second's dialog is open; its fold must not replace the kept one.
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(await stored(page)).toBe(1);
+  expect(await storedNote(page)).toBe("Kept by the owner");
+  // Still named by this tab's key, so a load brings it back.
+  await load(page);
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Kept by the owner");
+});
+
+/** A second widget of the default tag, whose events are recorded as `window.second`. */
+const second = (page: Page, options: Record<string, unknown> = {}) =>
+  page.evaluate(async (options) => {
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    const w = window as unknown as { second: { vf: Mounted["vf"]; events: string[] } };
+    const vf = createFeedback({ onSubmit: async () => {}, position: "top-left", ...options });
+    w.second = { vf, events: [] };
+    vf.on("open", () => w.second.events.push("open"));
+    vf.on("close", () => w.second.events.push("close"));
+  }, options);
+
+const secondEvents = (page: Page) =>
+  page.evaluate(() => (window as unknown as { second: { events: string[] } }).second.events);
+
+test("a second widget that became the owner, cancelling its own draft, leaves the kept one alone", async ({
+  page,
+}) => {
+  await mount(page);
+  await second(page);
+  await page.getByRole("button", { name: "Send feedback" }).first().click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Kept by the first");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Kept by the first");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  await expect(image(page)).toBeVisible();
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await button(page, "Cancel").click();
+  await expect(dialog(page)).toHaveCount(0);
+  await page.waitForTimeout(300);
+  expect(await storedNote(page)).toBe("Kept by the first");
+  await load(page);
+  await expect(bar(page)).toBeVisible();
+});
+
+test("destroy() of a widget that does not own its tag ends its draft: close fires", async ({
+  page,
+}) => {
+  await mount(page);
+  await second(page);
+  await page.getByRole("button", { name: "Send feedback" }).last().click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.evaluate(() =>
+    (window as unknown as { second: { vf: Mounted["vf"] } }).second.vf.destroy(),
+  );
+  expect(await secondEvents(page)).toEqual(["open", "close"]);
+  expect(await stored(page)).toBe(0);
+});
+
+test("a folded draft that is no longer kept ends at destroy(): close fires, and its record goes", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.evaluate(() => (window as unknown as Mounted).vf.update({ draft: "memory" }));
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  expect(await events(page)).toEqual(["open", "close"]);
+  await expect.poll(() => stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+});
+
+test('with draft: "memory", destroy() of a folded draft fires close; an idle widget fires nothing', async ({
+  page,
+}) => {
+  await mount(page, { draft: "memory" });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toBeVisible();
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  expect(await events(page)).toEqual(["open", "close"]);
+  await mount(page);
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  expect(await events(page)).toEqual([]);
 });

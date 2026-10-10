@@ -24,7 +24,12 @@
 - A draft folded in the draft bar survives a full page load in the same tab: it comes back folded,
   with its screenshots, marks, note and category. It is kept in IndexedDB, its id in
   sessionStorage, until the draft ends or a day after it was last folded or brought back; new option `draft: "memory"` keeps
-  nothing on the device. The loader budget is now 15 KB.
+  nothing on the device. Breaking: `destroy()`, and the host removing the element, keep the draft,
+  open or folded, and the next widget of that tag in the tab brings it back, so a React route
+  change keeps it; call `close()` first to end it. `close` fires only when a draft ends, so a
+  `destroy()` or removal that keeps it fires none. A second widget with the same tag keeps its
+  draft in memory only. A click while the tab keeps a draft opens that draft. A PDF page the
+  browser has no memory for (as on iOS) shows the PDF error, never a blank page. The loader budget is now 15 KB.
 - Save as PDF: Send is a split button whose menu downloads `feedback-<date>.pdf`, made in the
   browser with no library: the category and the note above the first screenshot, then one page per
   screenshot, marks included. Nothing is sent and the draft stays; a new `saved` event tells the
@@ -33,9 +38,10 @@
 - A new look: a tool rail with icons beside the screenshot, the note as a composer with Send in a
   footer row under it, a close button in the header, and an Esc hint. Text follows the site's font and
   size. In a short window the screenshot gives up height, so the note and Send stay in view.
-- The trigger is a pill with an icon and a short label: new `strings.triggerText` ("Feedback"), and
-  new `strings.escHint`; code that types a full `FeedbackStrings` object needs both keys.
-  `--vf-trigger-size` is now its height, 2.5em by default (40px on a 16px site).
+- The trigger is a round icon button; new `strings.triggerText` (none by default) adds a short
+  label beside the icon, as a pill. New `strings.escHint`; code that types a full `FeedbackStrings` object needs both keys.
+  `--vf-trigger-size` is now its height, and its width when it shows the icon alone, 2.5em by
+  default (40px on a 16px site).
 - Changed defaults: `--vf-radius` 16px and a softer `--vf-shadow`. New part names: `header`,
   `body`, `divider`, `icon`, `text-input`, `composer`, `composer-bar`, `hint`, `trigger-text`. Send no longer sits
   inside `.actions`: host CSS aimed at `.actions .send` needs `.send`. Cancel is now the header's

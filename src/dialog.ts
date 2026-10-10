@@ -107,6 +107,8 @@ export type Handlers = {
   emit<E extends FeedbackEvent>(event: E, ...args: FeedbackEvents[E]): void;
   /** The options as they are at Send, after any update(). */
   options(): FeedbackOptions;
+  /** Whether this widget keeps its draft across page loads: on, and the one its tag's draft is. */
+  keeps(): boolean;
 };
 
 export type Settings = {
@@ -242,7 +244,11 @@ export type Mounted = {
   revive(): Promise<boolean>;
   /** Lets the page scroll, or stops it; unmount lets it scroll. */
   lock(on: boolean): void;
-  unmount(): void;
+  /**
+   * With keep, the draft as it is now stays kept for the next widget of this tag in this tab.
+   * Returns whether it is kept; when not, the draft has ended.
+   */
+  unmount(keep?: boolean): boolean;
 };
 
 /** One screenshot of the draft: its image, its marks with their Undo history, and its page. */
@@ -253,6 +259,10 @@ type Taken = {
   /** The screenshot with no mark, as a PNG, for a draft kept across page loads. */
   blob: Promise<Blob> | undefined;
 };
+
+// Kept drafts are written one at a time, for every widget of the page, so a widget that brings
+// one back waits for the one just removed to finish writing it.
+let writing = Promise.resolve();
 
 export function mount(parent: HTMLElement, handlers: Handlers, settings: Settings = {}): Mounted {
   const tools = settings.tools ?? ["pen", "box", "arrow", "text", "select"];
@@ -301,13 +311,15 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   const root = () => parent.getRootNode() as ShadowRoot;
   // Where this tab keeps its draft's id: one per widget tag, as the loader reads it.
   const key = `visual-feedback:${root().host.localName}`;
-  const keeping = () => handlers.options().draft !== "memory";
+  const keeping = handlers.keeps;
   // The marks of screenshots brought back from an earlier page, given to their annotators.
   const restored = new WeakMap<HTMLCanvasElement, Mark[]>();
   let kept: string | undefined;
-  // Each draft that ends bumps it, so a write queued for it stops; writes run one at a time.
+  // Each draft that ends bumps it, so a write queued for it stops.
   let ended = 0;
-  let writing = Promise.resolve();
+  let over = false;
+  // Handed to the host: a draft whose delivery may succeed is never kept, so never sent twice.
+  let submitted = false;
   let reviving = false;
   let picker: HTMLSelectElement | undefined;
 
@@ -468,28 +480,39 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // The draft ended (sent, cancelled, discarded, closed): nothing of it stays on the device,
   // also when it ended while a page load was still bringing it back.
   function discard(): void {
+    over = true;
     ended++;
     unkeep();
   }
 
   function unkeep(): void {
-    let id = kept;
+    const id = kept;
     kept = undefined;
     try {
-      id ??= sessionStorage.getItem(key) ?? undefined;
-      sessionStorage.removeItem(key);
+      // The key may name another widget's draft by now; only this one's goes.
+      if (id && id === sessionStorage.getItem(key)) sessionStorage.removeItem(key);
     } catch {}
-    if (id) {
-      const gone = id;
-      void import("./keep").then(({ forget }) => forget(gone)).catch(() => {});
-    }
+    if (id) void import("./keep").then(({ forget }) => forget(id)).catch(() => {});
   }
 
   // Keeps the folded draft for this tab, as it is now, so a page load brings it back. Storage
   // can be off, full or private; the draft then lives in memory only, as before.
-  function store(): void {
-    if (!keeping()) return;
+  function store(): boolean {
+    // A screenshot taken while this widget did not keep drafts has no copy to keep.
+    if (!keeping() || over || !taken.length || taken.some((shot) => !shot.blob)) return false;
     const turn = ended;
+    try {
+      const held = sessionStorage.getItem(key);
+      // A draft another widget of this tag kept, and left, is not overwritten: this one stays
+      // in memory only.
+      if (held && held !== kept) return false;
+      kept ??= [...crypto.getRandomValues(new Uint32Array(2))].join("-");
+      // Set now, not once written: a widget made right after this one is gone must find it.
+      sessionStorage.setItem(key, kept);
+    } catch {
+      return false;
+    }
+    const id = kept;
     const shots = taken.map((shot) => ({
       blob: shot.blob,
       marks: [...(shot.annotator?.marks ?? [])],
@@ -505,17 +528,19 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         }
         const { keep, forget } = await import("./keep");
         if (turn !== ended) return;
-        kept ??= [...crypto.getRandomValues(new Uint32Array(2))].join("-");
-        const id = kept;
-        sessionStorage.setItem(key, id);
         await keep(id, { saved: Date.now(), ...draft, shots: images });
         // Ended while it was written: discard() already let go of the key, so the record goes too.
         if (turn !== ended) await forget(id);
       } catch {
-        // Not kept this time: an earlier fold must not come back in its place.
-        if (turn === ended) unkeep();
+        // Not kept this time: an earlier fold must not come back in its place, nor a later write
+        // queued behind this one land under a key that is gone.
+        if (turn === ended) {
+          ended++;
+          unkeep();
+        }
       }
     });
+    return true;
   }
 
   function draftBar(): HTMLElement {
@@ -577,6 +602,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       }
       // Closed before submit: nothing is sent.
       if (!mounted || !report) return;
+      submitted = true;
       handlers.emit("submit", report);
       await module.deliver(report, options);
       // Sent: a load during the short confirmation must not bring it back.
@@ -605,17 +631,26 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         const page = document.createElement("canvas");
         page.width = image.width;
         page.height = image.height;
-        page.getContext("2d")?.drawImage(image, 0, 0);
+        const context = page.getContext("2d");
+        // iOS gives no context past its canvas memory: the page would be saved blank.
+        if (!context) throw new Error("no 2d context");
+        context.drawImage(image, 0, 0);
         return page;
       });
       // Two awaits, not Promise.all: size-limit then counts the capture library in this chunk.
       const capture = await import("./capture");
       const writer = await import("./pdf");
       const [first, ...rest] = pages;
-      const file = await writer.pdf(
-        [writer.cover(note, category, first, font), ...rest],
-        capture.encode,
-      );
+      const front = writer.cover(note, category, first, font);
+      if (first) first.width = 0;
+      // Each copy is freed once encoded, so a phone holds one fewer at a time.
+      const file = await writer.pdf([front, ...rest], async (page, options) => {
+        try {
+          return await capture.encode(page, options);
+        } finally {
+          page.width = 0;
+        }
+      });
       // Cancelled while it was built: nothing is saved.
       if (!mounted) return;
       const link = document.createElement("a");
@@ -907,6 +942,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     async revive() {
       reviving = true;
       try {
+        // A widget of this tag that was just removed may still be writing the draft.
+        await writing;
         const id = sessionStorage.getItem(key);
         const { read, forget, KEPT_FOR } = await import("./keep");
         const draft = id ? await read(id) : undefined;
@@ -947,9 +984,10 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       }
     },
     lock: lockPage,
-    unmount() {
+    unmount(keep) {
       // Twice is harmless: a close() and a late page-load restore can both end it.
-      if (!mounted) return;
+      if (!mounted) return false;
+      const stays = reviving || (!!keep && !submitted && store());
       mounted = false;
       clearTimeout(done);
       lockPage(false);
@@ -960,7 +998,9 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       parent.classList.remove("drafting");
       // Closed while a page load brings it back: the user never saw it end, so it stays kept.
       if (reviving) ended++;
-      else discard();
+      // Not kept: the draft ended, and its record, if this one wrote it, goes with it.
+      else if (!stays) discard();
+      return stays;
     },
   };
 }

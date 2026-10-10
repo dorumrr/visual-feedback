@@ -109,7 +109,7 @@ function variables(): string {
   return `.vf{--_r:var(--vf-radius,16px);--_s:var(--vf-surface,Canvas);--_t:var(--vf-text,CanvasText);--_m:var(--vf-muted,color-mix(in srgb,var(--_t) 60%,transparent));--_b:var(--vf-border,color-mix(in srgb,var(--_t) 15%,transparent));--_a:var(--vf-accent,${system ? "AccentColor" : "#0b57d0"});--_at:var(--vf-accent-text,#fff);--_f:var(--vf-focus,var(--_a));--_mark:var(--vf-mark,#e5243b);--_bd:var(--vf-backdrop,rgb(0 0 0/45%));--_sh:var(--vf-shadow,0 12px 32px -12px rgb(0 0 0/35%));--_size:var(--vf-trigger-size,2.5em);--_off:var(--vf-offset,16px);--_z:var(--vf-z,2147483000)}`;
 }
 
-const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
+const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-icon]{width:var(--_size);padding:0;justify-content:center}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
 
 const THEME = `.trigger{font-weight:600;border:1px solid var(--_b);border-radius:999px;background:var(--_s);color:var(--_t);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s}.trigger:hover{background:color-mix(in srgb,var(--_s) 90%,var(--_t))}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}`;
 
@@ -146,6 +146,10 @@ function deepActive(): Element | null {
 const DISCONNECTED = Symbol.for("visual-feedback.disconnected");
 
 type Hooked = HTMLElement & { [DISCONNECTED]?: () => void };
+
+// The widget of each tag whose element is in a page owns the draft that tag keeps; others keep
+// theirs in memory only, so two never bring back, or overwrite, one draft.
+const owners = new Map<string, HTMLElement>();
 
 const noop: FeedbackWidget = {
   open: async () => {},
@@ -266,7 +270,12 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
       trigger.dataset.x = x;
       const { trigger: name, triggerText } = options.strings ?? {};
       trigger.setAttribute("aria-label", name || triggerText || "Send feedback");
-      if (label) label.textContent = triggerText ?? name ?? "Feedback";
+      // Icon only unless the host gives a visible text.
+      trigger.toggleAttribute("data-icon", !triggerText);
+      if (label) {
+        label.textContent = triggerText ?? "";
+        label.hidden = !triggerText;
+      }
     }
     unlisten?.();
     unlisten = options.shortcut ? listen(options.shortcut) : undefined;
@@ -275,14 +284,26 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
   apply();
   // A script in <head> runs before <body> exists.
   (options.container ?? document.body ?? document.documentElement).append(host);
-  // A draft this tab kept before a page load shows its bar again.
-  try {
-    if (options.draft !== "memory" && sessionStorage.getItem(`visual-feedback:${tag}`)) {
-      state = "opening";
-      pending = show(++session, true);
-      pending.catch(() => {});
+  // Asked each time: when the owner's element leaves the page, the next widget to ask takes over.
+  const keeps = () => {
+    if (options.draft === "memory") return false;
+    if (!owners.get(tag)?.isConnected && host.isConnected) owners.set(tag, host);
+    return owners.get(tag) === host;
+  };
+  // A draft this tab kept before a page load, or a route change, shows its bar again.
+  restore();
+
+  function restore(): boolean {
+    try {
+      if (!keeps() || !sessionStorage.getItem(`visual-feedback:${tag}`)) return false;
+    } catch {
+      return false;
     }
-  } catch {}
+    state = "opening";
+    pending = show(++session, true);
+    pending.catch(() => {});
+    return true;
+  }
 
   // Hidden, so neither the trigger nor the dialog is in the image (SPEC §2, capturing). A modal
   // dialog gets visibility: visible from the browser, so the backdrop is hidden by name.
@@ -331,14 +352,16 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
     hide(false);
   }
 
-  function teardown(): void {
-    dialog?.unmount();
+  /** Returns whether the draft stays kept; when not, it has ended. */
+  function teardown(keep?: boolean): boolean {
+    const stays = dialog?.unmount(keep) ?? false;
     dialog = undefined;
     // WebKit does not focus a clicked button, so body here means the trigger opened it.
     const target =
       returnFocus?.isConnected && returnFocus !== document.body ? returnFocus : trigger;
     returnFocus = null;
     (target as HTMLElement | undefined)?.focus?.();
+    return stays;
   }
 
   async function show(mine: number, kept?: boolean): Promise<void> {
@@ -368,16 +391,26 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
             }),
           emit,
           options: () => options,
+          keeps,
         },
         options,
       );
       const mounted = dialog;
       if (!kept) mounted.capture(image);
-      // Nothing kept after all (expired, storage off), or closed while it came back. A dialog a
-      // later open() mounted meanwhile is left alone, and so is the focus.
-      else if (!(await mounted.revive()) || mine !== session) {
-        if (mine === session) state = "idle";
-        return mounted.unmount();
+      else {
+        const back = await mounted.revive();
+        // Closed or destroyed while it came back: it stays kept. A dialog a later open() mounted
+        // meanwhile is left alone, and so is the focus.
+        if (mine !== session) {
+          mounted.unmount(true);
+          return;
+        }
+        // Nothing kept after all (expired, storage off).
+        if (!back) {
+          state = "idle";
+          mounted.unmount();
+          return;
+        }
       }
     } catch (error) {
       stop(stream);
@@ -413,18 +446,14 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
       }
       // Open, or kept as a draft: a draft bar's dialog opens again.
       if (state !== "idle") return dialog?.reopen(), Promise.resolve();
+      // A draft this tab still keeps opens, not a new capture: it comes back, then opens.
+      if (restore()) return widget.open();
       state = "opening";
       pending = show(++session);
       return pending;
     },
     close() {
-      if (state !== "open" && state !== "opening") return;
-      const wasOpen = state === "open";
-      state = "idle";
-      cancel();
-      // Also while opening: capture hid the trigger, which can take the focus with it.
-      teardown();
-      if (wasOpen) emit("close");
+      end();
     },
     destroy() {
       if (state === "destroyed") return;
@@ -432,8 +461,10 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
       state = "destroyed";
       cancel();
       unlisten?.();
-      if (wasOpen) teardown();
-      const closers = wasOpen ? [...(handlers.get("close") ?? [])] : [];
+      // Gone with the page, as at a route change: the draft stays kept, as across a page load,
+      // and close fires only when it ended.
+      const ended = wasOpen && !teardown(true);
+      const closers = ended ? [...(handlers.get("close") ?? [])] : [];
       handlers.clear();
       host.remove();
       call(closers, []);
@@ -454,11 +485,21 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
       return () => set.delete(handler);
     },
   };
-  // The host app may remove the element (a route change) while the dialog is open. A move
-  // reconnects it before the microtask runs, so a move keeps the dialog.
+  function end(keep?: boolean): void {
+    if (state !== "open" && state !== "opening") return;
+    const wasOpen = state === "open";
+    state = "idle";
+    cancel();
+    // Also while opening: capture hid the trigger, which can take the focus with it.
+    const stays = teardown(keep);
+    if (wasOpen && !stays) emit("close");
+  }
+
+  // The host app may remove the element (a route change) while the dialog is open: it closes,
+  // and the draft stays kept. A move reconnects it before the microtask runs, so it keeps all.
   (host as Hooked)[DISCONNECTED] = () =>
     queueMicrotask(() => {
-      if (!host.isConnected) widget.close();
+      if (!host.isConnected) end(true);
     });
   return widget;
 }

@@ -31,8 +31,8 @@ annotating, draft --Cancel / Discard--> idle
   page scrolls, and a single-page app can change route, while it shows. "Capture this view" takes
   another screenshot of the page as it is now, the bar and the dialog left out, adds it, and opens
   the dialog on it; a capture that fails opens the dialog on the kept draft with the
-  `captureError` text, where Esc keeps the draft again and Cancel discards it. "Open", and `open()`, open the dialog as it was. A full page load in the same tab brings the
-  draft back, folded in the bar, as it was when it was last folded: its screenshots, marks, note and
+  `captureError` text, where Esc keeps the draft again and Cancel discards it. "Open", and `open()`, open the dialog as it was. A full page load in the same tab, or a route
+  change that removes the widget and makes the next one, brings the draft back, folded in the bar, as it was when it was last folded: its screenshots, marks, note and
   category. Undo starts after the marks it brought back. With `draft: "memory"`, a page load ends
   it.
 - **sending:** the note, the category and the tools are disabled, and the Send button shows
@@ -43,9 +43,10 @@ annotating, draft --Cancel / Discard--> idle
   the draft goes with it.
 
 ## 3. The trigger
-- It is a small pill, 2.5em high by default (40 px on a 16 px site), in a corner (`position`), with
-  an icon, the short `triggerText` label and the `trigger` accessible name; with only `triggerText`
-  given, that text is the name too. A host that sets both keeps `triggerText` inside `trigger`, so
+- It is a small round button, 2.5em across by default (40 px on a 16 px site), in a corner
+  (`position`), with an icon and the `trigger` accessible name. A host that gives `triggerText`
+  gets that short label beside the icon, as a pill; with only `triggerText` given, that text is
+  the name too. A host that sets both keeps `triggerText` inside `trigger`, so
   speech control can say what it sees. It has no badge, and it does not move or pulse.
 - It sits 16 px from the edges by default, and it respects `env(safe-area-inset-*)`.
 - It is hidden while there is a draft, whether the dialog is open or kept in the draft bar.
@@ -70,7 +71,8 @@ annotating, draft --Cancel / Discard--> idle
   the category and the note,
   then the first screenshot, on page 1, and each other screenshot on a page of its own, marks
   included. Nothing is sent, the dialog and the draft stay as they are, and the `saved` event
-  fires. Esc and Tab close the menu only. A PDF that cannot be made shows the `pdfError` text, and
+  fires. Esc and Tab close the menu only. A PDF that cannot be made, a page the browser has no memory to draw
+  included (as on iOS), shows the `pdfError` text, never a blank page, and
   neither `saved` nor `error` fires, since nothing failed to send; one asked for while another is being made is ignored.
 - **Screenshots:** a report holds up to 10. Each keeps its own marks and its own Undo; the tool
   chosen stays the same across them. The strip numbers them in the order they are sent: a click
@@ -109,8 +111,13 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - No console logs, network logs, cookies or keystrokes are collected. Nothing is stored, with one
   exception: a draft folded in the draft bar is kept on this device for this tab, so a page load
   does not lose it. sessionStorage holds its id, and IndexedDB its screenshots, marks, note and
-  category. It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard,
-  `close()` or `destroy()`. A `close()` made while a page load is still bringing it back hides it on
+  category. It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard or
+  `close()`. `destroy()`, or the host removing the element, keeps it, open or folded, for the next
+  widget of that tag in this tab, unless its Send was already handed to the host; a click while
+  this tab keeps one opens it. One widget of a tag keeps a draft, the first whose element is in
+  the page; when that element leaves, the next widget of the tag to need it takes over, and never
+  writes over a draft still kept. Any other keeps its own in memory.
+  A `close()` made while a page load is still bringing it back hides it on
   that page and keeps it. A day after it was last folded or brought back, it no longer comes back,
   and it is deleted the next time this site opens the dialog or keeps a draft, in any tab: nothing
   of the widget runs on the device to delete it sooner. A tab the browser duplicates copies
@@ -136,7 +143,8 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - **Idle cost:** no work after the first paint of the trigger, past reading one sessionStorage
   key at load; only when this tab kept a draft does the dialog load, to bring it back. After the first screenshot, the
   capture library (snapdom) keeps 12 listeners on `window` and `document` and up to 5 mutation observers
-  until the page unloads, and offers no way to remove them; `destroy()` removes everything else.
+  until the page unloads, and offers no way to remove them; `destroy()` removes everything else
+  but a draft it keeps (§7).
 - CI fails when a budget is exceeded.
 
 ## 10. Browsers
@@ -178,7 +186,7 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | sent | Thanks, it's sent. |
 | error | It didn't send. Your note is kept. |
 | retry | Try again |
-| triggerText | Feedback, or the `trigger` text when only that is replaced |
+| triggerText | none: the icon alone |
 | escHint | Esc keeps it as a draft |
 | minimise | Keep as draft |
 | screenshot | Screenshot (each one is named with its number, as "Screenshot 2") |

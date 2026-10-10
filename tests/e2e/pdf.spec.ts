@@ -20,7 +20,11 @@ async function download(page: Page): Promise<{ name: string; bytes: Buffer }> {
 }
 
 /** Walks the file as a reader does, from the trailer to each page's image, and returns the JPEGs. */
-function parse(bytes: Buffer): { pages: number; jpegs: Buffer[] } {
+function parse(bytes: Buffer): {
+  pages: number;
+  jpegs: Buffer[];
+  sizes: { width: number; height: number }[];
+} {
   const text = bytes.toString("latin1");
   expect(text.startsWith("%PDF-1.4\n")).toBe(true);
   expect(text.endsWith("%%EOF\n")).toBe(true);
@@ -40,6 +44,7 @@ function parse(bytes: Buffer): { pages: number; jpegs: Buffer[] } {
   const pages = Number(tree?.[2]);
   expect(kids).toHaveLength(pages);
   // Each page draws its own image; the JPEGs come back in the order the page tree lists them.
+  const sizes: { width: number; height: number }[] = [];
   const jpegs = kids.map((kid) => {
     const page = object(kid);
     expect(page).toContain("/Type /Page ");
@@ -47,11 +52,13 @@ function parse(bytes: Buffer): { pages: number; jpegs: Buffer[] } {
     const contents = Number(/\/Contents (\d+) 0 R/.exec(page)?.[1]);
     expect(object(contents)).toContain("/I Do Q");
     const head = object(image);
+    const size = /\/Width (\d+) \/Height (\d+) /.exec(head);
+    sizes.push({ width: Number(size?.[1]), height: Number(size?.[2]) });
     const length = Number(/\/DCTDecode \/Length (\d+) >>/.exec(head)?.[1]);
     const from = (rows[image - 1] ?? 0) + head.indexOf("stream\n") + "stream\n".length;
     return bytes.subarray(from, from + length);
   });
-  return { pages, jpegs };
+  return { pages, jpegs, sizes };
 }
 
 type Decoded = { width: number; height: number; ink: number; red: number };
@@ -169,9 +176,12 @@ test("Save as PDF holds every screenshot in order with its marks, and the note, 
   await page.mouse.up();
   const { name, bytes } = await download(page);
   expect(name).toBe(`feedback-${today()}.pdf`);
-  const { pages, jpegs } = parse(bytes);
+  const { pages, jpegs, sizes } = parse(bytes);
   expect(pages).toBe(3);
-  const [cover, middle, last] = await decode(page, jpegs);
+  const decoded = await decode(page, jpegs);
+  // The size a reader takes from each image's header is the JPEG's own.
+  expect(sizes).toEqual(decoded.map(({ width, height }) => ({ width, height })));
+  const [cover, middle, last] = decoded;
   // Page 1: the category and the note, one line each, above screenshot 1, which has no mark.
   const scale = first.width / 1200;
   const line = Math.round(Math.round(22 * scale) * 1.4);
@@ -396,4 +406,79 @@ test("strings.pdfError replaces the message", async ({ page }) => {
   await more(page).click();
   await save(page).click();
   await expect(page.getByRole("alert")).toHaveText("X pdfError");
+});
+
+test("a copy the browser gives no 2D context, as iOS past its canvas memory, fails loudly, never as a blank page", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  const shot = await sizeOf(page);
+  await page.evaluate((shot) => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    // Only the PDF's copies: out of the page and the screenshot's size, never the cover.
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      ...args: unknown[]
+    ) {
+      if (
+        args[0] === "2d" &&
+        this.width === shot.width &&
+        this.height === shot.height &&
+        !this.isConnected
+      ) {
+        return null;
+      }
+      return (getContext as (...a: unknown[]) => unknown).apply(this, args);
+    } as typeof getContext;
+  }, shot);
+  await more(page).click();
+  await save(page).click();
+  await expect(page.getByRole("alert")).toHaveText("Couldn't save the PDF.");
+  await page.waitForTimeout(300);
+  expect(downloads).toBe(0);
+});
+
+test("each copy is freed once its page is encoded, not only at the end", async ({ page }) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await button(page, "Add screenshot").click();
+  await button(page, "Capture this view").click();
+  await expect(button(page, "Screenshot 2")).toBeVisible();
+  await page.evaluate(() => {
+    const w = window as unknown as { made: HTMLCanvasElement[]; during: number[] };
+    w.made = [];
+    w.during = [];
+    // At the second page's encode, the cover and the first copy must already be let go.
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    let jpegs = 0;
+    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+      if (type === "image/jpeg" && ++jpegs === 2) w.during = w.made.map((canvas) => canvas.width);
+      return toBlob.call(this, callback, type, quality);
+    };
+    const createElement = document.createElement.bind(document);
+    document.createElement = ((name: string, options?: ElementCreationOptions) => {
+      const element = createElement(name, options);
+      if (name === "canvas") w.made.push(element as HTMLCanvasElement);
+      return element;
+    }) as typeof document.createElement;
+  });
+  const saving = page.waitForEvent("download");
+  await more(page).click();
+  await save(page).click();
+  await saving;
+  // Two copies and the cover, at least; every one of them let go.
+  const widths = await page.evaluate(() =>
+    (window as unknown as { made: HTMLCanvasElement[] }).made.map((canvas) => canvas.width),
+  );
+  expect(widths.length).toBeGreaterThanOrEqual(3);
+  expect(widths.filter((width) => width > 0)).toEqual([]);
+  const during = await page.evaluate(() => (window as unknown as { during: number[] }).during);
+  expect(during.length).toBeGreaterThanOrEqual(3);
+  // Only the page being encoded still holds its pixels.
+  expect(during.filter((width) => width > 0)).toHaveLength(1);
 });

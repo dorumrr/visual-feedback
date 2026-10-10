@@ -130,17 +130,21 @@ test("strings replace every text the widget shows", async ({ page }) => {
   await expect(page.getByRole("status")).toHaveText("X sent");
 });
 
-test("the trigger shows Feedback, or the translated trigger name when only that is given", async ({
+test("an empty triggerText at creation leaves the icon alone, 40 px square", async ({ page }) => {
+  await mount(page, { strings: { triggerText: "" } });
+  const named = page.getByRole("button", { name: "Send feedback", exact: true });
+  await expect(named).toHaveText("");
+  const box = await named.boundingBox();
+  expect([box?.width, box?.height]).toEqual([40, 40]);
+});
+
+test("the trigger is an icon alone, and shows text only when triggerText is given", async ({
   page,
 }) => {
   await mount(page);
-  await expect(page.getByRole("button", { name: "Send feedback", exact: true })).toHaveText(
-    "Feedback",
-  );
+  await expect(page.getByRole("button", { name: "Send feedback", exact: true })).toHaveText("");
   await vf(page, "update", { strings: { trigger: "Envoyer un avis" } });
-  await expect(page.getByRole("button", { name: "Envoyer un avis", exact: true })).toHaveText(
-    "Envoyer un avis",
-  );
+  await expect(page.getByRole("button", { name: "Envoyer un avis", exact: true })).toHaveText("");
   await vf(page, "update", { strings: { trigger: "Envoyer un avis", triggerText: "Avis" } });
   await expect(page.getByRole("button", { name: "Envoyer un avis", exact: true })).toHaveText(
     "Avis",
@@ -150,7 +154,11 @@ test("the trigger shows Feedback, or the translated trigger name when only that 
   await expect(page.getByRole("button", { name: "Help", exact: true })).toHaveText("Help");
   // An empty label, as an i18n lookup can return, still leaves the button its English name.
   await vf(page, "update", { strings: { triggerText: "" } });
-  await expect(page.getByRole("button", { name: "Send feedback", exact: true })).toBeVisible();
+  const named = page.getByRole("button", { name: "Send feedback", exact: true });
+  await expect(named).toHaveText("");
+  // Without text it is round again.
+  const box = await named.boundingBox();
+  expect(Math.round(box?.width ?? 0)).toBe(Math.round(box?.height ?? -1));
 });
 
 test("strings show while sending, and a partial set keeps English for the rest", async ({

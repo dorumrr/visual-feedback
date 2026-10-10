@@ -84,6 +84,9 @@ test("props follow the component, a removed prop goes back to its default, unmou
   expect(await shortcutTaken(page)).toBe(false);
   await page.getByRole("button", { name: "Toggle widget" }).click();
   await expect(page.locator("visual-feedback")).toHaveCount(1);
+  // The draft folded before the unmount comes back, as after a route change.
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toBeVisible();
+  await page.getByRole("button", { name: "Discard", exact: true }).click();
   await expect(trigger(page)).toBeVisible();
   expect(seen).toEqual([]);
 });
