@@ -219,7 +219,7 @@ test("a screenshot that fails while adding keeps the draft and says so", async (
   await capture(page);
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Screenshot \d$/ })).toHaveCount(2);
-  // Cancel over a failed add discards the draft, as anywhere else.
+  // Cancel over a failed add asks, then discards the draft, as anywhere else.
   await button(page, "Add screenshot").click();
   await page.evaluate(() => {
     (window as unknown as { failCapture: boolean }).failCapture = true;
@@ -227,6 +227,10 @@ test("a screenshot that fails while adding keeps the draft and says so", async (
   await capture(page);
   await expect(page.getByRole("alert")).toHaveText("Couldn't take a screenshot.");
   await button(page, "Cancel").click();
+  await page
+    .getByRole("group", { name: "Discard this feedback?" })
+    .getByRole("button", { name: "Discard" })
+    .click();
   await expect(dialog(page)).toHaveCount(0);
   await expect(bar(page)).toHaveCount(0);
   await expect(trigger(page)).toBeVisible();
@@ -372,7 +376,9 @@ test("open() while the bar takes a screenshot leaves the dialog hidden until it 
   await expect(page.getByRole("button", { name: /^Screenshot \d$/ })).toHaveCount(2);
 });
 
-test("after a send error, Esc closes the dialog and no draft bar shows", async ({ page }) => {
+test("after a send error, Esc asks, then Discard closes the dialog and no draft bar shows", async ({
+  page,
+}) => {
   await mount(page);
   await page.evaluate(() =>
     (window as unknown as Mounted).vf.update({
@@ -385,6 +391,10 @@ test("after a send error, Esc closes the dialog and no draft bar shows", async (
   await expect(button(page, "Try again")).toBeVisible();
   await expect(page.getByText("Esc keeps it as a draft")).toHaveCount(0);
   await page.keyboard.press("Escape");
+  await page
+    .getByRole("group", { name: "Discard this feedback?" })
+    .getByRole("button", { name: "Discard" })
+    .click();
   await expect(dialog(page)).toHaveCount(0);
   await expect(bar(page)).toHaveCount(0);
   await expect(trigger(page)).toBeVisible();

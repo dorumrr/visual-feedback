@@ -245,6 +245,30 @@ test("the menu works from the keyboard, Esc and Tab close only the menu, and so 
   await expect(more(page)).toHaveAttribute("aria-expanded", "false");
 });
 
+test("with the menu open, Esc on the menu button or on Send closes only the menu", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  for (const target of [more(page), button(page, "Send")]) {
+    await more(page).click();
+    await expect(save(page)).toBeFocused();
+    // As after a press on the button that was not let go on it.
+    await target.focus();
+    await expect(save(page)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(save(page)).toBeHidden();
+    await expect(more(page)).toBeFocused();
+    await expect(more(page)).toHaveAttribute("aria-expanded", "false");
+    await expect(dialog(page)).toBeVisible();
+    await expect(page.getByRole("region", { name: "Feedback draft" })).toHaveCount(0);
+  }
+  // With the menu closed, Esc keeps the draft as before.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toBeVisible();
+});
+
 test("Enter on Save as PDF leaves the focus on the menu button", async ({ page }) => {
   await mount(page);
   await trigger(page).click();
@@ -396,6 +420,28 @@ test("while sending, the menu cannot be opened", async ({ page }) => {
   await expect(more(page)).toBeDisabled();
   await page.evaluate(() => (window as unknown as Mounted).release?.());
   await finish(page);
+});
+
+test("Send closes an open menu, so Esc while sending closes the dialog", async ({ page }) => {
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted;
+    w.hold = new Promise((done) => {
+      w.release = done;
+    });
+  });
+  await trigger(page).click();
+  await note(page).fill("Held");
+  await more(page).click();
+  await expect(save(page)).toBeFocused();
+  await button(page, "Send").click();
+  await expect(more(page)).toBeDisabled();
+  await expect(save(page)).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(dialog(page)).toBeHidden();
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toHaveCount(0);
+  expect(await events(page)).toContain("close");
+  await page.evaluate(() => (window as unknown as Mounted).release?.());
 });
 
 test("strings.pdfError replaces the message", async ({ page }) => {

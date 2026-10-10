@@ -98,6 +98,16 @@ it("the dialog is a separate file that the loader imports only on open", () => {
   );
 });
 
+it("the budgets are 15 KB for the loader and 135 KB for the dialog, as SPEC §9 says", () => {
+  const limits = JSON.parse(readFileSync(join(repo, ".size-limit.json"), "utf8")).map(
+    (entry: { limit: string }) => entry.limit,
+  );
+  expect(limits).toEqual(["15 KB", "135 KB"]);
+  const spec = readFileSync(join(repo, "docs/SPEC.md"), "utf8");
+  expect(spec).toContain("(the trigger and the `open()` wiring): 15 KB or less");
+  expect(spec).toContain("**Annotator and dialog:** 135 KB or less");
+});
+
 it("the loader has a measured size within its budget, and an over-budget build fails", () => {
   const within = sizeLimit();
   expect(within.loader?.name).toBe("loader");
@@ -119,8 +129,8 @@ it("the annotator and dialog have a measured size within their budget, and an ov
   expect(within.status).toBe(0);
 
   const chunk = readdirSync(join(copy, "dist")).find((file) => /^dialog-.+\.mjs$/.test(file));
-  const over = planted(chunk ?? "missing", 16384);
-  expect(over.dialog?.size).toBeGreaterThan(15000);
+  const over = planted(chunk ?? "missing", 184320);
+  expect(over.dialog?.size).toBeGreaterThan(135000);
   expect(over.dialog?.passed).toBe(false);
   expect(over.status).not.toBe(0);
 }, 60_000);

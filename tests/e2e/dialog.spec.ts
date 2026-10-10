@@ -88,6 +88,17 @@ test("the keyboard alone can write the note and cancel", async ({ page }) => {
   // Past Send and its menu caret, the focus wraps to the header: Keep as draft, then Cancel.
   for (let i = 0; i < 4; i++) await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+  // The note would be lost, so Cancel asks; Shift+Tab goes back through Keep as draft to Discard.
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Keep editing" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    page.getByRole("group", { name: "Discard this feedback?" }).getByRole("button", {
+      name: "Keep as draft",
+    }),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("button", { name: "Discard", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await events(page)).toEqual(["open", "close"]);
@@ -432,4 +443,114 @@ test("a throwing close handler is reported, and cannot stop destroy() from remov
   expect(thrown).toEqual(["no throw", expect.stringContaining("host bug"), true]);
   await expect(page.locator("visual-feedback")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe("");
+});
+
+test("Cancel asks before it discards a note or a mark, and Keep editing or Esc go back", async ({
+  page,
+}) => {
+  await mount(page);
+  const dialog = page.getByRole("dialog", { name: "Send feedback" });
+  const cancel = page.getByRole("button", { name: "Cancel" });
+  const question = page.getByRole("group", { name: "Discard this feedback?" });
+  const keepEditing = page.getByRole("button", { name: "Keep editing" });
+  const note = page.getByRole("textbox", { name: "Your note" });
+  // Nothing made yet: Cancel closes at once.
+  await trigger(page).click();
+  await expect(page.locator("visual-feedback canvas.image")).toBeVisible();
+  await cancel.click();
+  await expect(dialog).toHaveCount(0);
+  expect(await events(page)).toEqual(["open", "close"]);
+
+  await trigger(page).click();
+  await note.fill("Keep me");
+  await cancel.click();
+  await expect(question).toBeVisible();
+  await expect(keepEditing).toBeFocused();
+  const scan = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(scan.violations.map((v) => v.id)).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(question).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(cancel).toBeFocused();
+  await cancel.click();
+  await keepEditing.click();
+  await expect(question).toHaveCount(0);
+  await expect(cancel).toBeFocused();
+  await expect(note).toHaveValue("Keep me");
+  expect(await events(page)).toEqual(["open", "close", "open"]);
+  await cancel.click();
+  await question.getByRole("button", { name: "Discard" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toHaveCount(0);
+  expect(await events(page)).toEqual(["open", "close", "open", "close"]);
+
+  // A mark alone is something to lose too.
+  await trigger(page).click();
+  const canvas = page.locator("visual-feedback canvas.image");
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("no canvas");
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 5 });
+  await page.mouse.up();
+  await cancel.click();
+  await expect(question).toBeVisible();
+});
+
+test("Cancel also asks for a second screenshot or a chosen category alone; Keep as draft folds, and close() never asks", async ({
+  page,
+}) => {
+  await mount(page, {
+    categories: [
+      { id: "bug", label: "Bug" },
+      { id: "idea", label: "Idea" },
+    ],
+  });
+  const dialog = page.getByRole("dialog", { name: "Send feedback" });
+  const question = page.getByRole("group", { name: "Discard this feedback?" });
+  const draftBar = page.getByRole("region", { name: "Feedback draft" });
+  const cancel = page.getByRole("button", { name: "Cancel" });
+  // A chosen category alone.
+  await trigger(page).click();
+  await page.getByRole("combobox", { name: "Type" }).selectOption("idea");
+  await cancel.click();
+  await expect(question).toBeVisible();
+  // Keep as draft folds it, and nothing ends.
+  await question.getByRole("button", { name: "Keep as draft" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(draftBar).toBeVisible();
+  expect(await events(page)).toEqual(["open"]);
+  // A second screenshot alone, with the category back to the first.
+  await draftBar.getByRole("button", { name: "Capture this view" }).click();
+  await expect(page.getByRole("button", { name: /^Screenshot 2/ })).toBeVisible();
+  await page.getByRole("combobox", { name: "Type" }).selectOption("bug");
+  await cancel.click();
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Discard" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(draftBar).toHaveCount(0);
+  // close() with a note does not ask.
+  await trigger(page).click();
+  await page.getByRole("textbox", { name: "Your note" }).fill("Gone");
+  await page.evaluate(() => (window as unknown as Mounted).vf.close());
+  await expect(dialog).toHaveCount(0);
+  await expect(question).toHaveCount(0);
+});
+
+test("a label still being typed counts: a click on Cancel asks", async ({ page }) => {
+  await mount(page);
+  await trigger(page).click();
+  const canvas = page.locator("visual-feedback canvas.image");
+  await expect(canvas).toBeVisible();
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error("no canvas");
+  await page.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.4);
+  const label = page.getByRole("textbox", { name: "Text", exact: true });
+  await expect(label).toBeFocused();
+  await label.pressSequentially("Hi");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("group", { name: "Discard this feedback?" })).toBeVisible();
 });

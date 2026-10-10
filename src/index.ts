@@ -7,4 +7,4 @@ export type {
   FeedbackStrings,
   FeedbackWidget,
 } from "./widget";
-export { createFeedback } from "./widget";
+export { createFeedback, discardDraft } from "./widget";

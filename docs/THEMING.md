@@ -45,7 +45,9 @@ Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`
 `thumb-pick`, `thumb-image`, `thumb-number`, `thumb-remove`, `add`, `label`, `composer`, `note`,
 `composer-bar`, `category`, `footer`, `split`, `send-more`, `menu`, `save-pdf`, `actions`, `cancel`,
 `send`, `hint`, `status`, `error`, `retry`, `send-without`, `draft`, `draft-label`, `draft-thumbs`,
-`capture-view`, `reopen`, `discard`.
+`capture-view`, `reopen`, `discard`, `confirm`, `confirm-text`, `keep-draft`, `keep-editing`. Cancel's
+question is `confirm`, also an `actions` part, with its own `discard` button. After a send error, the Send button's part is `retry` until it
+sends again, the same part as the capture error's "Try again".
 
 ```css
 visual-feedback::part(trigger) { opacity: .6; }
@@ -56,7 +58,8 @@ visual-feedback::part(trigger):hover { opacity: 1; }
 - `css` is a string. It is added as a constructable stylesheet inside the shadow root, after the
   defaults, so it can reach anything, including states that `::part()` cannot select.
 - `unstyled: true` drops every default except the layout-critical rules (the trigger's position and
-  size, the overlay's position, the panel's layout, canvas size, hidden states). Then the `css` option styles everything.
+  size, the overlay's position, the panel's layout, canvas size, hidden states) and the focus ring,
+  in `--vf-focus`, which `css` can restyle. Then the `css` option styles everything else.
 
 ```ts
 createFeedback({ onSubmit, css: `.toolbar { gap: 2px } .send { text-transform: uppercase }` });

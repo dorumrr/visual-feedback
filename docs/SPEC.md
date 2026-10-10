@@ -13,7 +13,7 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
                    +--fails--> capture error  |   |                +--fails--> send error
                                               |   +--Open, or Capture this view (capturing first)
                                               +--Esc / Keep as draft / Add screenshot--> draft
-annotating, draft --Cancel / Discard--> idle
+annotating, draft --Cancel (it may ask first, below) / Discard--> idle
 ```
 - **idle:** the trigger button shows (`trigger: "button"`), or nothing shows (`trigger: "none"`,
   where the host calls `open()`).
@@ -25,22 +25,27 @@ annotating, draft --Cancel / Discard--> idle
 - **annotating:** a full-viewport overlay shows the image with a tool rail beside it, a strip of
   the report's screenshots under it, and the note field, with Send in a footer row under that.
   Esc and the header's Keep as draft fold it into the draft; the header's close button (Cancel)
-  discards it. Without a screenshot ("Send without screenshot"), Esc cancels.
+  discards it. When that would throw away a note, a mark, a second screenshot or a chosen category,
+  Cancel first asks `discardConfirm`, with "Discard", `minimise` (before Send, with a screenshot) and
+  `keepEditing`, which has the focus; Keep editing, and Esc on the question, take the question back
+  and put the focus on Cancel. Without a screenshot ("Send without screenshot"), Esc cancels,
+  after the same question when it would throw work away.
 - **draft:** a small bar in the trigger's corner, in place of the trigger: the `draft` label with
   the number of screenshots, small copies of them, "Capture this view", "Open" and "Discard". The
   page scrolls, and a single-page app can change route, while it shows. "Capture this view" takes
   another screenshot of the page as it is now, the bar and the dialog left out, adds it, and opens
   the dialog on it; a capture that fails opens the dialog on the kept draft with the
-  `captureError` text, where Esc keeps the draft again and Cancel discards it. "Open", and `open()`, open the dialog as it was. A full page load in the same tab, or a route
+  `captureError` text, where Esc keeps the draft again and Cancel discards it, after the same question when it would throw work away. "Open", and `open()`, open the dialog as it was. A full page load in the same tab, or a route
   change that removes the widget and makes the next one, brings the draft back, folded in the bar, as it was when it was last folded: its screenshots, marks, note and
   category. Undo starts after the marks it brought back. With `draft: "memory"`, a page load ends
   it.
 - **sending:** the note, the category and the tools are disabled, and the Send button shows
-  progress. The Esc hint goes: from Send on, Cancel and Esc close the dialog.
+  progress. The Esc hint goes, as it is absent with no screenshot: from Send on, Esc keeps no
+  draft, and Cancel and Esc close the dialog.
 - **sent:** a short confirmation, then idle.
 - **send error:** the message comes from the host's error, or else the `error` text. The note and
-  the marks are kept, and "Try again" sends the same report. Cancel and Esc close the dialog, and
-  the draft goes with it.
+  the marks are kept, and "Try again" sends the same report. Cancel and Esc, after
+  the same question when it would throw work away, close the dialog, and the draft goes with it.
 
 ## 3. The trigger
 - It is a small round button, 2.5em across by default (40 px on a 16 px site), in a corner
@@ -56,7 +61,7 @@ annotating, draft --Cancel / Discard--> idle
 ## 4. Annotating
 - **Tools:** Pen (freehand), Box (rectangle outline), Arrow and Text. Text places a label where the
   image is clicked: Enter or clicking away keeps it, Escape drops that label only, and an empty one
-  is not kept. Labels are one size, in the mark colour with a white outline. Select picks a mark by
+  is not kept; a label holds up to 280 characters. Labels are one size, in the mark colour with a white outline. Select picks a mark by
   its line or a label by its text, and shows a dashed outline that never reaches the sent image: a
   drag moves it, kept whole inside the image; the arrow keys move it (Shift for ten); Delete,
   Backspace or the Delete button removes it; Escape lets go of it. Undo takes back the last add,
@@ -71,7 +76,8 @@ annotating, draft --Cancel / Discard--> idle
   the category and the note,
   then the first screenshot, on page 1, and each other screenshot on a page of its own, marks
   included. Nothing is sent, the dialog and the draft stay as they are, and the `saved` event
-  fires. Esc and Tab close the menu only. A PDF that cannot be made, a page the browser has no memory to draw
+  fires. While the menu is open, Esc closes the menu only, from Send and the menu button too, and
+  puts the focus on the menu button; Tab closes it too. A PDF that cannot be made, a page the browser has no memory to draw
   included (as on iOS), shows the `pdfError` text, never a blank page, and
   neither `saved` nor `error` fires, since nothing failed to send; one asked for while another is being made is ignored.
 - **Screenshots:** a report holds up to 10. Each keeps its own marks and its own Undo; the tool
@@ -92,6 +98,9 @@ annotating, draft --Cancel / Discard--> idle
 - **Format:** WebP by default, or PNG if the browser cannot encode WebP.
 - **Fonts and images:** what cannot be drawn (for example a cross-origin image without CORS) shows
   as a grey box. It never makes the capture fail.
+- **Known limit:** in "dom", text cut by `-webkit-line-clamp` with a fractional line height (such as
+  15px at 1.35) shows one line fewer than the page. The cause is in the capture library, snapdom
+  3.3.0; this repository patches its own copy for its tests, which does not reach a host's install.
 
 ## 6. The report
 Defined in `docs/API.md` (`FeedbackReport`). It holds:
@@ -107,12 +116,12 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 ## 7. Privacy
 - The image is what the user sees. Nothing on the page is masked, hidden or redacted, password
   fields included. Only the widget itself is left out (SPEC §2, capturing).
-- No screenshot is kept after the draft ends: Send, Cancel, Discard or `close()`.
+- No screenshot is kept after the draft ends: Send, Cancel, Discard, `close()` or `discardDraft()`.
 - No console logs, network logs, cookies or keystrokes are collected. Nothing is stored, with one
   exception: a draft folded in the draft bar is kept on this device for this tab, so a page load
-  does not lose it. sessionStorage holds its id, and IndexedDB its screenshots, marks, note and
-  category. It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard or
-  `close()`. `destroy()`, or the host removing the element, keeps it, open or folded, for the next
+  does not lose it. sessionStorage holds its id, and IndexedDB its screenshots with each one's
+  page facts (the whole URL: `redactUrl` applies only to the sent report), marks, note and category. It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard,
+  `close()` or `discardDraft()`, which a host calls at a logout. `destroy()`, or the host removing the element, keeps it, open or folded, for the next
   widget of that tag in this tab, unless its Send was already handed to the host; a click while
   this tab keeps one opens it. One widget of a tag keeps a draft, the first whose element is in
   the page; when that element leaves, the next widget of the tag to need it takes over, and never
@@ -127,11 +136,15 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 
 ## 8. Accessibility
 - The overlay is a `role="dialog"` with `aria-modal="true"` and a label.
-- Focus stays inside the dialog. Escape keeps an unsent draft in the draft bar, and moves the
-  focus to it ("Capture this view", or "Open" at 10 screenshots); without a draft it cancels.
+- Focus stays inside the dialog. Escape, except on the Send menu, a label being typed or a selected
+  mark (§4), or on Cancel's question (§2),
+  keeps an unsent draft that has a screenshot in the draft bar, and moves the focus to it ("Capture
+  this view", or "Open" at 10 screenshots). With no screenshot, or after a send error, it cancels,
+  asking first as Cancel does; while sending, and once sent, it closes at once.
   While the dialog is open, the page does not scroll. On close, focus goes back to the trigger,
   or to where it was before.
-- Every control has an accessible name and a visible focus ring (`--vf-focus`).
+- Every control has an accessible name and a visible focus ring (`--vf-focus`), `unstyled`
+  included (THEMING.md).
 - With the keyboard alone, the user can still write the note, choose a category and send without
   marks.
 - `prefers-reduced-motion` turns off every transition.
@@ -139,12 +152,13 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 
 ## 9. Budgets
 - **Loader** (the trigger and the `open()` wiring): 15 KB or less, minified and gzipped.
-- **Annotator and dialog:** 15 KB or less, gzipped. This does not include the capture library.
+- **Annotator and dialog:** 135 KB or less, gzipped. This does not include the capture library.
 - **Idle cost:** no work after the first paint of the trigger, past reading one sessionStorage
   key at load; only when this tab kept a draft does the dialog load, to bring it back. After the first screenshot, the
   capture library (snapdom) keeps 12 listeners on `window` and `document` and up to 5 mutation observers
   until the page unloads, and offers no way to remove them; `destroy()` removes everything else
-  but a draft it keeps (§7).
+  but a draft it keeps (§7). The opt-in `shortcut` adds one `keydown` listener on `window`, gone at
+  `destroy()` or `update({ shortcut: false })`.
 - CI fails when a budget is exceeded.
 
 ## 10. Browsers
@@ -152,8 +166,9 @@ The browsers that support constructable stylesheets (`adoptedStyleSheets`) and `
 Chrome 111+, Firefox 113+ and Safari 16.4+. Older browsers get no trigger and no error.
 
 ## 11. Content Security Policy
-- The widget's own CSS goes in through constructable stylesheets. It uses no `<style>` tags and
-  no inline `style` attributes, so a strict `style-src` does not block it. While the dialog is
+- The widget's own CSS goes in through constructable stylesheets. It uses no `<style>` tags, and
+  sets the few inline styles it needs (the selection frame, a label being typed, the theme's
+  `color-scheme`) through the CSSOM, so a strict `style-src` does not block it. While the dialog is
   open, the scroll lock sets `overflow` on `<html>` through the CSSOM, which a CSP allows, and
   puts back what was there on close.
 - Capture (`@zumer/snapdom`) renders through `data:` image URLs, so a site with a CSP needs
@@ -194,5 +209,6 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | removeScreenshot | Remove screenshot (with the number, as "Remove screenshot 2") |
 | draft | Feedback draft (the bar shows the number of screenshots after it) |
 | captureView / reopen / discard | Capture this view / Open / Discard |
+| discardConfirm / keepEditing | Discard this feedback? / Keep editing |
 | moreSend / savePdf | More send options / Save as PDF |
 | pdfError | Couldn't save the PDF. |

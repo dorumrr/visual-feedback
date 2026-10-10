@@ -51,6 +51,8 @@ export type FeedbackStrings = Record<
   | "captureView"
   | "reopen"
   | "discard"
+  | "discardConfirm"
+  | "keepEditing"
   | "moreSend"
   | "savePdf"
   | "pdfError",
@@ -109,9 +111,9 @@ function variables(): string {
   return `.vf{--_r:var(--vf-radius,16px);--_s:var(--vf-surface,Canvas);--_t:var(--vf-text,CanvasText);--_m:var(--vf-muted,color-mix(in srgb,var(--_t) 60%,transparent));--_b:var(--vf-border,color-mix(in srgb,var(--_t) 15%,transparent));--_a:var(--vf-accent,${system ? "AccentColor" : "#0b57d0"});--_at:var(--vf-accent-text,#fff);--_f:var(--vf-focus,var(--_a));--_mark:var(--vf-mark,#e5243b);--_bd:var(--vf-backdrop,rgb(0 0 0/45%));--_sh:var(--vf-shadow,0 12px 32px -12px rgb(0 0 0/35%));--_size:var(--vf-trigger-size,2.5em);--_off:var(--vf-offset,16px);--_z:var(--vf-z,2147483000)}`;
 }
 
-const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-icon]{width:var(--_size);padding:0;justify-content:center}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
+const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-icon]{width:var(--_size);padding:0;justify-content:center}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
 
-const THEME = `.trigger{font-weight:600;border:1px solid var(--_b);border-radius:999px;background:var(--_s);color:var(--_t);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s}.trigger:hover{background:color-mix(in srgb,var(--_s) 90%,var(--_t))}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}`;
+const THEME = `.trigger{font-weight:600;border:1px solid var(--_b);border-radius:999px;background:var(--_s);color:var(--_t);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s}.trigger:hover{background:color-mix(in srgb,var(--_s) 90%,var(--_t))}`;
 
 // The dialog draws its icons with ./icon; sharing it would put a chunk into the loader's budget.
 function icon(): SVGSVGElement {
@@ -150,6 +152,36 @@ type Hooked = HTMLElement & { [DISCONNECTED]?: () => void };
 // The widget of each tag whose element is in a page owns the draft that tag keeps; others keep
 // theirs in memory only, so two never bring back, or overwrite, one draft.
 const owners = new Map<string, HTMLElement>();
+// The owner's way to end its own draft, for discardDraft().
+const enders = new WeakMap<HTMLElement, () => void>();
+// Set once a widget loads the dialog: before that, no draft write can be queued.
+let dialogs: Promise<typeof import("./dialog")> | undefined;
+let discarding: Promise<void> = Promise.resolve();
+
+/**
+ * Deletes the draft this tab keeps for a tag, as at a logout, so no later widget of the tag brings
+ * it back; a widget holding it, open or folded, ends it.
+ */
+export async function discardDraft(tagName = "visual-feedback"): Promise<void> {
+  // Read before the owner ends: its own end removes the id without waiting for the delete. The id
+  // goes now, so a widget opened during the waits below has nothing to bring back.
+  const key = `visual-feedback:${tagName}`;
+  let id: string | null = null;
+  try {
+    id = sessionStorage.getItem(key);
+    sessionStorage.removeItem(key);
+  } catch {}
+  const owner = owners.get(tagName);
+  if (owner) enders.get(owner)?.();
+  // Queued behind any earlier call, so a call that found the id gone still waits for its delete.
+  const mine = discarding.then(async () => {
+    // A destroyed widget may still be writing the draft: delete it only after that lands.
+    await (await dialogs?.catch(() => undefined))?.settled();
+    if (id) await (await import("./keep")).forget(id);
+  });
+  discarding = mine.catch(() => {});
+  await mine;
+}
 
 const noop: FeedbackWidget = {
   open: async () => {},
@@ -368,7 +400,12 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
     returnFocus = deepActive();
     const stream = kept ? undefined : requestDisplay();
     try {
-      const [loaded, capture] = await Promise.all([import("./dialog"), import("./capture")]);
+      // A failed load is not kept, so the next open tries again.
+      dialogs ??= import("./dialog").catch((error) => {
+        dialogs = undefined;
+        throw error;
+      });
+      const [loaded, capture] = await Promise.all([dialogs, import("./capture")]);
       if (mine !== session) return stop(stream);
       view = loaded;
       sheets();
@@ -495,6 +532,7 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
     if (wasOpen && !stays) emit("close");
   }
 
+  enders.set(host, () => end());
   // The host app may remove the element (a route change) while the dialog is open: it closes,
   // and the draft stays kept. A move reconnects it before the microtask runs, so it keeps all.
   (host as Hooked)[DISCONNECTED] = () =>

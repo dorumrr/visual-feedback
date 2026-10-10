@@ -1132,3 +1132,312 @@ test("destroy() while a label is still being typed keeps that label", async ({ p
   const [mark] = (await sent(page)).screenshots[0]?.marks ?? [];
   expect(mark).toMatchObject({ tool: "text", text: "Typed, never committed" });
 });
+
+/** Calls the package's discardDraft(), as a host does at logout. */
+const discard = (page: Page, tagName?: string) =>
+  page.evaluate(async (tagName) => {
+    const { discardDraft } = await import("/dist/index.mjs" as string);
+    await discardDraft(tagName);
+  }, tagName);
+
+test("discardDraft() ends a folded draft a live widget holds, and leaves nothing on the device", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await discard(page);
+  await expect(bar(page)).toHaveCount(0);
+  await expect(trigger(page)).toBeVisible();
+  expect(await events(page)).toEqual(["open", "close"]);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  await load(page);
+  expect(await dialogLoaded(page)).toBe(false);
+  await expect(bar(page)).toHaveCount(0);
+});
+
+test("discardDraft() at logout, after destroy() kept the draft, stops the next widget bringing it back", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("The previous user's");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("The previous user's");
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await discard(page);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  await mount(page);
+  await page.waitForTimeout(500);
+  await expect(bar(page)).toHaveCount(0);
+  await expect(trigger(page)).toBeVisible();
+});
+
+test("discardDraft() waits for a write still under way, so it cannot land after the delete", async ({
+  page,
+}) => {
+  // The first PNG encode, the draft's own copy, is held until let go.
+  await page.evaluate(() => {
+    const w = window as unknown as { letGo: () => void; reached: boolean; written: boolean };
+    w.reached = false;
+    w.written = false;
+    const held = new Promise<void>((done) => {
+      w.letGo = done;
+    });
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    let first = true;
+    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+      if (type !== "image/png" || !first) return toBlob.call(this, callback, type, quality);
+      first = false;
+      w.reached = true;
+      void held.then(() =>
+        toBlob.call(
+          this,
+          (blob) => {
+            callback(blob);
+            w.written = true;
+          },
+          type,
+          quality,
+        ),
+      );
+    };
+  });
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  // destroy() keeps the open draft: its write waits on the held encode.
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  expect(await page.evaluate(() => (window as unknown as { reached: boolean }).reached)).toBe(true);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toHaveLength(1);
+  const discarding = discard(page);
+  // The id goes at once, before the wait: a widget opened meanwhile finds nothing to bring back.
+  await expect.poll(() => page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  await page.waitForTimeout(300);
+  await page.evaluate(() => (window as unknown as { letGo: () => void }).letGo());
+  await discarding;
+  // The held write did run, and discardDraft() waited for it.
+  expect(await page.evaluate(() => (window as unknown as { written: boolean }).written)).toBe(true);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+});
+
+test("discardDraft() with no widget on the page deletes a draft a load would bring back", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.reload();
+  await discard(page);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  await mount(page);
+  await page.waitForTimeout(500);
+  await expect(bar(page)).toHaveCount(0);
+});
+
+test("discardDraft() of another tag leaves this tag's draft alone", async ({ page }) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await discard(page, "other-feedback");
+  await expect(bar(page)).toBeVisible();
+  expect(await stored(page)).toBe(1);
+});
+
+test("discardDraft() ends a draft whose dialog is still open, and gives the page its scroll back", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Open, never folded");
+  await discard(page);
+  await expect(dialog(page)).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe("");
+  expect(await events(page)).toEqual(["open", "close"]);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+});
+
+test("discardDraft() while a load still brings the draft back leaves nothing to bring back", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.reload();
+  await page.route("**/dist/keep-*.mjs", async (route) => {
+    await new Promise((done) => setTimeout(done, 600));
+    await route.continue();
+  });
+  await mount(page);
+  await discard(page);
+  await page.waitForTimeout(1200);
+  await expect(bar(page)).toHaveCount(0);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  await page.unroute("**/dist/keep-*.mjs");
+  await load(page);
+  await expect(bar(page)).toHaveCount(0);
+});
+
+test("discardDraft(tagName) ends the draft of a widget with that custom tag", async ({ page }) => {
+  await mount(page, { tagName: "team-feedback" });
+  await trigger(page).click();
+  await expect(page.locator("team-feedback").locator("canvas.image")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([
+    "visual-feedback:team-feedback",
+  ]);
+  await discard(page, "team-feedback");
+  await expect(
+    page.locator("team-feedback").getByRole("region", { name: "Feedback draft" }),
+  ).toHaveCount(0);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+});
+
+test("a dialog that failed to load once loads on the next open, and discardDraft() still deletes", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.reload();
+  // The page's first load of the dialog fails, as offline.
+  let failed = 0;
+  await page.route("**/dist/dialog-*.mjs", (route) => {
+    failed++;
+    return route.abort();
+  });
+  await mount(page);
+  await expect.poll(() => failed).toBeGreaterThan(0);
+  await page.unroute("**/dist/dialog-*.mjs");
+  await discard(page);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  // Back online: the next open loads the dialog.
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+});
+
+test("discardDraft() resolves only once the record of a live widget's draft is deleted", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  // Marks the moment a draft delete is committed, so the test can ask about it right after.
+  await page.evaluate(() => {
+    const w = window as unknown as { deleted: boolean };
+    w.deleted = false;
+    const remove = IDBObjectStore.prototype.delete;
+    IDBObjectStore.prototype.delete = function (this: IDBObjectStore, key: IDBValidKey) {
+      const request = remove.call(this, key);
+      this.transaction.addEventListener("complete", () => {
+        w.deleted = true;
+      });
+      return request;
+    } as typeof remove;
+  });
+  const committed = await page.evaluate(async () => {
+    const { discardDraft } = await import("/dist/index.mjs" as string);
+    await discardDraft();
+    return (window as unknown as { deleted: boolean }).deleted;
+  });
+  expect(committed).toBe(true);
+});
+
+test("discardDraft() right after close() also waits for the widget's own delete", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.evaluate(() => {
+    const w = window as unknown as { deleted: boolean };
+    w.deleted = false;
+    const remove = IDBObjectStore.prototype.delete;
+    IDBObjectStore.prototype.delete = function (this: IDBObjectStore, key: IDBValidKey) {
+      const request = remove.call(this, key);
+      this.transaction.addEventListener("complete", () => {
+        w.deleted = true;
+      });
+      return request;
+    } as typeof remove;
+  });
+  const committed = await page.evaluate(async () => {
+    const w = window as unknown as Mounted & { deleted: boolean };
+    const { discardDraft } = await import("/dist/index.mjs" as string);
+    w.vf.close();
+    await discardDraft();
+    return w.deleted;
+  });
+  expect(committed).toBe(true);
+});
+
+test("two discardDraft() calls at once both resolve only after the delete", async ({ page }) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  // No widget on the page: only discardDraft() itself deletes.
+  await page.reload();
+  const committed = await page.evaluate(async () => {
+    let deleted = false;
+    const remove = IDBObjectStore.prototype.delete;
+    IDBObjectStore.prototype.delete = function (this: IDBObjectStore, key: IDBValidKey) {
+      const request = remove.call(this, key);
+      this.transaction.addEventListener("complete", () => {
+        deleted = true;
+      });
+      return request;
+    } as typeof remove;
+    const { discardDraft } = await import("/dist/index.mjs" as string);
+    const first = discardDraft();
+    await discardDraft();
+    const second = deleted;
+    await first;
+    return second;
+  });
+  expect(committed).toBe(true);
+});
+
+test("a brought-back draft whose marks are all cleared closes on Cancel without asking", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await stroke(page);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page);
+  await button(page, "Open").click();
+  await expect(button(page, "Clear")).toBeEnabled();
+  await button(page, "Clear").click();
+  await expect(button(page, "Clear")).toBeDisabled();
+  await button(page, "Cancel").click();
+  await expect(page.getByRole("group", { name: "Discard this feedback?" })).toHaveCount(0);
+  await expect(dialog(page)).toHaveCount(0);
+});

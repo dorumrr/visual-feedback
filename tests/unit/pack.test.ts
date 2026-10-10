@@ -64,7 +64,7 @@ describe("AGENTS.md", () => {
       .split(/^\s*(?:[-*+]|\d+\.)\s+/m)
       .slice(1)
       .map((item) => item.split(/\n\s*\n/)[0] ?? "");
-    expect(items).toHaveLength(7);
+    expect(items).toHaveLength(8);
     for (const item of items) expect(item, item).toMatch(/^\*\*[^*]+\*\*\s+Why:\s+\S[\s\S]{20,}/);
     // Each required rule is the lead of exactly one item, and each lead carries exactly one rule.
     const leads = items.map((item) =>
@@ -77,6 +77,7 @@ describe("AGENTS.md", () => {
       /only the people who should see reports read them/,
       /user id from the server session/,
       /rate limit/,
+      /discardDraft\(\)` from `visual-feedback` at logout/,
       /separate private repo/,
     ];
     for (const topic of topics) {

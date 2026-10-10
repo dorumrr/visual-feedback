@@ -22,14 +22,30 @@ const vendor = {
 // A browser cannot resolve the bare import a bundler would, so the built files get a path instead.
 const BARE = /(["'])@zumer\/snapdom\1/g;
 
+// snapdom 3.3.0 cuts -webkit-line-clamp text one line short at a fractional line height. Only the
+// copy served here is fixed, for the tests and the playground; a host's install is not (SPEC §5).
+const CLAMP = "t.scrollHeight<=c+.5";
+const { version } = JSON.parse(
+  readFileSync(new URL("../node_modules/@zumer/snapdom/package.json", import.meta.url), "utf8"),
+);
+if (version !== "3.3.0")
+  throw new Error(`serve: the line-clamp fix is for snapdom 3.3.0, not ${version}`);
+const snapdom = Object.fromEntries(
+  Object.entries(vendor).map(([path, file]) => {
+    const code = readFileSync(new URL(file, import.meta.url), "utf8");
+    const sites = code.split(CLAMP).length - 1;
+    if (sites !== 2) throw new Error(`serve: ${file} holds ${sites} line-clamp sites, not 2`);
+    // The limit, c, is a rounded one-line height times the lines, n: allow one pixel per line.
+    return [path, code.replaceAll(CLAMP, "t.scrollHeight<=c+n")];
+  }),
+);
+
 function inside(base, pathname) {
   const path = normalize(join(base, pathname));
   return path === base || path.startsWith(base + sep) ? path : null;
 }
 
 function resolve(pathname) {
-  if (Object.hasOwn(vendor, pathname))
-    return fileURLToPath(new URL(vendor[pathname], import.meta.url));
   if (pathname.startsWith("/dist/")) return inside(dist, pathname.slice("/dist".length));
   const path = inside(root, pathname);
   if (path === null) return null;
@@ -62,6 +78,11 @@ function endpoint(req, res, url) {
 const handler = (req, res) => {
   const url = new URL(req.url, "http://x");
   if (url.pathname.startsWith("/api/feedback/")) return endpoint(req, res, url);
+  if (Object.hasOwn(snapdom, url.pathname)) {
+    return res
+      .writeHead(200, { "content-type": "text/javascript", "cache-control": "no-store" })
+      .end(snapdom[url.pathname]);
+  }
   try {
     const file = resolve(decodeURIComponent(url.pathname));
     if (file === null) return res.writeHead(403).end();

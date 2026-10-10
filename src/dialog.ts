@@ -60,6 +60,8 @@ const ENGLISH: Texts = {
   captureView: "Capture this view",
   reopen: "Open",
   discard: "Discard",
+  discardConfirm: "Discard this feedback?",
+  keepEditing: "Keep editing",
   moreSend: "More send options",
   savePdf: "Save as PDF",
   pdfError: "Couldn't save the PDF.",
@@ -264,6 +266,11 @@ type Taken = {
 // one back waits for the one just removed to finish writing it.
 let writing = Promise.resolve();
 
+/** Settles once every kept-draft write queued so far has landed or failed. */
+export function settled(): Promise<void> {
+  return writing;
+}
+
 export function mount(parent: HTMLElement, handlers: Handlers, settings: Settings = {}): Mounted {
   const tools = settings.tools ?? ["pen", "box", "arrow", "text", "select"];
   const choices = [...new Set(tools)].filter((tool) =>
@@ -281,7 +288,9 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   title.textContent = text.title;
   // One header for every view; its close button is the dialog's Cancel, which discards.
   const header = element("div", "header");
-  const cancel = iconButton("cancel", text.cancel, ICONS.cancel, handlers.close);
+  const cancel = iconButton("cancel", text.cancel, ICONS.cancel, () =>
+    lose() ? ask() : handlers.close(),
+  );
   const keep = iconButton("minimise", text.minimise, ICONS.minimise, () => minimise());
   header.append(title, cancel);
   backdrop.append(panel);
@@ -322,6 +331,47 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   let submitted = false;
   let reviving = false;
   let picker: HTMLSelectElement | undefined;
+  let asking: HTMLElement | undefined;
+
+  // Cancel has no undo, so it asks first when it would throw away what the user made.
+  function lose(): boolean {
+    if (over || primary?.getAttribute("aria-disabled") === "true") return false;
+    return Boolean(
+      note?.value.trim() ||
+        picker?.selectedIndex ||
+        taken.length > 1 ||
+        taken.some((shot) => shot.annotator?.marks.length),
+    );
+  }
+
+  function ask(): void {
+    asking?.remove();
+    const back = () => {
+      asking?.remove();
+      cancel.focus();
+    };
+    const question = element("span", "confirm-text");
+    question.textContent = text.discardConfirm;
+    const stay = button("keep-editing", text.keepEditing, back);
+    asking = element("div", "actions confirm", {
+      role: "group",
+      "aria-label": text.discardConfirm,
+    });
+    asking.append(question, button("discard", text.discard, handlers.close));
+    // Only where a fold works: with a screenshot, and before Send.
+    if (taken.length && !draft)
+      asking.append(button("keep-draft", text.minimise, () => minimise()));
+    asking.append(stay);
+    // Escape takes back the question only; the dialog's own Escape would fold the draft.
+    asking.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      back();
+    });
+    header.after(asking);
+    stay.focus();
+  }
 
   function toolbar(): HTMLElement[] {
     if (!drawing) return [];
@@ -461,6 +511,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   function minimise(focus = true): void {
     if (minimised || !taken.length || draft) return;
     annotator?.end();
+    asking?.remove();
     minimised = true;
     // Already closed when Chrome took the Escape itself; then no close event will come.
     if (backdrop.open) {
@@ -492,7 +543,17 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       // The key may name another widget's draft by now; only this one's goes.
       if (id && id === sessionStorage.getItem(key)) sessionStorage.removeItem(key);
     } catch {}
-    if (id) void import("./keep").then(({ forget }) => forget(id)).catch(() => {});
+    // In the write queue, so a write queued before it never lands after it, and settled() covers it.
+    if (id) {
+      writing = writing
+        .then(() =>
+          import("./keep").then(
+            ({ forget }) => forget(id).then(() => {}),
+            () => {},
+          ),
+        )
+        .catch(() => {});
+    }
   }
 
   // Keeps the folded draft for this tab, as it is now, so a page load brings it back. Storage
@@ -744,6 +805,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       inert.push(stage);
     }
     const send = button("send", text.send, () => {
+      // Sending disables the menu button, so an open menu would stay with no way to close it.
+      menu(false);
       if (draft) {
         // Sending, or a send error: the same draft goes again, never a second one at once.
         if (send.getAttribute("aria-disabled") !== "true") void deliver(draft);
@@ -807,22 +870,24 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       more.setAttribute("aria-expanded", String(open));
       if (open) save.focus();
     }
-    // Escape closes the menu only; the dialog's own Escape would fold or close the whole draft.
+    // Tab closes it too, and the dialog's Tab trap then moves on from the caret.
     list.addEventListener("keydown", (event) => {
-      // Tab closes it too, and the dialog's Tab trap then moves on from the caret.
-      if (event.key === "Tab") {
-        menu(false);
-        more.focus();
-      }
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
+      if (event.key !== "Tab") return;
       menu(false);
       more.focus();
     });
     // WebKit does not focus a clicked button: a press would blur the menu and close it first.
     list.addEventListener("mousedown", (event) => event.preventDefault());
     const split = element("div", "split");
+    // Escape closes the open menu only, wherever the focus is in it, Send and the caret included:
+    // the dialog's own Escape would fold or close the whole draft.
+    split.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || list.hidden) return;
+      event.preventDefault();
+      event.stopPropagation();
+      menu(false);
+      more.focus();
+    });
     split.addEventListener("focusout", (event) => {
       if (!split.contains(event.relatedTarget as Node | null)) menu(false);
     });
@@ -843,6 +908,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     // From here Esc closes, so the hint that it keeps a draft goes, and so does a PDF failure.
     panel.querySelector(".hint")?.remove();
     pdfError?.remove();
+    asking?.remove();
     for (const control of locked) control.disabled = true;
     for (const item of inert) item.inert = true;
     failure?.remove();
@@ -874,20 +940,26 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     primary.focus();
   }
 
-  // Escape: keep an unsent draft, else close at once, not on the later native close event.
-  // Chrome can skip cancel, so both.
+  // Escape: keep an unsent draft, else ask as Cancel does, else close at once, not on the later
+  // native close event. Chrome can skip cancel, so both.
+  const onEscape = () => {
+    if (taken.length && !draft) minimise();
+    else if (lose()) {
+      // Chrome may have closed it already, without a cancel event.
+      if (!backdrop.open) backdrop.showModal();
+      ask();
+    } else handlers.close();
+  };
   backdrop.addEventListener("cancel", (event) => {
     event.preventDefault();
-    if (taken.length && !draft) minimise();
-    else handlers.close();
+    onEscape();
   });
   // Folding into the draft bar closes the native dialog too. Its close event comes later, maybe
   // after the draft opened again, so that one event is passed over, whenever it comes. Any other
   // close is Escape that Chrome handled without a cancel event.
   const closed = () => {
     if (folding) folding = false;
-    else if (taken.length && !draft) minimise();
-    else handlers.close();
+    else onEscape();
   };
   backdrop.addEventListener("close", closed);
   // Every Tab is handled here, so the trap holds where the browser skips buttons (WebKit).

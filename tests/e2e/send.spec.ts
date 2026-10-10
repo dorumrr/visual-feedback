@@ -782,3 +782,46 @@ for (const [accent, ink] of [
     else await expect(sendButton(page)).not.toHaveAttribute("data-ink");
   });
 }
+
+test("after a send error, Cancel asks first, since the note would be lost", async ({ page }) => {
+  await opened(page, { submit: "throw-once" });
+  await note(page).fill("Once more");
+  await sendButton(page).click();
+  await expect(page.getByRole("alert")).toHaveText("Server says no");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  const question = page.getByRole("group", { name: "Discard this feedback?" });
+  await expect(question).toBeVisible();
+  // The Send already ran, so the draft can no longer be folded: no Keep as draft here.
+  await expect(question.getByRole("button")).toHaveText(["Discard", "Keep editing"]);
+  await page.getByRole("button", { name: "Keep editing" }).click();
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+});
+
+test("Cancel while it sends closes without asking", async ({ page }) => {
+  await opened(page, { submit: "hold" });
+  await note(page).fill("hold on");
+  await sendButton(page).click();
+  await expect(page.getByRole("button", { name: "Sending…" })).toBeFocused();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("group", { name: "Discard this feedback?" })).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("after a send error, Esc asks first too, and Discard ends the draft", async ({ page }) => {
+  await opened(page, { submit: "throw-once" });
+  await note(page).fill("Once more");
+  await sendButton(page).click();
+  await expect(page.getByRole("alert")).toHaveText("Server says no");
+  await page.keyboard.press("Escape");
+  const question = page.getByRole("group", { name: "Discard this feedback?" });
+  await expect(question).toBeVisible();
+  await expect(page.getByRole("button", { name: "Keep editing" })).toBeFocused();
+  // Esc on the question takes it back; the next Esc asks again.
+  await page.keyboard.press("Escape");
+  await expect(question).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await question.getByRole("button", { name: "Discard" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});

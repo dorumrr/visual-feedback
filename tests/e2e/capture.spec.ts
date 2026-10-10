@@ -438,6 +438,28 @@ test.describe("when the capture fails", () => {
     expect(checked.length).toBeGreaterThan(0);
   });
 
+  test("without a screenshot, Esc over a typed note asks first, and with nothing typed it closes", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Send without screenshot" }).click();
+    const note = page.getByRole("textbox", { name: "Your note" });
+    await note.fill("Only words");
+    await page.keyboard.press("Escape");
+    const question = page.getByRole("group", { name: "Discard this feedback?" });
+    await expect(question).toBeVisible();
+    // No screenshot, so nothing to fold: no Keep as draft.
+    await expect(question.getByRole("button")).toHaveText(["Discard", "Keep editing"]);
+    await expect(page.getByRole("button", { name: "Keep editing" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(question).toHaveCount(0);
+    await expect(note).toHaveValue("Only words");
+    await note.fill("");
+    await note.focus();
+    await page.keyboard.press("Escape");
+    await expect(dialog(page)).toHaveCount(0);
+    expect(await events(page)).toEqual(["open", "close"]);
+  });
+
   test("Send without screenshot gives a report with no screenshots", async ({ page }) => {
     await page.getByRole("button", { name: "Send without screenshot" }).click();
     await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
@@ -706,4 +728,42 @@ test.describe("display mode", () => {
       expect(shot?.counted).toBe(0);
     });
   }
+});
+
+test("text cut by line-clamp keeps all its lines when the line height is fractional", async ({
+  page,
+}) => {
+  await page.goto("/widget/capture.html");
+  // 15px at 1.35 is a 20.25px line, which snapdom 3.3.0 cut to one line (tests/serve.mjs).
+  const box = await page.evaluate(() => {
+    const title = document.createElement("h3");
+    title.textContent =
+      "A week across the salt flats with one camera and a very long title that wraps";
+    title.style.cssText =
+      "position:absolute;left:100px;top:100px;width:240px;margin:0;background:#fff;color:#000;font:600 15px/1.35 system-ui;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden";
+    document.body.append(title);
+    const { x, y, width, height } = title.getBoundingClientRect();
+    return { x, y, width, height };
+  });
+  expect(box.height).toBeCloseTo(40.5, 0);
+  await mount(page);
+  await trigger(page).click();
+  await expect(page.locator("visual-feedback").locator("canvas.image")).toBeVisible();
+  // Dark pixels in the band of each line, read from the screenshot the dialog shows.
+  const ink = await page.evaluate(({ x, y, width }) => {
+    const canvas = document
+      .querySelector("visual-feedback")
+      ?.shadowRoot?.querySelector<HTMLCanvasElement>("canvas.image");
+    const ratio = (canvas?.width ?? 0) / document.documentElement.clientWidth;
+    const context = canvas?.getContext("2d");
+    return [0, 1].map((line) => {
+      const top = (y + line * 20.25 + 3) * ratio;
+      const data = context?.getImageData(x * ratio, top, width * ratio, 14 * ratio).data ?? [];
+      let dark = 0;
+      for (let i = 0; i < data.length; i += 4) if ((data[i] ?? 255) < 100) dark++;
+      return dark;
+    });
+  }, box);
+  expect(ink[0], "line 1").toBeGreaterThan(50);
+  expect(ink[1], "line 2").toBeGreaterThan(50);
 });

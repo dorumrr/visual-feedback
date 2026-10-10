@@ -73,6 +73,9 @@ your own words.
   store reports, fill the storage or open issues, and a signed-in user can still send without
   limit. The local folder works only in development: keep its dev server on localhost instead, since
   it checks no user.
+- **If the app has sign-in, call `discardDraft()` from `visual-feedback` at logout, with the same
+  `tagName` if one was set.** Why: a folded or open draft, screenshots included, is kept in the tab
+  across page loads and route changes, and would come back for the next person who signs in there.
 - **For GitHub Issues, default to a separate private repo. Offer the code repo only when the
   developer confirms it stays private forever.** Why: images cannot be fully erased from GitHub,
   and if the code repo is made public later, every report in it is exposed.

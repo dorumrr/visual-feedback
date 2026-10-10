@@ -59,6 +59,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ```
 
 - Where to store reports, with tested code: [docs/recipes/](docs/recipes/)
+- With sign-in: call `discardDraft()` at logout, so a kept draft never comes back for the next
+  user ([docs/API.md](docs/API.md))
 - Behaviour and privacy: [docs/SPEC.md](docs/SPEC.md)
 - Options, methods and types: [docs/API.md](docs/API.md)
 - Making it match your site: [docs/THEMING.md](docs/THEMING.md)

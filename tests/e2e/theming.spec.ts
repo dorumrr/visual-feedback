@@ -279,6 +279,12 @@ test("every element of every view has its ::part() name, and the page can style 
   await expect(page.getByRole("alert")).toBeVisible();
   await scan("note required");
   await page.getByRole("textbox", { name: "Your note" }).fill("A note");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(
+    page.getByRole("button", { name: "Keep as draft", exact: true }).last(),
+  ).toBeVisible();
+  await scan("Cancel's question");
+  await page.getByRole("button", { name: "Keep editing" }).click();
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Your note" })).toBeDisabled();
   await scan("sending");
@@ -335,6 +341,71 @@ test("unstyled keeps the layout and drops the look", async ({ page }) => {
   await expect(panel).toHaveCSS("box-shadow", "none");
   await page.keyboard.press("Escape");
   await expect(backdrop).toHaveCount(0);
+});
+
+test("unstyled keeps the focus ring, on the trigger and in the dialog", async ({ page }) => {
+  await mount(page, { unstyled: true });
+  // The focus colour as the shadow root resolves it, to compare each ring with.
+  const focus = await page.evaluate(() => {
+    const root = document.querySelector("visual-feedback")?.shadowRoot;
+    const probe = document.createElement("i");
+    probe.style.color = "var(--_f)";
+    root?.querySelector(".vf")?.append(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  });
+  expect(focus).not.toBe("rgba(0, 0, 0, 0)");
+  const trigger = page.getByRole("button", { name: "Send feedback" });
+  // A key press first, so the browser treats the focus as from the keyboard (WebKit skips buttons on Tab).
+  await page.keyboard.press("Shift");
+  await trigger.focus();
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveCSS("outline-style", "solid");
+  await expect(trigger).toHaveCSS("outline-width", "2px");
+  await expect(trigger).toHaveCSS("outline-color", focus);
+  await page.keyboard.press("Enter");
+  // The note, whose ring the default look takes away, has it here.
+  const note = page.getByRole("textbox", { name: "Your note" });
+  await expect(note).toBeFocused();
+  await expect(note).toHaveCSS("outline-style", "solid");
+  await expect(note).toHaveCSS("outline-color", focus);
+  await page.keyboard.press("Tab");
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await expect(send).toBeFocused();
+  await expect(send).toHaveCSS("outline-style", "solid");
+  await expect(send).toHaveCSS("outline-width", "2px");
+  await expect(send).toHaveCSS("outline-color", focus);
+  // Every other control in the dialog too, each focused as from the keyboard.
+  const count = await page.evaluate(
+    () =>
+      [
+        ...(document
+          .querySelector("visual-feedback")
+          ?.shadowRoot?.querySelectorAll<HTMLElement>(
+            ".dialog :is(button,textarea,input,select,[tabindex])",
+          ) ?? []),
+      ].filter((item) => !item.matches(":disabled") && item.getClientRects().length > 0).length,
+  );
+  expect(count).toBeGreaterThan(8);
+  for (let i = 0; i < count; i++) {
+    await page.keyboard.press("Shift");
+    const ring = await page.evaluate((n) => {
+      const item = [
+        ...(document
+          .querySelector("visual-feedback")
+          ?.shadowRoot?.querySelectorAll<HTMLElement>(
+            ".dialog :is(button,textarea,input,select,[tabindex])",
+          ) ?? []),
+      ].filter((control) => !control.matches(":disabled") && control.getClientRects().length > 0)[
+        n
+      ];
+      item?.focus();
+      const style = item ? getComputedStyle(item) : undefined;
+      return `${item?.className} ${style?.outlineStyle} ${style?.outlineColor}`;
+    }, i);
+    expect(ring.endsWith(` solid ${focus}`), ring).toBe(true);
+  }
 });
 
 test("unstyled with css: the css option styles the bare widget", async ({ page }) => {
