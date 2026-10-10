@@ -12,7 +12,7 @@ const children = [
     env: { ...process.env, FIXTURE_PORT: port },
   }),
 ];
-console.log(`playground: http://127.0.0.1:${port}/playground/`);
+console.log(`playground: http://127.0.0.1:${port}/`);
 
 let stopping = false;
 function stop(code) {

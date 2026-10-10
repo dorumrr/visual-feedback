@@ -104,28 +104,39 @@ function fenced(text: string, max: number): string {
 }
 
 // A screenshot of another page than the report's names its own, as a draft can span routes.
-function shots(report: FeedbackReport, imageUrls: string[]): string {
+function shots(report: FeedbackReport, imageUrls: string[], share: number): string {
   return imageUrls
     .map((url, i) => {
       const page = report.screenshots[i]?.page.url ?? report.page.url;
-      const where = page === report.page.url ? "" : `\n${fenced(page, 2_000)}`;
+      const where = page === report.page.url ? "" : `\n${fenced(page, 2_000 * share)}`;
       return `![Screenshot ${i + 1}](<${url}>)${where}`;
     })
     .join("\n\n");
 }
 
 function issueBody(report: FeedbackReport, imageUrls: string[]): string {
+  // A fence can be as long as its text, so a report of backticks can pass GitHub's limit at the
+  // usual cuts: they shrink until it fits. At a tenth, the longest report is far under it.
+  let body = "";
+  for (const share of [1, 0.5, 0.25, 0.1]) {
+    body = bodyAt(report, imageUrls, share);
+    if (body.length <= 65_536) break;
+  }
+  return body;
+}
+
+function bodyAt(report: FeedbackReport, imageUrls: string[], share: number): string {
   const { page, viewport, userAgent, language, timeZone, createdAt, id } = report;
   const screen = `${viewport.width}x${viewport.height} @${viewport.devicePixelRatio}x`;
   // Each fence starts its own line: after other text on that line it is no block.
   return [
-    fenced(report.note || "(no note)", 10_000),
+    fenced(report.note || "(no note)", 10_000 * share),
     // The angle brackets keep a ( or ) in a branch name from ending the link.
-    shots(report, imageUrls) || "No screenshot.",
-    `**Page:**\n${fenced(page.url, 2_000)}`,
-    `**Browser:**\n${fenced(`${userAgent}\n${screen}, ${language}, ${timeZone}`, 1_000)}`,
+    shots(report, imageUrls, share) || "No screenshot.",
+    `**Page:**\n${fenced(page.url, 2_000 * share)}`,
+    `**Browser:**\n${fenced(`${userAgent}\n${screen}, ${language}, ${timeZone}`, 1_000 * share)}`,
     `**Sent:** ${createdAt}, report \`${id}\``,
-    `**Context, from the browser:**\n${fenced(JSON.stringify(report.context, null, 2), 6_000)}`,
+    `**Context, from the browser:**\n${fenced(JSON.stringify(report.context, null, 2), 6_000 * share)}`,
   ].join("\n\n");
 }
 

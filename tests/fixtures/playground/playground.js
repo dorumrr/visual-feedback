@@ -1,6 +1,16 @@
 const status = document.getElementById("status");
 const list = document.getElementById("reports");
 const empty = document.getElementById("empty");
+const panel = document.getElementById("reports-panel");
+const toggle = document.getElementById("reports-toggle");
+const count = document.getElementById("reports-count");
+
+function open(shown) {
+  panel.hidden = !shown;
+  toggle.setAttribute("aria-expanded", String(shown));
+}
+toggle.addEventListener("click", () => open(panel.hidden));
+document.getElementById("reports-close").addEventListener("click", () => open(false));
 
 function show(report) {
   const item = document.createElement("li");
@@ -25,6 +35,8 @@ function show(report) {
   item.append(details);
   list.prepend(item);
   empty.hidden = true;
+  count.textContent = String(list.children.length);
+  open(true);
 }
 
 window.playground = { show };

@@ -1,11 +1,130 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>visual-feedback fixture</title>
-  </head>
-  <body>
-    <h1>Fixture page</h1>
-  </body>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>SomeTube · visual-feedback playground</title>
+<link rel="stylesheet" href="/playground/playground.css" />
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/" aria-label="SomeTube home">
+    <svg viewBox="0 0 32 32" aria-hidden="true">
+      <defs>
+        <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#7c5cff" />
+          <stop offset="1" stop-color="#22d3ee" />
+        </linearGradient>
+      </defs>
+      <circle cx="16" cy="16" r="15" fill="url(#brand)" />
+      <path d="M7 18c3-6 6-6 9 0s6 6 9 0" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" />
+    </svg>
+    <span>SomeTube</span>
+  </a>
+  <form class="search" onsubmit="return false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+    <input type="search" placeholder="Search videos, creators and topics" aria-label="Search" />
+    <kbd>/</kbd>
+  </form>
+  <nav class="actions" aria-label="Account">
+    <button type="button" class="icon" aria-label="Upload">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-5 5m5-5 5 5M5 20h14" /></svg>
+    </button>
+    <button type="button" class="icon" aria-label="Notifications">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" /></svg>
+    </button>
+    <button type="button" id="reports-toggle" class="reports-toggle" aria-controls="reports-panel" aria-expanded="false">
+      Reports <span id="reports-count">0</span>
+    </button>
+    <span class="avatar" aria-hidden="true">DM</span>
+  </nav>
+</header>
+
+<aside class="rail" aria-label="Sections">
+  <a class="on" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z" /></svg>Home</a>
+  <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="m15 9-2 4-4 2 2-4z" /></svg>Explore</a>
+  <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="3" /><path d="M8 3h8" /></svg>Following</a>
+  <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z" /><path d="M9 12h6M9 16h4" /></svg>Library</a>
+  <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></svg>History</a>
+  <p id="status" role="status">Loading the built package...</p>
+</aside>
+
+<main>
+  <ul class="chips" aria-label="Topics">
+    <li class="chip on">For you</li>
+    <li class="chip">Design</li>
+    <li class="chip">Live coding</li>
+    <li class="chip">Synthwave</li>
+    <li class="chip">Travel</li>
+    <li class="chip">Cooking</li>
+    <li class="chip">Space</li>
+    <li class="chip">Woodwork</li>
+  </ul>
+
+  <section class="grid" aria-label="Videos">
+    <article class="video" style="--a: #7c5cff; --b: #22d3ee">
+      <div class="thumb sun"><span class="time">12:48</span></div>
+      <div class="meta"><span class="face" style="--c: #7c5cff">NA</span><div><h3>Designing a calm dashboard in one afternoon</h3><p>Nadia Arlo</p><p>482K views · 2 days ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #f97316; --b: #facc15">
+      <div class="thumb dunes"><span class="time">8:05</span></div>
+      <div class="meta"><span class="face" style="--c: #f97316">TK</span><div><h3>A week across the salt flats with one camera</h3><p>Tomas Keel</p><p>NaN views · 3 days ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #10b981; --b: #0ea5e9">
+      <div class="thumb waves"><span class="time">24:11</span></div>
+      <div class="meta"><span class="face" style="--c: #10b981">LO</span><div><h3>Building a synth in the browser, live</h3><p>Lo-fi Labs</p><p>1.2M views · 1 week ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #ec4899; --b: #8b5cf6">
+      <div class="thumb orbit"><span class="time">LIVE</span></div>
+      <div class="meta"><span class="face" style="--c: #ec4899">MS</span><div><h3>Night sky over the desert, all night</h3><p>Mira Sol</p><p>3.4K watching</p></div></div>
+    </article>
+    <article class="video" style="--a: #0ea5e9; --b: #6366f1">
+      <div class="thumb grid-lines"><span class="time">15:32</span></div>
+      <div class="meta"><span class="face" style="--c: #0ea5e9">RB</span><div><h3>Type that reads well at every size</h3><p>Rue Bennett</p><p>96K views · 5 days ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #eab308; --b: #ef4444">
+      <div class="thumb sun"><span class="time">31:07</span></div>
+      <div class="meta"><span class="face" style="--c: #eab308">CO</span><div><h3>Sourdough, from starter to slice</h3><p>Crumb Office</p><p>740K views · 2 weeks ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #14b8a6; --b: #84cc16">
+      <div class="thumb dunes"><span class="time">6:44</span></div>
+      <div class="meta"><span class="face" style="--c: #14b8a6">WW</span><div><h3>Hand-cut dovetails without a jig</h3><p>Wren Woodworks</p><p>210K views · 4 days ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #6366f1; --b: #ec4899">
+      <div class="thumb waves"><span class="time">19:20</span></div>
+      <div class="meta"><span class="face" style="--c: #6366f1">PX</span><div><h3>Ten small habits for cleaner pull requests</h3><p>Pixel Ward</p><p>58K views · 6 hours ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #22d3ee; --b: #10b981">
+      <div class="thumb orbit"><span class="time">42:00</span></div>
+      <div class="meta"><span class="face" style="--c: #22d3ee">AV</span><div><h3>How a launch window is chosen</h3><p>Apogee Video</p><p>2.1M views · 1 month ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #f43f5e; --b: #f97316">
+      <div class="thumb grid-lines"><span class="time">9:58</span></div>
+      <div class="meta"><span class="face" style="--c: #f43f5e">JD</span><div><h3>Street food tour, after midnight</h3><p>June Dale</p><p>330K views · 3 weeks ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #8b5cf6; --b: #0ea5e9">
+      <div class="thumb sun"><span class="time">11:16</span></div>
+      <div class="meta"><span class="face" style="--c: #8b5cf6">HQ</span><div><h3>Motion that helps, motion that hurts</h3><p>Hue Quarterly</p><p>87K views · 2 days ago</p></div></div>
+    </article>
+    <article class="video" style="--a: #84cc16; --b: #eab308">
+      <div class="thumb dunes"><span class="time">27:45</span></div>
+      <div class="meta"><span class="face" style="--c: #84cc16">FG</span><div><h3>Growing tomatoes on a fourth-floor balcony</h3><p>Field Garden</p><p>15K views · 1 day ago</p></div></div>
+    </article>
+  </section>
+</main>
+
+<aside id="reports-panel" class="panel" aria-labelledby="reports-title" hidden>
+  <header>
+    <h2 id="reports-title">Reports</h2>
+    <button type="button" id="reports-close" class="icon" aria-label="Close reports">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+    </button>
+  </header>
+  <p id="empty">No report yet. Send one with the feedback button.</p>
+  <ol id="reports"></ol>
+</aside>
+
+<script type="module" src="/playground/playground.js"></script>
+</body>
 </html>

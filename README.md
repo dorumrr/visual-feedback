@@ -4,7 +4,7 @@ A small button lets your users screenshot the page, mark it up and write a note.
 report and store it where you want. It has no service, no tracking and no global CSS, and it fits
 any design.
 
-![The feedback dialog over a page, with a box and an arrow drawn on the screenshot](docs/demo.png)
+![The feedback dialog over a video site, with a box and an arrow drawn around a card that shows NaN views](docs/demo.png)
 
 ```sh
 npm install visual-feedback

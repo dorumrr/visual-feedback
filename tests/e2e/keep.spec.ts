@@ -1089,3 +1089,46 @@ test('with draft: "memory", destroy() of a folded draft fires close; an idle wid
   await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
   expect(await events(page)).toEqual([]);
 });
+
+test("destroy() in the middle of a stroke keeps that stroke, as a fold would", async ({ page }) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Drawn while the route changed");
+  const box = await image(page).boundingBox();
+  if (!box) throw new Error("no image");
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5, { steps: 6 });
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await page.mouse.up();
+  await mount(page);
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Drawn while the route changed");
+  await button(page, "Send").click();
+  await finish(page);
+  const [mark] = (await sent(page)).screenshots[0]?.marks ?? [];
+  expect(mark?.tool).toBe("pen");
+  expect((mark as unknown as { points: unknown[] }).points.length).toBeGreaterThanOrEqual(2);
+});
+
+test("destroy() while a label is still being typed keeps that label", async ({ page }) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await button(page, "Text").click();
+  const box = await image(page).boundingBox();
+  if (!box) throw new Error("no image");
+  await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.4);
+  await page.keyboard.type("Typed, never committed");
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await mount(page);
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await note(page).fill("Sent");
+  await button(page, "Send").click();
+  await finish(page);
+  const [mark] = (await sent(page)).screenshots[0]?.marks ?? [];
+  expect(mark).toMatchObject({ tool: "text", text: "Typed, never committed" });
+});

@@ -115,7 +115,11 @@ function shown(page: Page, points: number[][]): Promise<number[][]> {
 
 const middle = (mark: Mark | undefined): Point => {
   if (mark?.tool !== "pen") throw new Error(`not a pen mark: ${JSON.stringify(mark)}`);
-  return mark.points[Math.floor(mark.points.length / 2)] as Point;
+  // Halfway along the middle segment: a stroke keeps only its corners, so this is on the line.
+  const at = Math.max(1, Math.ceil(mark.points.length / 2));
+  const [ax = 0, ay = 0] = mark.points[at - 1] ?? [];
+  const [bx = ax, by = ay] = mark.points[at] ?? [];
+  return [Math.round((ax + bx) / 2), Math.round((ay + by) / 2)];
 };
 
 // Two screen pixels in image pixels: the image is shown at about half size in the default window.
@@ -1403,4 +1407,145 @@ test("with Select, the cursor follows a mark that a key moves or removes under a
   await expect.poll(cursor).toBe("grab");
   await page.keyboard.press("Delete");
   await expect.poll(cursor).toBe("default");
+});
+
+test("a slow straight stroke keeps only the points its line needs, and still draws all of it", async ({
+  page,
+}) => {
+  await opened(page);
+  const [from, to] = await on(page, [
+    [0.2, 0.5],
+    [0.7, 0.5],
+  ]);
+  await page.mouse.move(...(from as Point));
+  await page.mouse.down();
+  // A point for every step, as a slow hand gives.
+  await page.mouse.move(...(to as Point), { steps: 300 });
+  await page.mouse.up();
+  // Read before Send: the dialog, and its canvas, close after it.
+  const width = await image(page).evaluate((canvas: HTMLCanvasElement) => canvas.width);
+  const marks = await send(page);
+  const points = marks[0]?.tool === "pen" ? marks[0].points : [];
+  expect(points.length).toBeGreaterThanOrEqual(2);
+  expect(points.length).toBeLessThanOrEqual(4);
+  // From the press at 20 % to the release at 70 %, not a shorter piece of it.
+  expect(Math.abs((points[0]?.[0] ?? 0) - width * 0.2)).toBeLessThan(4);
+  expect(Math.abs((points.at(-1)?.[0] ?? 0) - width * 0.7)).toBeLessThan(4);
+  const [ax = 0, ay = 0] = points[0] ?? [];
+  const [bx = 0, by = 0] = points.at(-1) ?? [];
+  // Along the whole line, a quarter, half and three quarters in, the mark is drawn.
+  const along = [0.25, 0.5, 0.75].map((t) => [ax + (bx - ax) * t, ay + (by - ay) * t]);
+  const shot = await read(page, along, MARK, true);
+  for (const [i, at] of (shot?.at ?? []).entries()) {
+    expect(near(at, MARK, LOSSY), `point ${i} ${at}`).toBe(true);
+  }
+});
+
+test("a stroke that goes out and comes back along one line keeps its whole length", async ({
+  page,
+}) => {
+  await opened(page);
+  const [from, far, back] = await on(page, [
+    [0.2, 0.5],
+    [0.7, 0.5],
+    [0.4, 0.5],
+  ]);
+  await page.mouse.move(...(from as Point));
+  await page.mouse.down();
+  await page.mouse.move(...(far as Point), { steps: 100 });
+  await page.mouse.move(...(back as Point), { steps: 100 });
+  await page.mouse.up();
+  // Read before Send: the dialog, and its canvas, close after it.
+  const width = await image(page).evaluate((canvas: HTMLCanvasElement) => canvas.width);
+  const marks = await send(page);
+  const points = marks[0]?.tool === "pen" ? marks[0].points : [];
+  // The turn at 70 % is kept, so the line drawn reaches it.
+  const reach = Math.max(...points.map(([x]) => x));
+  expect(Math.abs(reach - width * 0.7)).toBeLessThan(4);
+  // It starts where the press was and ends where the release was.
+  expect(Math.abs((points[0]?.[0] ?? 0) - width * 0.2)).toBeLessThan(4);
+  expect(Math.abs((points.at(-1)?.[0] ?? 0) - width * 0.4)).toBeLessThan(4);
+  const y = points[0]?.[1] ?? 0;
+  const shot = await read(page, [[Math.round(width * 0.65), y]], MARK, true);
+  expect(near(shot?.at[0], MARK, LOSSY), `at 65 % ${shot?.at[0]}`).toBe(true);
+});
+
+/** Keeps the shown image's mark-coloured pixels as `window.inked`, to compare after a change. */
+const snap = (page: Page) =>
+  image(page).evaluate((canvas: HTMLCanvasElement) => {
+    const data = canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height).data;
+    const ink = new Uint8Array(canvas.width * canvas.height);
+    for (let i = 0; i < ink.length; i++) {
+      const [r = 0, g = 0, b = 0] = [data?.[i * 4], data?.[i * 4 + 1], data?.[i * 4 + 2]];
+      ink[i] =
+        Math.abs(r - 0xe5) < 24 && Math.abs(g - 0x24) < 24 && Math.abs(b - 0x3b) < 24 ? 1 : 0;
+    }
+    (window as unknown as { inked: Uint8Array[] }).inked ??= [];
+    (window as unknown as { inked: Uint8Array[] }).inked.push(ink);
+  });
+
+/**
+ * Ink with no ink of the other snap within 2 pixels, both ways: drawn and then gone, or drawn
+ * only after the release.
+ */
+const lost = (page: Page) =>
+  image(page).evaluate((canvas: HTMLCanvasElement) => {
+    const [first, second] = (window as unknown as { inked: Uint8Array[] }).inked;
+    const h = canvas.height;
+    let total = 0;
+    let gone = 0;
+    for (const [before, after] of [
+      [first, second],
+      [second, first],
+    ]) {
+      const w = canvas.width;
+      for (let i = 0; i < (before?.length ?? 0); i++) {
+        if (!before?.[i]) continue;
+        total++;
+        const x = i % w;
+        const y = Math.floor(i / w);
+        let found = false;
+        for (let dy = -2; dy <= 2 && !found; dy++) {
+          for (let dx = -2; dx <= 2 && !found; dx++) {
+            const [nx, ny] = [x + dx, y + dy];
+            if (nx >= 0 && nx < w && ny >= 0 && ny < h && after?.[ny * w + nx]) found = true;
+          }
+        }
+        if (!found) gone++;
+      }
+    }
+    return { total, gone };
+  });
+
+test("a circle that closes on its start looks the same after release as while drawn", async ({
+  page,
+}) => {
+  await opened(page);
+  // A curve: a looser simplification would cut across it with chords.
+  const path = await on(
+    page,
+    Array.from({ length: 49 }, (_, i) => [
+      0.5 + 0.25 * Math.cos((i / 48) * 2 * Math.PI),
+      0.5 + 0.3 * Math.sin((i / 48) * 2 * Math.PI),
+    ]),
+  );
+  const [first, ...rest] = path;
+  await page.mouse.move(...(first as Point));
+  await page.mouse.down();
+  for (const point of rest) await page.mouse.move(...point, { steps: 4 });
+  await snap(page);
+  await page.mouse.up();
+  await snap(page);
+  const { total, gone } = await lost(page);
+  expect(total).toBeGreaterThan(1000);
+  // Simplified within a pixel of the drawn line: no ink drawn while drawing is gone after.
+  expect(gone).toBe(0);
+  const marks = await send(page);
+  const points = marks[0]?.tool === "pen" ? marks[0].points : [];
+  // The curve keeps its shape, with fewer points than the 192 moves.
+  expect(points.length).toBeGreaterThanOrEqual(16);
+  expect(points.length).toBeLessThan(192);
+  const [ax = 0, ay = 0] = points[0] ?? [];
+  const [bx = 0, by = 0] = points.at(-1) ?? [];
+  expect(Math.hypot(ax - bx, ay - by)).toBeLessThan(4);
 });

@@ -290,6 +290,39 @@ it("a long or odd report still opens an issue GitHub accepts", async () => {
   expect(issue.body).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
 });
 
+it("the longest report of every field at once still opens an issue GitHub accepts", async () => {
+  const report = valid();
+  const [shot] = report.screenshots as Record<string, unknown>[];
+  // Ten screenshots, each on its own long page, and backticks wherever text is fenced.
+  const screenshots = Array.from({ length: 10 }, (_, i) => ({
+    ...shot,
+    page: { ...(shot?.page as object), url: `https://example.test/${i}/${"a".repeat(2_500)}` },
+  }));
+  const form = new FormData();
+  form.append(
+    "report",
+    JSON.stringify({
+      ...report,
+      screenshots,
+      page: { ...(report.page as object), url: `https://example.test/${"b".repeat(5_000)}` },
+      userAgent: "`".repeat(5_000),
+      language: "`".repeat(500),
+      timeZone: "`".repeat(500),
+      note: "`".repeat(30_000),
+      context: { log: "`".repeat(20_000), emoji: "😀".repeat(5_000) },
+    }),
+  );
+  for (const i of screenshots.keys()) {
+    form.append(`image${i}`, new Blob([PNG], { type: "image/png" }), "x");
+  }
+  const request = new Request("http://localhost/api/feedback", { method: "POST", body: form });
+  expect((await route.POST(request)).status).toBe(204);
+  const [issue] = issues as [Issue];
+  expect(issue.body.length).toBeLessThanOrEqual(65_536);
+  // Every screenshot is still in it.
+  expect(issue.body.match(/!\[Screenshot \d+\]/g)).toHaveLength(10);
+});
+
 it("a branch name with # is encoded in the image link", async () => {
   repo = { ...repo, default_branch: "fb#1" };
   branches.add("fb#1");

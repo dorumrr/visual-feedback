@@ -29,7 +29,11 @@
   change keeps it; call `close()` first to end it. `close` fires only when a draft ends, so a
   `destroy()` or removal that keeps it fires none. A second widget with the same tag keeps its
   draft in memory only. A click while the tab keeps a draft opens that draft. A PDF page the
-  browser has no memory for (as on iOS) shows the PDF error, never a blank page. The loader budget is now 15 KB.
+  browser has no memory for (as on iOS) shows the PDF error, never a blank page. The loader
+  budget is now 15 KB.
+- A pen stroke keeps only the points its line needs, so many long strokes stay far under the
+  1 MiB report limit. The GitHub Issues recipe shortens its fields until GitHub accepts the
+  issue body, however long the report.
 - Save as PDF: Send is a split button whose menu downloads `feedback-<date>.pdf`, made in the
   browser with no library: the category and the note above the first screenshot, then one page per
   screenshot, marks included. Nothing is sent and the draft stays; a new `saved` event tells the
@@ -39,7 +43,8 @@
   footer row under it, a close button in the header, and an Esc hint. Text follows the site's font and
   size. In a short window the screenshot gives up height, so the note and Send stay in view.
 - The trigger is a round icon button; new `strings.triggerText` (none by default) adds a short
-  label beside the icon, as a pill. New `strings.escHint`; code that types a full `FeedbackStrings` object needs both keys.
+  label beside the icon, as a pill. New `strings.escHint`. Code that types a full
+  `FeedbackStrings` object needs every string key this release adds.
   `--vf-trigger-size` is now its height, and its width when it shows the icon alone, 2.5em by
   default (40px on a 16px site).
 - Changed defaults: `--vf-radius` 16px and a softer `--vf-shadow`. New part names: `header`,

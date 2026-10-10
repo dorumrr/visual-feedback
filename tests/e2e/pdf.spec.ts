@@ -482,3 +482,20 @@ test("each copy is freed once its page is encoded, not only at the end", async (
   // Only the page being encoded still holds its pixels.
   expect(during.filter((width) => width > 0)).toHaveLength(1);
 });
+
+test("the cover shows the category's label, not its id", async ({ page }) => {
+  const label = "A category label long enough to wrap ".repeat(8).trim();
+  await mount(page, { categories: [{ id: "x", label }] });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  const first = await sizeOf(page);
+  await note(page).fill("One line");
+  const { jpegs } = parse((await download(page)).bytes);
+  const [cover] = await decode(page, jpegs);
+  const scale = first.width / 1200;
+  const line = Math.round(Math.round(22 * scale) * 1.4);
+  const margin = Math.round(40 * scale);
+  // The id "x" would take one line above the note; the label wraps over several.
+  const lines = ((cover?.height ?? 0) - first.height - 2 * margin) / line;
+  expect(lines).toBeGreaterThanOrEqual(4);
+});

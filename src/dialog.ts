@@ -987,6 +987,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     unmount(keep) {
       // Twice is harmless: a close() and a late page-load restore can both end it.
       if (!mounted) return false;
+      // A stroke or label still open is part of the draft, as at a fold.
+      if (keep) annotator?.end();
       const stays = reviving || (!!keep && !submitted && store());
       mounted = false;
       clearTimeout(done);

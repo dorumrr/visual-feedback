@@ -82,6 +82,37 @@ function drawn(mark: Mark): boolean {
   return mark.from[0] !== mark.to[0] || mark.from[1] !== mark.to[1];
 }
 
+/**
+ * Douglas-Peucker: a slow drag records a point for each pixel moved. A point within a pixel of the
+ * line its neighbours draw changes nothing a 4 px stroke shows, and only grows the report.
+ */
+function simplify(points: Point[], tolerance = 1): Point[] {
+  if (points.length < 3) return points;
+  const keep = new Uint8Array(points.length);
+  keep[0] = 1;
+  keep[points.length - 1] = 1;
+  const spans: [number, number][] = [[0, points.length - 1]];
+  for (let span = spans.pop(); span; span = spans.pop()) {
+    const [from, to] = span;
+    const a = points[from] as Point;
+    const b = points[to] as Point;
+    let far = -1;
+    let most = tolerance;
+    for (let i = from + 1; i < to; i++) {
+      // To the segment, not the line through it: a stroke that turns back keeps its turn.
+      const off = distance(points[i] as Point, a, b);
+      if (off > most) {
+        most = off;
+        far = i;
+      }
+    }
+    if (far === -1) continue;
+    keep[far] = 1;
+    spans.push([from, far], [far, to]);
+  }
+  return points.filter((_, i) => keep[i]);
+}
+
 /** Draws on `canvas` in image pixels, and repaints it from a clean copy on every change. */
 export function annotate(
   canvas: HTMLCanvasElement,
@@ -396,6 +427,7 @@ export function annotate(
     finishDrag();
     select(null);
     if (!current) return;
+    if (current.mark.tool === "pen") current.mark.points = simplify(current.mark.points);
     if (drawn(current.mark)) {
       marks.push(current.mark);
       history.push({ kind: "add" });

@@ -1,5 +1,5 @@
-// Makes docs/demo.png, the README's picture, from tests/fixtures/demo/: a made-up page, so no real
-// data is in it. Run it with `npm run demo` after `npm run build`.
+// Makes docs/demo.png, the README's picture, from the playground: a made-up site, so no real data
+// is in it. Run it with `npm run demo` after `npm run build`.
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
@@ -29,15 +29,19 @@ try {
   for (let tries = 0; ; tries++) {
     try {
       if (stopped) throw new Error(`the test server stopped; is port ${port} in use?`);
-      await page.goto(`http://127.0.0.1:${port}/demo/`);
+      await page.goto(`http://127.0.0.1:${port}/`);
       break;
     } catch (error) {
       if (tries > 50) throw error;
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
   }
-  const cell = await page.getByText("$NaN").boundingBox();
-  if (!cell) throw new Error("no $NaN cell on the page");
+  const cell = await page.getByText("NaN views").boundingBox();
+  if (!cell) throw new Error("no NaN views on the page");
+  // The playground's own status line is for developers, not for the README.
+  await page.locator("#status").evaluate((status) => {
+    status.hidden = true;
+  });
   await page.getByRole("button", { name: "Send feedback" }).click();
   const image = page.locator("visual-feedback").locator(".image");
   await image.waitFor();
@@ -48,7 +52,7 @@ try {
     box.x + (x * box.width) / viewport.width,
     box.y + (y * box.height) / viewport.height,
   ];
-  const pad = 10;
+  const pad = 4;
   await page.getByRole("button", { name: "Box" }).click();
   await page.mouse.move(...at(cell.x - pad, cell.y - pad));
   await page.mouse.down();
@@ -59,7 +63,7 @@ try {
   await page.mouse.down();
   await page.mouse.move(...at(cell.x - pad - 4, cell.y + cell.height / 2), { steps: 8 });
   await page.mouse.up();
-  await page.getByLabel("Your note").fill("The total for #1043 shows $NaN.");
+  await page.getByLabel("Your note").fill("This video shows NaN views.");
   await page.screenshot({ path: fileURLToPath(new URL("../docs/demo.png", import.meta.url)) });
 } finally {
   await browser?.close();

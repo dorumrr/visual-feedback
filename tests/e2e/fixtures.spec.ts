@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-test("the fixture server serves the base page", async ({ page }) => {
+test("the fixture server serves the playground as its own page", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Fixture page" })).toBeVisible();
+  await expect(page).toHaveTitle(/visual-feedback playground/);
 });
 
 test("the fixture server serves only its folder and the one vendor file", async ({ request }) => {

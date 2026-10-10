@@ -23,15 +23,34 @@ beforeAll(() => {
   original = readFileSync(source, "utf8");
 });
 
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer().listen(0, "127.0.0.1", () => {
+function listen(port: number): Promise<{ port: number; close: () => Promise<void> } | null> {
+  return new Promise((resolve) => {
+    const probe = createServer();
+    probe.once("error", () => resolve(null));
+    probe.listen(port, "127.0.0.1", () => {
       const address = probe.address();
-      probe.close(() =>
-        typeof address === "object" && address ? resolve(address.port) : reject(),
-      );
+      const close = () => new Promise<void>((done) => probe.close(() => done()));
+      resolve(typeof address === "object" && address ? { port: address.port, close } : null);
     });
   });
+}
+
+/**
+ * A free port whose next one is free too: the fixture server also listens on port + 1. Taken
+ * below the ephemeral ranges (macOS 49152+, Linux 32768+), so no outgoing connection takes it.
+ */
+async function freePort(): Promise<number> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const first = await listen(20_000 + Math.floor(Math.random() * 10_000));
+    if (!first) continue;
+    const next = await listen(first.port + 1);
+    await first.close();
+    if (next) {
+      await next.close();
+      return first.port;
+    }
+  }
+  throw new Error("no two free ports in a row");
 }
 
 async function served(url: string): Promise<string | null> {
@@ -52,7 +71,7 @@ async function waitFor(url: string, check: (body: string) => boolean, ms = 30_00
     if (body !== null && check(body)) return body;
     await new Promise((r) => setTimeout(r, 200));
   }
-  // The flake under load has no known cause: name the wait and what the dev server printed.
+  // Name the wait and what the dev server printed, its errors included.
   throw new Error(
     `timed out waiting for ${url} (${check.name || "any body"})\n${output.slice(-1500)}`,
   );
@@ -75,7 +94,10 @@ it("npm run dev serves the playground and a rebuilt entry after a source change"
   dev = spawn(process.execPath, ["tests/dev.mjs"], {
     cwd: copy,
     env: { ...process.env, DEV_PORT: String(port) },
-    stdio: ["ignore", "pipe", "ignore"],
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  dev.stderr?.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
   });
   const built = new Promise<void>((resolve, reject) => {
     dev?.on("error", reject);
@@ -85,7 +107,9 @@ it("npm run dev serves the playground and a rebuilt entry after a source change"
     });
   });
 
-  const page = await waitFor(`http://127.0.0.1:${port}/playground/`, () => true);
+  const page = await waitFor(`http://127.0.0.1:${port}/`, () => true);
+  // It names the page it serves, so a developer opens the playground.
+  expect(output).toContain(`playground: http://127.0.0.1:${port}/\n`);
   expect(page).toContain("visual-feedback playground");
   const before = await waitFor(entry, () => true);
   expect(before).not.toContain("devProbe");
