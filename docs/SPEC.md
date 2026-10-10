@@ -38,8 +38,11 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
 ## 4. Annotating
 - **Tools:** Pen (freehand), Box (rectangle outline), Arrow and Text. Text places a label where the
   image is clicked: Enter or clicking away keeps it, Escape drops that label only, and an empty one
-  is not kept. Labels are one size, in the mark colour with a white outline. Undo removes the last
-  mark, and Clear removes all.
+  is not kept. Labels are one size, in the mark colour with a white outline. Select picks a mark by
+  its line or a label by its text, and shows a dashed outline that never reaches the sent image: a
+  drag moves it, kept whole inside the image; the arrow keys move it (Shift for ten); Delete,
+  Backspace or the Delete button removes it; Escape lets go of it. Undo takes back the last add,
+  move or removal, one at a time, and Clear removes all.
 - **One colour** for the marks, `--vf-mark`, which defaults to a red that contrasts with most pages.
 - Pointer events, so mouse, pen and touch all work. While drawing, touch never scrolls the page.
 - **Note:** a textarea of 2000 characters at most, with a visible label (`noteLabel`). It is
@@ -124,7 +127,8 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | notePlaceholder | What happened, or what would you change? |
 | noteRequired | Write a few words first. |
 | categoryLabel | Type |
-| pen / box / arrow / text | Draw / Box / Arrow / Text |
+| pen / box / arrow / text / select | Draw / Box / Arrow / Text / Select |
+| remove | Delete |
 | undo / clear | Undo / Clear |
 | cancel / send | Cancel / Send |
 | sending | Sending… |

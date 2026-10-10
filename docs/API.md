@@ -37,7 +37,7 @@ const feedback = createFeedback({
 | `trigger` | `"button" \| "none"` | `"button"` | `"none"` draws nothing; the host calls `open()`. |
 | `position` | `"bottom-right" \| "bottom-left" \| "top-right" \| "top-left"` | `"bottom-right"` | Corner of the trigger. |
 | `shortcut` | `string \| false` | `false` | For example `"Alt+Shift+F"`: any of `Alt`, `Shift`, `Control` and `Meta`, then one key, a letter, a digit or a key name such as `F2`, joined by `+`. The modifiers must match exactly, AltGr never matches, and any other modifier name makes it match nothing. Without `Control` or `Meta` it does not fire while focus is in a text field. It does nothing while the widget is open. Opt-in; it is the widget's only global listener, one `keydown` on `window` (SPEC §9 names what the capture library keeps). |
-| `tools` | `("pen" \| "box" \| "arrow" \| "text")[]` | all four | Order is the toolbar order. Repeats and unknown names are ignored; an empty list shows no toolbar. |
+| `tools` | `("pen" \| "box" \| "arrow" \| "text" \| "select")[]` | all five | Order is the toolbar order, and the first drawing tool is the one selected at open. Repeats and unknown names are ignored; an empty list, or Select alone, shows no toolbar. |
 | `categories` | `{ id: string; label: string }[]` | none | Shows a category picker. |
 | `requireNote` | `boolean` | `true` | |
 | `capture.mode` | `"dom" \| "display"` | `"dom"` | SPEC §5. The type of `capture` is exported as `CaptureOptions`. |

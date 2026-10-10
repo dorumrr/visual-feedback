@@ -15,6 +15,9 @@
 - A Text tool: a label typed where the image is clicked. It adds a mark kind,
   `{ tool: "text", x, y, text }`, to the report. A 0.1.0 server refuses a report that holds one,
   so update the widget and the server together. New `strings.text`.
+- A Select tool: pick a mark, drag it or move it with the arrow keys, remove it with Delete or the
+  new Delete button. Undo takes back adds, moves and removals one at a time. New `strings.select`
+  and `strings.remove`, and parts `remove` and `selection`.
 - A mark keeps what was drawn when the browser takes the pointer away (a gesture, a lost
   capture), instead of disappearing.
 

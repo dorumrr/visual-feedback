@@ -365,7 +365,7 @@ test("the toolbar follows the tools option, and an empty list draws nothing", as
   // Icon buttons: their names are their labels.
   expect(
     await toolbar.evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label"))),
-  ).toEqual(["Arrow", "Draw", "Undo", "Clear"]);
+  ).toEqual(["Arrow", "Draw", "Delete", "Undo", "Clear"]);
   await expect(tool(page, "Arrow")).toHaveAttribute("aria-pressed", "true");
   await expect(tool(page, "Arrow")).toHaveAttribute("part", "tool tool-active");
   await expect(tool(page, "Draw")).toHaveAttribute("part", "tool");
@@ -662,11 +662,22 @@ test("with marks, Tab reaches Undo and Clear, and disabling them keeps the focus
   ]);
   await page.getByRole("textbox", { name: "Your note" }).focus();
   const seen: string[] = [];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 10; i++) {
     await page.keyboard.press("Tab");
     seen.push(await focused(page));
   }
-  expect(seen).toEqual(["send", "cancel", "tool", "tool", "tool", "tool", "undo", "clear", "note"]);
+  expect(seen).toEqual([
+    "send",
+    "cancel",
+    "tool",
+    "tool",
+    "tool",
+    "tool",
+    "tool",
+    "undo",
+    "clear",
+    "note",
+  ]);
   for (const name of ["Undo", "Clear"]) {
     if (name === "Clear") {
       await drag(page, [
@@ -727,9 +738,10 @@ function colours(
   page: Page,
   box: [number, number, number, number],
   sent = false,
-): Promise<{ mark: number; white: number }> {
+  extra: number[] = [-99, -99, -99],
+): Promise<{ mark: number; white: number; extra: number }> {
   return page.evaluate(
-    async ({ box: [x, y, width, height], sent, MARK }) => {
+    async ({ box: [x, y, width, height], sent, MARK, extra }) => {
       let canvas = document
         .querySelector("visual-feedback")
         ?.shadowRoot?.querySelector<HTMLCanvasElement>("canvas.image");
@@ -746,13 +758,15 @@ function colours(
         [0, 1, 2].every((c) => Math.abs((data[i + c] ?? 0) - (rgb[c] ?? 0)) <= 8);
       let mark = 0;
       let white = 0;
+      let other = 0;
       for (let i = 0; i < data.length; i += 4) {
         if (near(i, MARK)) mark++;
         if (near(i, [255, 255, 255])) white++;
+        if (near(i, extra)) other++;
       }
-      return { mark, white };
+      return { mark, white, extra: other };
     },
-    { box, sent, MARK },
+    { box, sent, MARK, extra },
   );
 }
 
@@ -984,4 +998,339 @@ test("labels placed on the top and left edges stay whole, their outline included
     colours(page, [x, y, size * 6, size * 2], true).then((found) => found.mark);
   expect(await near(Math.round(width / 2), 0)).toBeGreaterThan(20);
   expect(await near(0, Math.round(height / 2 - size))).toBeGreaterThan(20);
+});
+
+const selection = (page: Page) => page.locator("visual-feedback").locator(".selection");
+
+/** Width and height of the image in image pixels, and image pixels per CSS pixel. */
+async function measure(page: Page): Promise<[number, number, number]> {
+  const [width = 0, height = 0, shown = 1] = await image(page).evaluate(
+    (canvas: HTMLCanvasElement) => [canvas.width, canvas.height, canvas.clientWidth],
+  );
+  return [width, height, width / shown];
+}
+
+test("Select picks a box by its outline, a drag moves it, and Undo puts it back", async ({
+  page,
+}) => {
+  await opened(page, { capture: { type: "image/png" } });
+  const [width, height] = await measure(page);
+  await tool(page, "Box").click();
+  await drag(page, [
+    [0.2, 0.2],
+    [0.4, 0.4],
+  ]);
+  await tool(page, "Select").click();
+  await drag(page, [
+    [0.2, 0.3],
+    [0.3, 0.35],
+  ]);
+  await expect(selection(page)).toBeVisible();
+  // The left edge, a few pixels high, at its old and new place.
+  const edge = (x: number): [number, number, number, number] => [
+    Math.round(width * x) - 3,
+    Math.round(height * 0.3) - 3,
+    6,
+    6,
+  ];
+  expect((await colours(page, edge(0.2))).mark).toBe(0);
+  expect((await colours(page, edge(0.3))).mark).toBeGreaterThan(0);
+  await tool(page, "Undo").click();
+  expect((await colours(page, edge(0.2))).mark).toBeGreaterThan(0);
+  expect((await colours(page, edge(0.3))).mark).toBe(0);
+  // Undo once more removes the box itself.
+  await tool(page, "Undo").click();
+  expect((await colours(page, [0, 0, width, height])).mark).toBe(0);
+  await expect(tool(page, "Undo")).toBeDisabled();
+});
+
+test("Delete, Backspace and the Delete button remove the selected mark; Escape only clears the selection", async ({
+  page,
+}) => {
+  await opened(page, { capture: { type: "image/png" } });
+  const [width, height] = await measure(page);
+  const whole: [number, number, number, number] = [0, 0, width, height];
+  await drag(page, [
+    [0.2, 0.6],
+    [0.5, 0.6],
+  ]);
+  await tool(page, "Select").click();
+  await expect(tool(page, "Delete")).toBeDisabled();
+  const [middle] = await on(page, [[0.35, 0.6]]);
+  await page.mouse.click(...(middle as Point));
+  await expect(selection(page)).toBeVisible();
+  await expect(tool(page, "Delete")).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(selection(page)).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect((await colours(page, whole)).mark).toBeGreaterThan(0);
+  for (const key of ["Delete", "Backspace"]) {
+    await page.mouse.click(...(middle as Point));
+    await page.keyboard.press(key);
+    expect((await colours(page, whole)).mark, key).toBe(0);
+    await tool(page, "Undo").click();
+    expect((await colours(page, whole)).mark, key).toBeGreaterThan(0);
+  }
+  await page.mouse.click(...(middle as Point));
+  await tool(page, "Delete").click();
+  expect((await colours(page, whole)).mark).toBe(0);
+  expect(await send(page)).toEqual([]);
+});
+
+test("arrow keys move a selected text label, Shift by ten, and the report has its new place", async ({
+  page,
+}) => {
+  await opened(page);
+  const [width, height, ratio] = await measure(page);
+  await tool(page, "Text").click();
+  const [at] = await on(page, [[0.3, 0.3]]);
+  await page.mouse.click(...(at as Point));
+  await label(page).fill("Move me");
+  await label(page).press("Enter");
+  await tool(page, "Select").click();
+  // Inside the label, a little right of where it starts.
+  await page.mouse.click((at?.[0] ?? 0) + 15, at?.[1] ?? 0);
+  await expect(selection(page)).toBeVisible();
+  for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("ArrowUp");
+  // Each key press is one step: Undo takes back only the last one.
+  await tool(page, "Undo").click();
+  const marks = await send(page);
+  const mark = marks[0];
+  expect(mark?.tool).toBe("text");
+  if (mark?.tool !== "text") return;
+  // One step is a whole number of image pixels, about one screen pixel.
+  const step = Math.max(1, Math.round(ratio));
+  expect(Math.abs(mark.x - (width * 0.3 + 5 * step))).toBeLessThan(3);
+  expect(Math.abs(mark.y - (height * 0.3 + 10 * step))).toBeLessThan(3);
+});
+
+test("a mark dragged past the edge stays whole inside the image", async ({ page }) => {
+  await opened(page);
+  const [width, height] = await measure(page);
+  await tool(page, "Box").click();
+  await drag(page, [
+    [0.6, 0.6],
+    [0.8, 0.8],
+  ]);
+  await tool(page, "Select").click();
+  await drag(page, [
+    [0.6, 0.7],
+    [0.99, 0.99],
+  ]);
+  const marks = await send(page);
+  const box = marks[0];
+  expect(box?.tool).toBe("box");
+  if (box?.tool !== "box") return;
+  expect(box.x).toBeGreaterThan(width * 0.65);
+  // Moved, not shrunk.
+  expect(Math.abs(box.width - width * 0.2)).toBeLessThan(3);
+  expect(box.x + box.width).toBeLessThanOrEqual(width);
+  expect(box.y + box.height).toBeLessThanOrEqual(height);
+});
+
+test("a click on empty image or a change of tool clears the selection; arrows and labels can be picked", async ({
+  page,
+}) => {
+  await opened(page);
+  await tool(page, "Arrow").click();
+  await drag(page, [
+    [0.2, 0.2],
+    [0.5, 0.5],
+  ]);
+  await tool(page, "Select").click();
+  const [onArrow, empty] = await on(page, [
+    [0.35, 0.35],
+    [0.9, 0.1],
+  ]);
+  await page.mouse.click(...(onArrow as Point));
+  await expect(selection(page)).toBeVisible();
+  await page.mouse.click(...(empty as Point));
+  await expect(selection(page)).toHaveCount(0);
+  await page.mouse.click(...(onArrow as Point));
+  await expect(selection(page)).toBeVisible();
+  await tool(page, "Draw").click();
+  await expect(selection(page)).toHaveCount(0);
+  // The arrow was not moved by any of this.
+  const [width, height] = await measure(page);
+  const marks = await send(page);
+  expect(marks.map((mark) => mark.tool)).toEqual(["arrow"]);
+  const arrow = marks[0];
+  if (arrow?.tool !== "arrow") return;
+  expect(Math.abs(arrow.from[0] - width * 0.2)).toBeLessThan(3);
+  expect(Math.abs(arrow.from[1] - height * 0.2)).toBeLessThan(3);
+  expect(Math.abs(arrow.to[0] - width * 0.5)).toBeLessThan(3);
+});
+
+test("a click inside a box selects nothing, and the outline of a selected mark is not in the sent image", async ({
+  page,
+}) => {
+  await opened(page, { capture: { type: "image/png" } });
+  const [width, height] = await measure(page);
+  await tool(page, "Box").click();
+  await drag(page, [
+    [0.2, 0.2],
+    [0.6, 0.6],
+  ]);
+  await tool(page, "Select").click();
+  const [inside, edge] = await on(page, [
+    [0.4, 0.4],
+    [0.2, 0.4],
+  ]);
+  await page.mouse.click(...(inside as Point));
+  await expect(selection(page)).toHaveCount(0);
+  await page.mouse.click(...(edge as Point));
+  await expect(selection(page)).toBeVisible();
+  const dash = await selection(page).evaluate(
+    (frame) => getComputedStyle(frame).borderTopColor.match(/\d+/g)?.map(Number) ?? [0, 0, 0],
+  );
+  // Sent with the box still selected: the dashes are above the image, never in it.
+  await send(page);
+  expect((await colours(page, [0, 0, width, height], true, dash)).extra).toBe(0);
+});
+
+test("Undo of a removal puts the mark back in its place among others; a pen line can be dragged", async ({
+  page,
+}) => {
+  await opened(page);
+  const [, height] = await measure(page);
+  for (const y of [0.3, 0.5, 0.7]) {
+    await drag(page, [
+      [0.2, y],
+      [0.5, y],
+    ]);
+  }
+  await tool(page, "Select").click();
+  const [second, bottom] = await on(page, [
+    [0.35, 0.5],
+    [0.35, 0.7],
+  ]);
+  await page.mouse.click(...(second as Point));
+  await page.keyboard.press("Delete");
+  await tool(page, "Undo").click();
+  // The bottom line is dragged 30 screen pixels further down.
+  const [, , ratio] = await measure(page);
+  await page.mouse.move(...(bottom as Point));
+  await page.mouse.down();
+  await page.mouse.move(bottom?.[0] ?? 0, (bottom?.[1] ?? 0) + 30, { steps: 4 });
+  await page.mouse.up();
+  const marks = await send(page);
+  const ys = marks.map((mark) => (mark.tool === "pen" ? mark.points[0]?.[1] : -1) ?? -1);
+  // The middle line is back in the middle of the list, the order they were drawn in.
+  expect(ys).toHaveLength(3);
+  expect(Math.abs((ys[0] ?? 0) - height * 0.3)).toBeLessThan(3);
+  expect(Math.abs((ys[1] ?? 0) - height * 0.5)).toBeLessThan(3);
+  expect(Math.abs((ys[2] ?? 0) - (height * 0.7 + 30 * ratio))).toBeLessThan(4);
+});
+
+test("a mark dragged past the top-left stays inside, and Backspace in the note leaves a selected mark alone", async ({
+  page,
+}) => {
+  await opened(page);
+  await tool(page, "Box").click();
+  await drag(page, [
+    [0.3, 0.3],
+    [0.5, 0.5],
+  ]);
+  await tool(page, "Select").click();
+  // Well past the top-left corner, outside the image.
+  await drag(page, [
+    [0.3, 0.4],
+    [-0.1, -0.1],
+  ]);
+  await expect(selection(page)).toBeVisible();
+  const note = page.getByRole("textbox", { name: "Your note" });
+  await note.click();
+  await note.pressSequentially("abc");
+  await note.press("Backspace");
+  await expect(note).toHaveValue("ab");
+  const marks = await send(page);
+  const box = marks[0];
+  expect(marks).toHaveLength(1);
+  if (box?.tool !== "box") return;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x).toBeLessThan(10);
+});
+
+test("with tools set to Select alone there is nothing to draw, so no tool rail is shown", async ({
+  page,
+}) => {
+  await opened(page, { tools: ["select"] });
+  await expect(page.locator("visual-feedback").locator(".toolbar")).toHaveCount(0);
+});
+
+test("while sending, Shift+Tab from Send leaves it, even with the image focusable for Select", async ({
+  page,
+}) => {
+  await opened(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted;
+    w.hold = new Promise((done) => (w.release = done));
+  });
+  await tool(page, "Select").click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Sending…" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  // Past the inert image and the locked tools, to the close button in the header.
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.evaluate(() => (window as unknown as Mounted).release?.());
+});
+
+test("a mark on the edge does not jump when moved, a blocked move adds no Undo step, and Escape mid-drag keeps Undo", async ({
+  page,
+}) => {
+  await opened(page);
+  const [width] = await measure(page);
+  await tool(page, "Box").click();
+  // Ending outside the image, so the box reaches its left edge.
+  await drag(page, [
+    [0.3, 0.4],
+    [-0.1, 0.6],
+  ]);
+  await tool(page, "Select").click();
+  const [onEdge] = await on(page, [[0.15, 0.4]]);
+  await page.mouse.click(...(onEdge as Point));
+  await expect(selection(page)).toBeVisible();
+  // Left is blocked by the edge: nothing moves, and Undo has only the box to take back.
+  await page.keyboard.press("ArrowLeft");
+  await tool(page, "Undo").click();
+  await expect(tool(page, "Undo")).toBeDisabled();
+  // Drawn again; a drag interrupted by Escape is still one step Undo takes back.
+  await tool(page, "Box").click();
+  await drag(page, [
+    [0.3, 0.4],
+    [-0.1, 0.6],
+  ]);
+  await tool(page, "Select").click();
+  await page.mouse.move(...(onEdge as Point));
+  await page.mouse.down();
+  await page.mouse.move((onEdge?.[0] ?? 0) + 80, onEdge?.[1] ?? 0, { steps: 4 });
+  // Moved off the edge during the drag, before Escape.
+  const [, height] = await measure(page);
+  expect((await colours(page, [0, Math.round(height * 0.45), 3, 10])).mark).toBe(0);
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await tool(page, "Undo").click();
+  const marks = await send(page);
+  const box = marks[0];
+  expect(marks).toHaveLength(1);
+  if (box?.tool !== "box") return;
+  // Back on the edge, where it was drawn, not pushed inward.
+  expect(box.x).toBeLessThan(width * 0.01);
+});
+
+test("with Select listed first, the dialog still opens on the first drawing tool", async ({
+  page,
+}) => {
+  await opened(page, { tools: ["select", "pen"] });
+  await expect(tool(page, "Draw")).toHaveAttribute("aria-pressed", "true");
+  await expect(tool(page, "Select")).toHaveAttribute("aria-pressed", "false");
+  await drag(page, [
+    [0.2, 0.5],
+    [0.5, 0.5],
+  ]);
+  expect((await send(page)).map((mark) => mark.tool)).toEqual(["pen"]);
 });

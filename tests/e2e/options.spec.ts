@@ -25,6 +25,8 @@ const KEYS = [
   "triggerText",
   "escHint",
   "text",
+  "select",
+  "remove",
 ] as const;
 const STRINGS = Object.fromEntries(KEYS.map((key) => [key, `X ${key}`]));
 
@@ -80,6 +82,8 @@ test("strings replace every text the widget shows", async ({ page }) => {
     "X box",
     "X arrow",
     "X text",
+    "X select",
+    "X remove",
     "X undo",
     "X clear",
     "X cancel",

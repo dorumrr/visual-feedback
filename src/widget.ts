@@ -1,3 +1,4 @@
+import type { Tool } from "./annotate";
 import type { CaptureOptions } from "./capture";
 import type { FeedbackReport, Mark } from "./shared/report";
 
@@ -29,6 +30,8 @@ export type FeedbackStrings = Record<
   | "box"
   | "arrow"
   | "text"
+  | "select"
+  | "remove"
   | "undo"
   | "clear"
   | "cancel"
@@ -47,7 +50,7 @@ export type FeedbackOptions = {
   endpoint?: string;
   headers?: Record<string, string> | (() => Record<string, string>);
   capture?: CaptureOptions;
-  tools?: Mark["tool"][];
+  tools?: Tool[];
   categories?: { id: string; label: string }[];
   requireNote?: boolean;
   redactUrl?: boolean;

@@ -250,6 +250,17 @@ test("every element of every view has its ::part() name, and the page can style 
   await expect(page.getByRole("textbox", { name: "Text", exact: true })).toBeFocused();
   await scan("typing a label");
   await page.keyboard.press("Escape");
+  // A selected mark: its outline is a part too.
+  await page.getByRole("button", { name: "Draw", exact: true }).click();
+  await page.mouse.move((box?.x ?? 0) + 60, (box?.y ?? 0) + 60);
+  await page.mouse.down();
+  await page.mouse.move((box?.x ?? 0) + 160, (box?.y ?? 0) + 60, { steps: 4 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await page.mouse.click((box?.x ?? 0) + 110, (box?.y ?? 0) + 60);
+  await expect(page.locator("visual-feedback .selection")).toBeVisible();
+  await scan("a selected mark");
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("alert")).toBeVisible();
   await scan("note required");

@@ -1,17 +1,24 @@
 import { type Mark, TEXT_LIMIT } from "./shared/report";
 
-export type Tool = Mark["tool"];
+export type Tool = Mark["tool"] | "select";
 
 type Point = [number, number];
 type Line = Exclude<Mark, { tool: "text" }>;
+type Box = { x: number; y: number; width: number; height: number };
+// What Undo takes back: a mark added, a mark moved from where it was, or a mark removed.
+type Step = { kind: "add" } | { kind: "move" | "remove"; index: number; mark: Mark };
 
 export type Annotator = {
   tool: Tool;
   readonly marks: readonly Mark[];
+  readonly canUndo: boolean;
+  readonly selected: boolean;
   /** Keeps a stroke still being drawn, so the image and the marks agree when it is sent. */
   end(): void;
   undo(): void;
   clear(): void;
+  /** Removes the selected mark. */
+  remove(): void;
 };
 
 // Not capture.ts's own: a static import of that chunk makes WebKit fetch it a second time.
@@ -50,6 +57,21 @@ function stroke(target: CanvasRenderingContext2D, mark: Line): void {
   target.stroke();
 }
 
+function distance([px, py]: Point, [ax, ay]: Point, [bx, by]: Point): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const t = dx || dy ? ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy) : 0;
+  const s = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + s * dx), py - (ay + s * dy));
+}
+
+function moved(mark: Mark, dx: number, dy: number): Mark {
+  const by = ([x, y]: Point): Point => [x + dx, y + dy];
+  if (mark.tool === "pen") return { ...mark, points: mark.points.map(by) };
+  if (mark.tool === "arrow") return { ...mark, from: by(mark.from), to: by(mark.to) };
+  return { ...mark, x: mark.x + dx, y: mark.y + dy };
+}
+
 // A click without a drag draws nothing, so it leaves no invisible mark in the report.
 function drawn(mark: Mark): boolean {
   if (mark.tool === "text") return mark.text.trim() !== "";
@@ -70,6 +92,12 @@ export function annotate(
   context(clean).drawImage(canvas, 0, 0);
   const target = context(canvas);
   const marks: Mark[] = [];
+  const history: Step[] = [];
+  let tool: Tool = "pen";
+  let selected: number | null = null;
+  // The selected mark as it was when the drag began, and where the drag began.
+  let dragging: { id: number; start: Point; mark: Mark } | null = null;
+  let frame: HTMLDivElement | null = null;
   let current: { id: number; start: Point; mark: Line } | null = null;
   // The label being typed, and where it goes in image pixels.
   let editing: { input: HTMLInputElement; at: Point } | null = null;
@@ -86,6 +114,7 @@ export function annotate(
     target.lineWidth = Math.max(4, Math.round(canvas.width / 240));
     target.lineCap = "round";
     target.lineJoin = "round";
+    outlineSelection();
     for (const mark of current ? [...marks, current.mark] : marks) {
       if (mark.tool !== "text") {
         stroke(target, mark);
@@ -106,6 +135,143 @@ export function annotate(
     }
   }
 
+  /** The box a mark covers in image pixels, its line and outline included. */
+  function bounds(mark: Mark): Box {
+    if (mark.tool === "box") {
+      const pad = target.lineWidth / 2;
+      return {
+        x: mark.x - pad,
+        y: mark.y - pad,
+        width: mark.width + 2 * pad,
+        height: mark.height + 2 * pad,
+      };
+    }
+    if (mark.tool === "text") {
+      target.save();
+      target.font = font();
+      const width = target.measureText(mark.text).width;
+      target.restore();
+      const half = size / 2 + outline;
+      return {
+        x: mark.x - outline,
+        y: mark.y - half,
+        width: width + 2 * outline,
+        height: 2 * half,
+      };
+    }
+    const points = mark.tool === "pen" ? mark.points : [mark.from, mark.to];
+    // An arrow's head reaches four line widths past its end.
+    const pad = target.lineWidth * (mark.tool === "arrow" ? 4 : 0.5);
+    const xs = points.map(([x]) => x);
+    const ys = points.map(([, y]) => y);
+    const x = Math.min(...xs) - pad;
+    const y = Math.min(...ys) - pad;
+    return { x, y, width: Math.max(...xs) + pad - x, height: Math.max(...ys) + pad - y };
+  }
+
+  /** The newest mark under a point, near its line, or inside a label. */
+  function hit(at: Point): number | null {
+    // About ten screen pixels, so a thin line is easy to pick.
+    const near = Math.max(target.lineWidth * 2, (10 * canvas.width) / canvas.clientWidth);
+    for (let index = marks.length - 1; index >= 0; index--) {
+      const mark = marks[index] as Mark;
+      if (mark.tool === "text") {
+        const box = bounds(mark);
+        if (
+          at[0] >= box.x &&
+          at[0] <= box.x + box.width &&
+          at[1] >= box.y &&
+          at[1] <= box.y + box.height
+        ) {
+          return index;
+        }
+        continue;
+      }
+      const corners: Point[] =
+        mark.tool === "box"
+          ? [
+              [mark.x, mark.y],
+              [mark.x + mark.width, mark.y],
+              [mark.x + mark.width, mark.y + mark.height],
+              [mark.x, mark.y + mark.height],
+              [mark.x, mark.y],
+            ]
+          : mark.tool === "arrow"
+            ? [mark.from, mark.to]
+            : mark.points;
+      const segments = corners.length > 1 ? corners.slice(1) : corners;
+      if (segments.some((to, i) => distance(at, corners[i] as Point, to) <= near)) return index;
+    }
+    return null;
+  }
+
+  /** The mark moved by up to dx and dy; it never goes further out, and is never pushed in. */
+  function within(mark: Mark, dx: number, dy: number): Mark {
+    const box = bounds(mark);
+    // Limits round inward, so a mark never ends up even half a pixel further out.
+    const limit = (by: number, start: number, size: number, room: number) =>
+      Math.max(
+        Math.ceil(Math.min(0, -start)),
+        Math.min(Math.round(by), Math.floor(Math.max(0, room - start - size))),
+      );
+    const x = limit(dx, box.x, box.width, canvas.width);
+    const y = limit(dy, box.y, box.height, canvas.height);
+    return x || y ? moved(mark, x, y) : mark;
+  }
+
+  // Above the image, never painted into it, so it never reaches the sent image.
+  function outlineSelection(): void {
+    const mark = selected === null ? undefined : marks[selected];
+    if (!mark) {
+      frame?.remove();
+      frame = null;
+      return;
+    }
+    if (!frame) {
+      frame = document.createElement("div");
+      frame.className = "selection";
+      frame.setAttribute("part", "selection");
+      canvas.after(frame);
+    }
+    const box = bounds(mark);
+    const scale = canvas.clientWidth / canvas.width;
+    // A few screen pixels outside the mark, so the dashes never sit on its own line.
+    const gap = 4;
+    frame.style.left = `${canvas.offsetLeft + canvas.clientLeft + box.x * scale - gap}px`;
+    frame.style.top = `${canvas.offsetTop + canvas.clientTop + box.y * scale - gap}px`;
+    frame.style.width = `${box.width * scale + 2 * gap}px`;
+    frame.style.height = `${box.height * scale + 2 * gap}px`;
+  }
+
+  function select(index: number | null): void {
+    if (index === selected) return;
+    // A drag still under way is recorded first, so Undo can take it back.
+    finishDrag();
+    selected = index;
+    paint();
+    onChange();
+  }
+
+  function finishDrag(): void {
+    const before = dragging?.mark;
+    dragging = null;
+    if (!before || selected === null) return;
+    if (marks[selected] !== before) history.push({ kind: "move", index: selected, mark: before });
+    onChange();
+  }
+
+  function nudge(dx: number, dy: number): void {
+    if (selected === null) return;
+    finishDrag();
+    const before = marks[selected] as Mark;
+    const after = within(before, dx, dy);
+    if (after === before) return;
+    marks[selected] = after;
+    history.push({ kind: "move", index: selected, mark: before });
+    paint();
+    onChange();
+  }
+
   function font(): string {
     return `600 ${size}px ${getComputedStyle(canvas).fontFamily}`;
   }
@@ -124,6 +290,7 @@ export function annotate(
     const mark: Mark = { tool: "text", x, y, text: input.value };
     if (!keep || !drawn(mark)) return;
     marks.push(mark);
+    history.push({ kind: "add" });
     paint();
     onChange();
   }
@@ -182,14 +349,24 @@ export function annotate(
     if (current || !event.isPrimary || event.button !== 0) return;
     event.preventDefault();
     const start = point(event);
-    if (annotator.tool === "text") {
+    if (tool === "select") {
+      // Focused, so arrow keys and Delete work on what was just picked.
+      canvas.focus({ preventScroll: true });
+      const index = hit(start);
+      select(index);
+      if (index === null) return;
+      canvas.setPointerCapture(event.pointerId);
+      dragging = { id: event.pointerId, start, mark: marks[index] as Mark };
+      return;
+    }
+    if (tool === "text") {
       // The default is prevented, so the open label never blurs: it is kept here.
       write(true);
       place(start);
       return;
     }
     canvas.setPointerCapture(event.pointerId);
-    current = { id: event.pointerId, start, mark: shape(annotator.tool, start, start) };
+    current = { id: event.pointerId, start, mark: shape(tool, start, start) };
   });
   function extend(event: PointerEvent): void {
     if (!current) return;
@@ -202,14 +379,26 @@ export function annotate(
 
   function end(): void {
     write(true);
+    finishDrag();
+    select(null);
     if (!current) return;
-    if (drawn(current.mark)) marks.push(current.mark);
+    if (drawn(current.mark)) {
+      marks.push(current.mark);
+      history.push({ kind: "add" });
+    }
     current = null;
     paint();
     onChange();
   }
 
   canvas.addEventListener("pointermove", (event) => {
+    if (dragging?.id === event.pointerId && selected !== null) {
+      if (event.buttons === 0) return finishDrag();
+      const [x, y] = point(event);
+      marks[selected] = within(dragging.mark, x - dragging.start[0], y - dragging.start[1]);
+      paint();
+      return;
+    }
     if (current?.id !== event.pointerId) return;
     // A release the canvas never heard of (a context menu took it): the stroke ends there.
     if (event.buttons === 0) return end();
@@ -218,6 +407,7 @@ export function annotate(
   });
   // The release point counts too: the last move can fall short of it.
   canvas.addEventListener("pointerup", (event) => {
+    if (dragging?.id === event.pointerId) return finishDrag();
     if (current?.id !== event.pointerId) return;
     extend(event);
     end();
@@ -225,21 +415,75 @@ export function annotate(
   // The browser took the pointer (a gesture, a lost capture): keep what was drawn, not its last point.
   for (const type of ["pointercancel", "lostpointercapture"]) {
     canvas.addEventListener(type, (event) => {
-      if (current?.id === (event as PointerEvent).pointerId) end();
+      if (dragging?.id === (event as PointerEvent).pointerId) finishDrag();
+      else if (current?.id === (event as PointerEvent).pointerId) end();
     });
   }
+  canvas.addEventListener("keydown", (event) => {
+    if (selected === null) return;
+    // Whole image pixels, so left and right steps are the same size.
+    const step =
+      Math.max(1, Math.round(canvas.width / canvas.clientWidth)) * (event.shiftKey ? 10 : 1);
+    const moves: Record<string, Point> = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    };
+    const by = moves[event.key];
+    if (by) nudge(...by);
+    else if (event.key === "Delete" || event.key === "Backspace") annotator.remove();
+    // Escape lets go of the selection first; the next Escape closes the dialog.
+    else if (event.key === "Escape") select(null);
+    else return;
+    event.preventDefault();
+    event.stopPropagation();
+  });
 
   const annotator: Annotator = {
-    tool: "pen",
+    get tool() {
+      return tool;
+    },
+    set tool(next) {
+      tool = next;
+      // Only Select takes keys on the image, so only then is it in the Tab order.
+      if (next === "select") canvas.tabIndex = 0;
+      else canvas.removeAttribute("tabindex");
+      select(null);
+    },
     marks,
+    get canUndo() {
+      return history.length > 0;
+    },
+    get selected() {
+      return selected !== null;
+    },
     end,
     undo() {
-      marks.pop();
+      finishDrag();
+      const step = history.pop();
+      if (!step) return;
+      if (step.kind === "add") marks.pop();
+      else if (step.kind === "move") marks[step.index] = step.mark;
+      else marks.splice(step.index, 0, step.mark);
+      selected = null;
       paint();
       onChange();
     },
     clear() {
+      finishDrag();
       marks.length = 0;
+      history.length = 0;
+      selected = null;
+      paint();
+      onChange();
+    },
+    remove() {
+      finishDrag();
+      if (selected === null) return;
+      const [mark] = marks.splice(selected, 1);
+      if (mark) history.push({ kind: "remove", index: selected, mark });
+      selected = null;
       paint();
       onChange();
     },

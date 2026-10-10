@@ -56,14 +56,14 @@ test("the dialog traps focus, Escape cancels, and focus goes back to the trigger
   await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
 
   const seen: string[] = [];
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 8; i++) {
     await page.keyboard.press("Tab");
     seen.push(await focused(page));
   }
   // Undo and Clear are disabled while there are no marks, so Tab skips them.
-  expect(seen).toEqual(["send", "cancel", "tool", "tool", "tool", "tool", "note"]);
+  expect(seen).toEqual(["send", "cancel", "tool", "tool", "tool", "tool", "tool", "note"]);
   await page.keyboard.press("Shift+Tab");
-  await expect(page.getByRole("button", { name: "Text", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Select", exact: true })).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
