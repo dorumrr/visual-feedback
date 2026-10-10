@@ -227,11 +227,12 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     );
     // Select alone has nothing to act on.
     if (!choices.some((choice) => choice !== "select")) return [];
-    if (choices.length === 0) return [];
     const bar = element("div", "toolbar");
     const undo = iconButton("undo", text.undo, ICONS.undo, () => annotator.undo());
     const clear = iconButton("clear", text.clear, ICONS.clear, () => annotator.clear());
     const remove = iconButton("remove", text.remove, ICONS.remove, () => annotator.remove());
+    // Only Select picks a mark, so without it Delete could never act.
+    const actions = choices.includes("select") ? [remove, undo, clear] : [undo, clear];
     const update = () => {
       const off = new Map([
         [undo, !annotator.canUndo],
@@ -264,14 +265,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       annotator.end();
       return [...annotator.marks];
     };
-    bar.append(
-      ...buttons,
-      element("span", "divider", { "aria-hidden": "true" }),
-      remove,
-      undo,
-      clear,
-    );
-    locked.push(...buttons, remove, undo, clear);
+    bar.append(...buttons, element("span", "divider", { "aria-hidden": "true" }), ...actions);
+    locked.push(...buttons, ...actions);
     return [bar];
   }
 

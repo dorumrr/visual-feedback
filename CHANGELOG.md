@@ -17,7 +17,7 @@
   new `strings.escHint`; code that types a full `FeedbackStrings` object needs both keys.
   `--vf-trigger-size` is now its height, 2.5em by default (40px on a 16px site).
 - Changed defaults: `--vf-radius` 16px and a softer `--vf-shadow`. New part names: `header`,
-  `body`, `divider`, `icon`, `composer`, `composer-bar`, `hint`, `trigger-text`. Send no longer sits
+  `body`, `divider`, `icon`, `text-input`, `composer`, `composer-bar`, `hint`, `trigger-text`. Send no longer sits
   inside `.actions`: host CSS aimed at `.actions .send` needs `.send`. Cancel is now the header's
   close button, still `::part(cancel)`; `actions` holds only the capture error's buttons. The new
   `footer` part holds the hint and Send.

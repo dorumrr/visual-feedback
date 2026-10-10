@@ -373,7 +373,7 @@ test("the toolbar follows the tools option, and an empty list draws nothing", as
   // Icon buttons: their names are their labels.
   expect(
     await toolbar.evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label"))),
-  ).toEqual(["Arrow", "Draw", "Delete", "Undo", "Clear"]);
+  ).toEqual(["Arrow", "Draw", "Undo", "Clear"]);
   await expect(tool(page, "Arrow")).toHaveAttribute("aria-pressed", "true");
   await expect(tool(page, "Arrow")).toHaveAttribute("part", "tool tool-active");
   await expect(tool(page, "Draw")).toHaveAttribute("part", "tool");
@@ -1336,6 +1336,7 @@ test("with Select listed first, the dialog still opens on the first drawing tool
   await opened(page, { tools: ["select", "pen"] });
   await expect(tool(page, "Draw")).toHaveAttribute("aria-pressed", "true");
   await expect(tool(page, "Select")).toHaveAttribute("aria-pressed", "false");
+  await expect(tool(page, "Delete")).toHaveCount(1);
   await drag(page, [
     [0.2, 0.5],
     [0.5, 0.5],

@@ -47,7 +47,10 @@ it("every code block in the README is one a test runs", () => {
 
 it("the CHANGELOG has an entry for the version the package will publish", () => {
   const changelog = readFileSync(new URL("../../CHANGELOG.md", import.meta.url), "utf8");
-  expect(changelog).toMatch(/^## 0\.1\.0 /m);
+  const { version } = JSON.parse(
+    readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+  );
+  expect(changelog).toMatch(new RegExp(`^## ${version.replaceAll(".", "\\.")}( |$)`, "m"));
   expect(changelog.split("\n").filter((line) => line.startsWith("- ")).length).toBeGreaterThan(3);
 });
 
