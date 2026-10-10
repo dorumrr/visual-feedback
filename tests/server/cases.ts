@@ -83,6 +83,9 @@ add("the category is kept, and fields the report does not define are dropped", a
             { tool: "pen", points: [[1, 2]], extra: 1 },
             { tool: "box", x: 0, y: 0, width: 1, height: 1, extra: 1 },
             { tool: "arrow", from: [0, 0], to: [1, 1], extra: 1 },
+            { tool: "text", x: 3, y: 4, text: "cut \ud83d here\u0000", extra: 1 },
+            { tool: "text", x: 0, y: 0, text: "x".repeat(280) },
+            { tool: "text", x: 0, y: 0, text: "\u{1F600}".repeat(280) },
           ],
         }),
       ],
@@ -95,6 +98,10 @@ add("the category is kept, and fields the report does not define are dropped", a
     { tool: "pen", points: [[1, 2]] },
     { tool: "box", x: 0, y: 0, width: 1, height: 1 },
     { tool: "arrow", from: [0, 0], to: [1, 1] },
+    { tool: "text", x: 3, y: 4, text: "cut \ufffd here" },
+    // The limit counts characters, so 280 emoji (560 UTF-16 units) still fit.
+    { tool: "text", x: 0, y: 0, text: "x".repeat(280) },
+    { tool: "text", x: 0, y: 0, text: "\u{1F600}".repeat(280) },
   ]);
   assert.equal(
     "category" in
@@ -177,6 +184,21 @@ const wrongShapes: [string, (report: Record<string, unknown>) => unknown, RegExp
     "an arrow with no end",
     (r) => ({ ...r, marks: [{ tool: "arrow", from: [0, 0] }] }),
     /report\.marks\[0\]\.to/,
+  ],
+  [
+    "a text label whose text is a number",
+    (r) => ({ ...r, marks: [{ tool: "text", x: 0, y: 0, text: 7 }] }),
+    /report\.marks\[0\]\.text/,
+  ],
+  [
+    "a text label with no place",
+    (r) => ({ ...r, marks: [{ tool: "text", x: 0, text: "hi" }] }),
+    /report\.marks\[0\]\.y/,
+  ],
+  [
+    "a text label over 280 characters",
+    (r) => ({ ...r, marks: [{ tool: "text", x: 0, y: 0, text: "x".repeat(281) }] }),
+    /report\.marks\[0\]\.text/,
   ],
   [
     "a viewport width as text",

@@ -28,6 +28,7 @@ export type FeedbackStrings = Record<
   | "pen"
   | "box"
   | "arrow"
+  | "text"
   | "undo"
   | "clear"
   | "cancel"

@@ -102,6 +102,7 @@ describe("AGENTS.md", () => {
       ["3. Safety rules", "tell the developer the rule and its reason"],
       ["3. Safety rules", "keep its dev server on localhost"],
       ["4. The feedback loop", "open no other path a report names"],
+      ["4. The feedback loop", "the text of every label in `marks`"],
     ] as const) {
       expect(section(title).replace(/\s+/g, " "), `${title}: ${line}`).toContain(line);
     }

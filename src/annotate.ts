@@ -1,8 +1,9 @@
-import type { Mark } from "./shared/report";
+import { type Mark, TEXT_LIMIT } from "./shared/report";
 
 export type Tool = Mark["tool"];
 
 type Point = [number, number];
+type Line = Exclude<Mark, { tool: "text" }>;
 
 export type Annotator = {
   tool: Tool;
@@ -32,7 +33,7 @@ function arrowHead(target: CanvasRenderingContext2D, [x1, y1]: Point, [x2, y2]: 
   }
 }
 
-function stroke(target: CanvasRenderingContext2D, mark: Mark): void {
+function stroke(target: CanvasRenderingContext2D, mark: Line): void {
   target.beginPath();
   if (mark.tool === "pen") {
     for (const [i, [x, y]] of mark.points.entries()) {
@@ -51,20 +52,30 @@ function stroke(target: CanvasRenderingContext2D, mark: Mark): void {
 
 // A click without a drag draws nothing, so it leaves no invisible mark in the report.
 function drawn(mark: Mark): boolean {
+  if (mark.tool === "text") return mark.text.trim() !== "";
   if (mark.tool === "pen") return mark.points.length > 1;
   if (mark.tool === "box") return mark.width > 0 || mark.height > 0;
   return mark.from[0] !== mark.to[0] || mark.from[1] !== mark.to[1];
 }
 
 /** Draws on `canvas` in image pixels, and repaints it from a clean copy on every change. */
-export function annotate(canvas: HTMLCanvasElement, onChange: () => void): Annotator {
+export function annotate(
+  canvas: HTMLCanvasElement,
+  onChange: () => void,
+  textLabel: string,
+): Annotator {
   const clean = document.createElement("canvas");
   clean.width = canvas.width;
   clean.height = canvas.height;
   context(clean).drawImage(canvas, 0, 0);
   const target = context(canvas);
   const marks: Mark[] = [];
-  let current: { id: number; start: Point; mark: Mark } | null = null;
+  let current: { id: number; start: Point; mark: Line } | null = null;
+  // The label being typed, and where it goes in image pixels.
+  let editing: { input: HTMLInputElement; at: Point } | null = null;
+  // One size for every label, in image pixels, so it scales with the image like the lines.
+  const size = Math.max(16, Math.round(canvas.width / 60));
+  const outline = Math.max(3, size / 5);
 
   function paint(): void {
     // snapdom leaves its pixel-ratio scale on the context; marks and the copy are in image pixels.
@@ -75,7 +86,74 @@ export function annotate(canvas: HTMLCanvasElement, onChange: () => void): Annot
     target.lineWidth = Math.max(4, Math.round(canvas.width / 240));
     target.lineCap = "round";
     target.lineJoin = "round";
-    for (const mark of current ? [...marks, current.mark] : marks) stroke(target, mark);
+    for (const mark of current ? [...marks, current.mark] : marks) {
+      if (mark.tool !== "text") {
+        stroke(target, mark);
+        continue;
+      }
+      // A white outline under the mark colour reads on any background.
+      target.save();
+      target.font = font();
+      target.textBaseline = "middle";
+      target.lineWidth = outline;
+      target.strokeStyle = "#fff";
+      // Wider than the image: squeezed to fit, never cut off.
+      const room = canvas.width - mark.x;
+      target.strokeText(mark.text, mark.x, mark.y, room);
+      target.fillStyle = getComputedStyle(canvas).color;
+      target.fillText(mark.text, mark.x, mark.y, room);
+      target.restore();
+    }
+  }
+
+  function font(): string {
+    return `600 ${size}px ${getComputedStyle(canvas).fontFamily}`;
+  }
+
+  function write(keep: boolean): void {
+    if (!editing) return;
+    const { input, at } = editing;
+    editing = null;
+    input.remove();
+    target.font = font();
+    // Near an edge, the label moves in so all of it, outline included, is in the image.
+    const room = canvas.width - target.measureText(input.value).width - outline;
+    const x = Math.round(Math.max(outline, Math.min(at[0], room)));
+    const half = size / 2 + outline;
+    const y = Math.round(Math.max(half, Math.min(at[1], canvas.height - half)));
+    const mark: Mark = { tool: "text", x, y, text: input.value };
+    if (!keep || !drawn(mark)) return;
+    marks.push(mark);
+    paint();
+    onChange();
+  }
+
+  function place(at: Point): void {
+    const input = document.createElement("input");
+    input.className = "text-input";
+    input.setAttribute("part", "text-input");
+    input.setAttribute("aria-label", textLabel);
+    input.maxLength = TEXT_LIMIT;
+    const scale = canvas.clientWidth / canvas.width;
+    // Placed over the image, at the click, at the size the label will be painted.
+    input.style.top = `${canvas.offsetTop + canvas.clientTop + at[1] * scale}px`;
+    input.style.fontSize = `${size * scale}px`;
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== "Escape") return;
+      // That Enter picks a word in a Japanese, Chinese or Korean input method; Safari sends 229.
+      if (event.isComposing || event.keyCode === 229) return;
+      // Escape drops this label only; the dialog stays open.
+      event.preventDefault();
+      event.stopPropagation();
+      write(event.key === "Enter");
+    });
+    input.addEventListener("blur", () => write(true));
+    canvas.after(input);
+    // Less its own border and padding, so the typed text sits where it will be painted.
+    const inset = input.clientLeft + Number.parseFloat(getComputedStyle(input).paddingLeft);
+    input.style.left = `${canvas.offsetLeft + canvas.clientLeft + at[0] * scale - inset}px`;
+    editing = { input, at };
+    input.focus();
   }
 
   function point(event: PointerEvent): Point {
@@ -88,7 +166,7 @@ export function annotate(canvas: HTMLCanvasElement, onChange: () => void): Annot
     ];
   }
 
-  function shape(tool: Tool, start: Point, end: Point): Mark {
+  function shape(tool: Line["tool"], start: Point, end: Point): Line {
     if (tool === "pen") return { tool, points: [start] };
     if (tool === "arrow") return { tool, from: start, to: end };
     return {
@@ -103,8 +181,14 @@ export function annotate(canvas: HTMLCanvasElement, onChange: () => void): Annot
   canvas.addEventListener("pointerdown", (event) => {
     if (current || !event.isPrimary || event.button !== 0) return;
     event.preventDefault();
-    canvas.setPointerCapture(event.pointerId);
     const start = point(event);
+    if (annotator.tool === "text") {
+      // The default is prevented, so the open label never blurs: it is kept here.
+      write(true);
+      place(start);
+      return;
+    }
+    canvas.setPointerCapture(event.pointerId);
     current = { id: event.pointerId, start, mark: shape(annotator.tool, start, start) };
   });
   function extend(event: PointerEvent): void {
@@ -117,6 +201,7 @@ export function annotate(canvas: HTMLCanvasElement, onChange: () => void): Annot
   }
 
   function end(): void {
+    write(true);
     if (!current) return;
     if (drawn(current.mark)) marks.push(current.mark);
     current = null;

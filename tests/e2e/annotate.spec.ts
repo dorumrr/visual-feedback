@@ -11,7 +11,8 @@ type Point = [number, number];
 type Mark =
   | { tool: "pen"; points: Point[] }
   | { tool: "box"; x: number; y: number; width: number; height: number }
-  | { tool: "arrow"; from: Point; to: Point };
+  | { tool: "arrow"; from: Point; to: Point }
+  | { tool: "text"; x: number; y: number; text: string };
 
 const trigger = (page: Page) => page.getByRole("button", { name: "Send feedback" });
 const image = (page: Page) => page.locator("visual-feedback").locator("canvas.image");
@@ -661,11 +662,11 @@ test("with marks, Tab reaches Undo and Clear, and disabling them keeps the focus
   ]);
   await page.getByRole("textbox", { name: "Your note" }).focus();
   const seen: string[] = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 9; i++) {
     await page.keyboard.press("Tab");
     seen.push(await focused(page));
   }
-  expect(seen).toEqual(["send", "cancel", "tool", "tool", "tool", "undo", "clear", "note"]);
+  expect(seen).toEqual(["send", "cancel", "tool", "tool", "tool", "tool", "undo", "clear", "note"]);
   for (const name of ["Undo", "Clear"]) {
     if (name === "Clear") {
       await drag(page, [
@@ -714,4 +715,273 @@ test("Undo and Clear look disabled while there are no marks", async ({ page }) =
     [0.4, 0.5],
   ]);
   for (const name of ["Undo", "Clear"]) await expect(tool(page, name)).toHaveCSS("opacity", "1");
+});
+
+const label = (page: Page) => page.getByRole("textbox", { name: "Text", exact: true });
+
+/**
+ * Pixels of the mark colour and of white in a box of image pixels, on the shown canvas or, with
+ * `sent`, on the last report's image.
+ */
+function colours(
+  page: Page,
+  box: [number, number, number, number],
+  sent = false,
+): Promise<{ mark: number; white: number }> {
+  return page.evaluate(
+    async ({ box: [x, y, width, height], sent, MARK }) => {
+      let canvas = document
+        .querySelector("visual-feedback")
+        ?.shadowRoot?.querySelector<HTMLCanvasElement>("canvas.image");
+      if (sent) {
+        const image = (window as unknown as { reports: { image: Blob }[] }).reports.at(-1)?.image;
+        const bitmap = image && (await createImageBitmap(image));
+        canvas = document.createElement("canvas");
+        canvas.width = bitmap?.width ?? 0;
+        canvas.height = bitmap?.height ?? 0;
+        if (bitmap) canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+      }
+      const data = canvas?.getContext("2d")?.getImageData(x, y, width, height).data ?? [];
+      const near = (i: number, rgb: number[]) =>
+        [0, 1, 2].every((c) => Math.abs((data[i + c] ?? 0) - (rgb[c] ?? 0)) <= 8);
+      let mark = 0;
+      let white = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (near(i, MARK)) mark++;
+        if (near(i, [255, 255, 255])) white++;
+      }
+      return { mark, white };
+    },
+    { box, sent, MARK },
+  );
+}
+
+test("the Text tool places a label where it is clicked: Enter keeps it, in the image and the marks", async ({
+  page,
+}) => {
+  await opened(page, { capture: { type: "image/png" } });
+  const [width = 0, height = 0] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+    canvas.width,
+    canvas.height,
+  ]);
+  await tool(page, "Text").click();
+  await expect(tool(page, "Text")).toHaveAttribute("aria-pressed", "true");
+  const [at] = await on(page, [[0.3, 0.4]]);
+  await page.mouse.click(...(at as Point));
+  await expect(label(page)).toBeFocused();
+  await label(page).fill("Broken");
+  await label(page).press("Enter");
+  await expect(label(page)).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(tool(page, "Undo")).toBeEnabled();
+  const marks = await send(page);
+  expect(marks).toHaveLength(1);
+  const mark = marks[0];
+  expect(mark?.tool === "text" && mark.text).toBe("Broken");
+  expect(mark?.tool === "text" && Math.abs(mark.x - width * 0.3)).toBeLessThan(3);
+  expect(mark?.tool === "text" && Math.abs(mark.y - height * 0.4)).toBeLessThan(3);
+  // The letters are painted in the mark colour with a white outline, right of where it was placed.
+  const x = mark?.tool === "text" ? mark.x : 0;
+  const y = mark?.tool === "text" ? mark.y : 0;
+  const size = Math.max(16, Math.round(width / 60));
+  const painted = await colours(page, [x, Math.round(y - size), size * 6, size * 2], true);
+  expect(painted.mark).toBeGreaterThan(20);
+  expect(painted.white).toBeGreaterThan(20);
+  // Nowhere else: the whole image holds no more of the colour than the label's box.
+  const shot = await read(page, [], MARK);
+  expect(shot?.counted).toBe(painted.mark);
+});
+
+test("Escape drops only the label, an empty one is not kept, and clicking away keeps one", async ({
+  page,
+}) => {
+  await opened(page, { capture: { type: "image/png" } });
+  await tool(page, "Text").click();
+  const [a, b, c] = await on(page, [
+    [0.2, 0.3],
+    [0.5, 0.5],
+    [0.6, 0.6],
+  ]);
+  await page.mouse.click(...(a as Point));
+  await label(page).fill("gone");
+  await label(page).press("Escape");
+  await expect(label(page)).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.mouse.click(...(b as Point));
+  await label(page).press("Enter");
+  await expect(label(page)).toHaveCount(0);
+  await expect(tool(page, "Undo")).toBeDisabled();
+  // Neither the dropped nor the empty label is painted.
+  const [width = 0, height = 0] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+    canvas.width,
+    canvas.height,
+  ]);
+  expect((await colours(page, [0, 0, width, height])).mark).toBe(0);
+  await page.mouse.click(...(c as Point));
+  await label(page).fill("kept");
+  await page.getByRole("textbox", { name: "Your note" }).click();
+  await expect(label(page)).toHaveCount(0);
+  await expect(tool(page, "Undo")).toBeEnabled();
+  const marks = await send(page);
+  expect(marks.map((mark) => mark.tool === "text" && mark.text)).toEqual(["kept"]);
+});
+
+test("Send with a label still being typed keeps it, and the dropped one leaves no colour", async ({
+  page,
+}) => {
+  await opened(page, { capture: { type: "image/png" } });
+  await tool(page, "Text").click();
+  const [at] = await on(page, [[0.4, 0.4]]);
+  await page.mouse.click(...(at as Point));
+  await label(page).fill("late");
+  const marks = await send(page);
+  expect(marks.map((mark) => mark.tool === "text" && mark.text)).toEqual(["late"]);
+  // Painted into the sent image too, not only listed.
+  expect((await read(page, [], MARK))?.counted).toBeGreaterThan(20);
+  // Control for the colour count above: a page with no marks has none of the mark colour.
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  expect(await send(page)).toEqual([]);
+  expect((await read(page, [], MARK))?.counted).toBe(0);
+});
+
+test("a second click while typing keeps the first label and starts another; Undo removes a label", async ({
+  page,
+}) => {
+  await opened(page, { capture: { type: "image/png" } });
+  const [width = 0, height = 0] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+    canvas.width,
+    canvas.height,
+  ]);
+  await tool(page, "Text").click();
+  const [a, b] = await on(page, [
+    [0.2, 0.3],
+    [0.5, 0.6],
+  ]);
+  await page.mouse.click(...(a as Point));
+  await label(page).fill("one");
+  await page.mouse.click(...(b as Point));
+  await expect(label(page)).toBeFocused();
+  await expect(label(page)).toHaveValue("");
+  await label(page).fill("two");
+  await label(page).press("Enter");
+  const whole: [number, number, number, number] = [0, 0, width, height];
+  const both = (await colours(page, whole)).mark;
+  expect(both).toBeGreaterThan(20);
+  await tool(page, "Undo").click();
+  // Undo removes the newest label, "two", and leaves "one".
+  const size = Math.max(16, Math.round(width / 60));
+  const box = (x: number, y: number): [number, number, number, number] => [
+    Math.round(width * x),
+    Math.round(height * y - size),
+    size * 4,
+    size * 2,
+  ];
+  expect((await colours(page, box(0.5, 0.6))).mark).toBe(0);
+  expect((await colours(page, box(0.2, 0.3))).mark).toBeGreaterThan(10);
+  expect((await colours(page, whole)).mark).toBeLessThan(both);
+  await tool(page, "Clear").click();
+  expect((await colours(page, whole)).mark).toBe(0);
+  await expect(tool(page, "Undo")).toBeDisabled();
+  await page.mouse.click(...(a as Point));
+  await label(page).fill("one");
+  await page.mouse.click(...(b as Point));
+  await label(page).fill("two");
+  await label(page).press("Enter");
+  const marks = await send(page);
+  expect(marks.map((mark) => mark.tool === "text" && mark.text)).toEqual(["one", "two"]);
+});
+
+test("Enter that confirms an IME composition does not end the label", async ({ page }) => {
+  await opened(page);
+  await tool(page, "Text").click();
+  const [at] = await on(page, [[0.3, 0.3]]);
+  await page.mouse.click(...(at as Point));
+  await label(page).fill("日本");
+  // What Safari and others send when Enter picks a word in a Japanese, Chinese or Korean IME.
+  for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+    await label(page).evaluate(
+      (input, init) =>
+        input.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...init }),
+        ),
+      init,
+    );
+    await expect(label(page)).toBeFocused();
+  }
+  // Control: the same synthetic Enter without composition does end the label.
+  await label(page).evaluate((input) =>
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    ),
+  );
+  await expect(label(page)).toHaveCount(0);
+  const marks = await send(page);
+  expect(marks.map((mark) => mark.tool === "text" && mark.text)).toEqual(["日本"]);
+});
+
+test("a label placed near the right edge moves left so the whole of it is in the image", async ({
+  page,
+}) => {
+  await opened(page, { capture: { type: "image/png" } });
+  const [width = 0, height = 0] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+    canvas.width,
+    canvas.height,
+  ]);
+  await tool(page, "Text").click();
+  const [at] = await on(page, [[0.97, 0.5]]);
+  await page.mouse.click(...(at as Point));
+  await label(page).fill("This label is much too long to fit");
+  await label(page).press("Enter");
+  const marks = await send(page);
+  const mark = marks[0];
+  const x = mark?.tool === "text" ? mark.x : width;
+  expect(x).toBeLessThan(width * 0.9);
+  // Its right end is inside the image: the last column holds none of the mark colour.
+  const size = Math.max(16, Math.round(width / 60));
+  // The outline is centred on the letters' edge, so half of it is the margin left to the edge.
+  const outline = Math.floor(Math.max(3, size / 5) / 2);
+  const edge = await colours(
+    page,
+    [width - outline, Math.round(height / 2 - size), outline, size * 2],
+    true,
+  );
+  expect(edge.mark + edge.white).toBe(0);
+  const inside = await colours(page, [x, Math.round(height / 2 - size), width - x, size * 2], true);
+  expect(inside.mark).toBeGreaterThan(20);
+});
+
+test("labels placed on the top and left edges stay whole, their outline included", async ({
+  page,
+}) => {
+  await opened(page, { capture: { type: "image/png" } });
+  const [width = 0, height = 0] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+    canvas.width,
+    canvas.height,
+  ]);
+  await tool(page, "Text").click();
+  // On the top edge and on the left edge, away from the rounded corners, which take no clicks.
+  const [topEdge, leftEdge] = await on(page, [
+    [0.5, 0.004],
+    [0.004, 0.5],
+  ]);
+  for (const [at, text] of [
+    [topEdge, "Top"],
+    [leftEdge, "Left"],
+  ] as const) {
+    await page.mouse.click(...(at as Point));
+    await label(page).fill(text);
+    await label(page).press("Enter");
+  }
+  await send(page);
+  // The first row and column of the sent image hold no part of the label, not even its outline.
+  const top = await colours(page, [0, 0, width, 1], true);
+  const left = await colours(page, [0, 0, 1, height], true);
+  expect(top.mark + top.white).toBe(0);
+  expect(left.mark + left.white).toBe(0);
+  const size = Math.max(16, Math.round(width / 60));
+  const near = (x: number, y: number) =>
+    colours(page, [x, y, size * 6, size * 2], true).then((found) => found.mark);
+  expect(await near(Math.round(width / 2), 0)).toBeGreaterThan(20);
+  expect(await near(0, Math.round(height / 2 - size))).toBeGreaterThan(20);
 });

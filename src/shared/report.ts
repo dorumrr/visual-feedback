@@ -1,7 +1,11 @@
 export type Mark =
   | { tool: "pen"; points: [number, number][] }
   | { tool: "box"; x: number; y: number; width: number; height: number }
-  | { tool: "arrow"; from: [number, number]; to: [number, number] };
+  | { tool: "arrow"; from: [number, number]; to: [number, number] }
+  | { tool: "text"; x: number; y: number; text: string };
+
+/** The longest text label the widget lets a user type, and the server accepts. */
+export const TEXT_LIMIT = 280;
 
 export type FeedbackReport = {
   id: string;
@@ -91,6 +95,16 @@ function mark(value: unknown, path: string): Mark {
       tool: "arrow",
       from: point(fields.from, `${path}.from`),
       to: point(fields.to, `${path}.to`),
+    };
+  }
+  if (fields.tool === "text") {
+    const text = string(fields.text, `${path}.text`);
+    if ([...text].length > TEXT_LIMIT) fail(`${path}.text`);
+    return {
+      tool: "text",
+      x: number(fields.x, `${path}.x`),
+      y: number(fields.y, `${path}.y`),
+      text,
     };
   }
   return fail(`${path}.tool`);

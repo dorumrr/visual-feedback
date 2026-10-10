@@ -37,7 +37,7 @@ const feedback = createFeedback({
 | `trigger` | `"button" \| "none"` | `"button"` | `"none"` draws nothing; the host calls `open()`. |
 | `position` | `"bottom-right" \| "bottom-left" \| "top-right" \| "top-left"` | `"bottom-right"` | Corner of the trigger. |
 | `shortcut` | `string \| false` | `false` | For example `"Alt+Shift+F"`: any of `Alt`, `Shift`, `Control` and `Meta`, then one key, a letter, a digit or a key name such as `F2`, joined by `+`. The modifiers must match exactly, AltGr never matches, and any other modifier name makes it match nothing. Without `Control` or `Meta` it does not fire while focus is in a text field. It does nothing while the widget is open. Opt-in; it is the widget's only global listener, one `keydown` on `window` (SPEC §9 names what the capture library keeps). |
-| `tools` | `("pen" \| "box" \| "arrow")[]` | all three | Order is the toolbar order. Repeats and unknown names are ignored; an empty list shows no toolbar. |
+| `tools` | `("pen" \| "box" \| "arrow" \| "text")[]` | all four | Order is the toolbar order. Repeats and unknown names are ignored; an empty list shows no toolbar. |
 | `categories` | `{ id: string; label: string }[]` | none | Shows a category picker. |
 | `requireNote` | `boolean` | `true` | |
 | `capture.mode` | `"dom" \| "display"` | `"dom"` | SPEC §5. The type of `capture` is exported as `CaptureOptions`. |
@@ -70,7 +70,7 @@ type FeedbackReport = {
   note: string;
   category?: string;
   image: Blob | null;               // marks painted in; null after "Send without screenshot"
-  marks: Mark[];                    // vectors, in image pixels
+  marks: Mark[];                    // shapes and text labels, in image pixels
   page: { url: string; title: string };
   viewport: { width: number; height: number; devicePixelRatio: number };
   scroll: { x: number; y: number };
@@ -82,7 +82,9 @@ type FeedbackReport = {
 type Mark =
   | { tool: "pen"; points: [number, number][] }
   | { tool: "box"; x: number; y: number; width: number; height: number }
-  | { tool: "arrow"; from: [number, number]; to: [number, number] };
+  | { tool: "arrow"; from: [number, number]; to: [number, number] }
+  // A label, its text at most 280 characters, centred on y and starting at x.
+  | { tool: "text"; x: number; y: number; text: string };
 ```
 
 ## `<Feedback {...options} />` (`visual-feedback/react`)

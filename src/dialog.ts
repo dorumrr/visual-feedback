@@ -1,6 +1,6 @@
-const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100% - 32px);display:grid;gap:12px}.dialog.wide{width:min(1100px,100% - 32px)}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.image:only-child{grid-column:1/-1}.image{display:block;max-width:100%;max-height:60vh;margin:0 auto;color:var(--_mark)}.toolbar+.image{touch-action:none}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}`;
+const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100% - 32px);display:grid;gap:12px}.dialog.wide{width:min(1100px,100% - 32px)}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.image:only-child{grid-column:1/-1}.image{display:block;max-width:100%;max-height:60vh;margin:0 auto;color:var(--_mark)}.body{position:relative}.toolbar+.image{touch-action:none}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}`;
 
-const THEME = `.backdrop{background:var(--_bd)}.dialog{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header .cancel,.toolbar button{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header .cancel:hover,.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.image{cursor:crosshair}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.send{background:var(--_a);color:var(--_at);border-color:var(--_a)}.send:where([data-ink=dark]){color:#000}[aria-disabled=true]{opacity:.6;cursor:progress}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}`;
+const THEME = `.backdrop{background:var(--_bd)}.dialog{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header .cancel,.toolbar button{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header .cancel:hover,.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.image{cursor:crosshair}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.send{background:var(--_a);color:var(--_at);border-color:var(--_a)}.send:where([data-ink=dark]){color:#000}[aria-disabled=true]{opacity:.6;cursor:progress}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}`;
 
 import { annotate, type Tool } from "./annotate";
 import { icon } from "./icon";
@@ -12,6 +12,7 @@ const ICONS = {
   pen: "M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zm9.5-13.5 4 4",
   box: "M6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5v-9A2.5 2.5 0 0 1 6.5 5z",
   arrow: "M5 19 19 5M9 5h10v10",
+  text: "M5 7V5h14v2M12 5v14m-3 0h6",
   undo: "M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
   clear: "M4 7h16m-10 4v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3",
   cancel: "M6 6l12 12M18 6 6 18",
@@ -32,6 +33,7 @@ const ENGLISH: Texts = {
   pen: "Draw",
   box: "Box",
   arrow: "Arrow",
+  text: "Text",
   undo: "Undo",
   clear: "Clear",
   cancel: "Cancel",
@@ -191,7 +193,7 @@ export type Mounted = {
 };
 
 export function mount(parent: HTMLElement, handlers: Handlers, settings: Settings = {}): Mounted {
-  const tools = settings.tools ?? ["pen", "box", "arrow"];
+  const tools = settings.tools ?? ["pen", "box", "arrow", "text"];
   const text = texts(settings.strings);
   const backdrop = element("dialog", "backdrop", {
     "aria-modal": "true",
@@ -216,7 +218,9 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   let failure: HTMLElement | undefined;
 
   function toolbar(image: HTMLCanvasElement): HTMLElement[] {
-    const choices = [...new Set(tools)].filter((tool) => ["pen", "box", "arrow"].includes(tool));
+    const choices = [...new Set(tools)].filter((tool) =>
+      ["pen", "box", "arrow", "text"].includes(tool),
+    );
     if (choices.length === 0) return [];
     const bar = element("div", "toolbar");
     const undo = iconButton("undo", text.undo, ICONS.undo, () => annotator.undo());
@@ -230,7 +234,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       }
       undo.disabled = clear.disabled = none;
     };
-    const annotator = annotate(image, update);
+    const annotator = annotate(image, update, text.text);
     const pick = (tool: Tool) => {
       annotator.tool = tool;
       for (const [i, choice] of buttons.entries()) {

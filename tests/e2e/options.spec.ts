@@ -24,6 +24,7 @@ const KEYS = [
   "retry",
   "triggerText",
   "escHint",
+  "text",
 ] as const;
 const STRINGS = Object.fromEntries(KEYS.map((key) => [key, `X ${key}`]));
 
@@ -74,7 +75,16 @@ test("strings replace every text the widget shows", async ({ page }) => {
     .poll(() => page.evaluate(() => (window as unknown as { live: string[] }).live))
     .toEqual(["X capturing"]);
   await expect(page.locator("visual-feedback").locator(".live")).toHaveCount(0);
-  for (const name of ["X pen", "X box", "X arrow", "X undo", "X clear", "X cancel", "X send"]) {
+  for (const name of [
+    "X pen",
+    "X box",
+    "X arrow",
+    "X text",
+    "X undo",
+    "X clear",
+    "X cancel",
+    "X send",
+  ]) {
     await expect(dialog.getByRole("button", { name })).toBeVisible();
   }
   await expect(dialog.getByLabel("X noteLabel")).toHaveAttribute(

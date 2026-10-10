@@ -56,14 +56,14 @@ test("the dialog traps focus, Escape cancels, and focus goes back to the trigger
   await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
 
   const seen: string[] = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     await page.keyboard.press("Tab");
     seen.push(await focused(page));
   }
   // Undo and Clear are disabled while there are no marks, so Tab skips them.
-  expect(seen).toEqual(["send", "cancel", "tool", "tool", "tool", "note"]);
+  expect(seen).toEqual(["send", "cancel", "tool", "tool", "tool", "tool", "note"]);
   await page.keyboard.press("Shift+Tab");
-  await expect(page.getByRole("button", { name: "Arrow" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Text", exact: true })).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
@@ -115,8 +115,13 @@ test("the page does not scroll while the dialog is open", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.style.overflow)).toBe("scroll");
-  await page.mouse.wheel(0, 1200);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
+  // WebKit can take one wheel before it applies the restored overflow, so the wheel repeats.
+  await expect
+    .poll(async () => {
+      await page.mouse.wheel(0, 400);
+      return page.evaluate(() => window.scrollY);
+    })
+    .toBeGreaterThan(300);
 });
 
 test("open and close fire once each, and an unsubscribed handler does not", async ({ page }) => {

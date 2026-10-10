@@ -243,6 +243,13 @@ test("every element of every view has its ::part() name, and the page can style 
 
   await open();
   await scan("annotating, with categories");
+  // A label being typed: its input is a part too.
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  const box = await page.locator("visual-feedback").locator("canvas.image").boundingBox();
+  await page.mouse.click((box?.x ?? 0) + 40, (box?.y ?? 0) + 40);
+  await expect(page.getByRole("textbox", { name: "Text", exact: true })).toBeFocused();
+  await scan("typing a label");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("alert")).toBeVisible();
   await scan("note required");
