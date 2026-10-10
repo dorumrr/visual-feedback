@@ -433,37 +433,59 @@ test("a drag that leaves the image keeps drawing, held inside the image's edges"
   expect(arrow?.tool === "arrow" && arrow.to).toEqual([0, 0]);
 });
 
-test("touch-type pointer events draw, and a cancelled pointer leaves no mark", async ({ page }) => {
-  await opened(page);
-  // Only Chromium can drive a real touch drag; elsewhere this is what keeps a finger from panning.
-  await expect(image(page)).toHaveCSS("touch-action", "none");
-  const [width, height] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
-    canvas.width,
-    canvas.height,
-  ]);
-  // On the cancelled stroke, half way along it.
-  const on = [[Math.round((width ?? 0) * 0.3), Math.round((height ?? 0) * 0.5)]];
-  const before = await shown(page, on);
-  await synthetic(
+for (const end of ["pointercancel", "lostpointercapture"]) {
+  test(`touch-type pointer events draw, and a stroke the browser takes away (${end}) is kept`, async ({
     page,
-    [
-      [0.2, 0.5],
-      [0.4, 0.5],
-    ],
-    "pointercancel",
-  );
-  await expect(tool(page, "Undo")).toBeDisabled();
-  expect(await shown(page, on)).toEqual(before);
-  await synthetic(page, [
-    [0.2, 0.5],
-    [0.4, 0.5],
-    [0.6, 0.5],
-  ]);
-  const marks = await send(page);
-  expect(marks.map((mark) => mark.tool)).toEqual(["pen"]);
-  const shot = await read(page, [middle(marks[0])], MARK, true);
-  expect(near(shot?.at[0], MARK, LOSSY), `stroke centre ${shot?.at[0]}`).toBe(true);
-});
+  }) => {
+    await opened(page);
+    // Only Chromium can drive a real touch drag; elsewhere this is what keeps a finger from panning.
+    await expect(image(page)).toHaveCSS("touch-action", "none");
+    const [width, height] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+      canvas.width,
+      canvas.height,
+    ]);
+    // On the taken stroke, half way along it.
+    const on = [[Math.round((width ?? 0) * 0.3), Math.round((height ?? 0) * 0.5)]];
+    const before = await shown(page, on);
+    // The end event comes at the image's corner, as a cancel's own point can be anything.
+    await synthetic(
+      page,
+      [
+        [0.2, 0.5],
+        [0.4, 0.5],
+      ],
+      end,
+      [0.01, 0.01],
+    );
+    await expect(tool(page, "Undo")).toBeEnabled();
+    expect(await shown(page, on)).not.toEqual(before);
+    // What a browser sends next: the other end event, then a move with the button still held.
+    await image(page).evaluate((canvas: HTMLCanvasElement, end) => {
+      const pointerId = (window as unknown as { pointer: number }).pointer;
+      const at = {
+        bubbles: true,
+        composed: true,
+        pointerId,
+        isPrimary: true,
+        clientX: 1,
+        clientY: 1,
+      };
+      const other = end === "pointercancel" ? "lostpointercapture" : "pointercancel";
+      canvas.dispatchEvent(new PointerEvent(other, { ...at, pointerType: "touch" }));
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { ...at, pointerType: "touch", buttons: 1 }),
+      );
+    }, end);
+    const marks = await send(page);
+    expect(marks.map((mark) => mark.tool)).toEqual(["pen"]);
+    // It ends where the user stopped, not at the end event's point.
+    const last = marks[0]?.tool === "pen" ? marks[0].points.at(-1) : undefined;
+    expect(last?.[0]).toBeCloseTo((width ?? 0) * 0.4, -1);
+    expect(last?.[1]).toBeCloseTo((height ?? 0) * 0.5, -1);
+    const shot = await read(page, [middle(marks[0])], MARK, true);
+    expect(near(shot?.at[0], MARK, LOSSY), `stroke centre ${shot?.at[0]}`).toBe(true);
+  });
+}
 
 test("with unstyled, marks are still drawn in the mark colour", async ({ page }) => {
   await opened(page, { unstyled: true });

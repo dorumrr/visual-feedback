@@ -137,12 +137,10 @@ export function annotate(canvas: HTMLCanvasElement, onChange: () => void): Annot
     extend(event);
     end();
   });
-  // The browser took the pointer (a touch gesture, a lost capture): the mark is dropped.
+  // The browser took the pointer (a gesture, a lost capture): keep what was drawn, not its last point.
   for (const type of ["pointercancel", "lostpointercapture"]) {
     canvas.addEventListener(type, (event) => {
-      if (current?.id !== (event as PointerEvent).pointerId) return;
-      current = null;
-      paint();
+      if (current?.id === (event as PointerEvent).pointerId) end();
     });
   }
 
