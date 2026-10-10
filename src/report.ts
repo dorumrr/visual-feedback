@@ -45,29 +45,40 @@ export function shown(error: unknown): string | undefined {
   return typeof message === "string" && message ? message : undefined;
 }
 
+/** One encoded screenshot, its marks, and the page as it was when it was taken. */
+export type Shot = { image: Blob; marks: Mark[]; seen: Seen };
+
 /** Builds the report and checks it with the same shape check the server uses. */
 export async function build(
-  draft: { note: string; category: string | undefined; marks: Mark[] },
-  image: Blob | null,
+  draft: { note: string; category: string | undefined },
+  shots: Shot[],
   seen: Seen,
   settings: Settings,
 ): Promise<FeedbackReport> {
   const context = (await host(() => settings.context?.())) ?? {};
+  const facts = ({ url, title, viewport, scroll }: Seen) => ({
+    page: { url: pageUrl(url, Boolean(settings.redactUrl)), title },
+    viewport,
+    scroll,
+  });
   const report = {
     id: uuid(),
     createdAt: new Date().toISOString(),
     note: draft.note,
     ...(draft.category === undefined ? {} : { category: draft.category }),
-    marks: image ? draft.marks : [],
-    page: { url: pageUrl(seen.url, Boolean(settings.redactUrl)), title: seen.title },
-    viewport: seen.viewport,
-    scroll: seen.scroll,
+    screenshots: shots.map((shot) => ({ marks: shot.marks, ...facts(shot.seen) })),
+    ...facts(seen),
     userAgent: navigator.userAgent,
     language: navigator.language,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     context,
   };
-  return { ...checkReport(report), image };
+  const checked = checkReport(report);
+  const screenshots = checked.screenshots.map((shot, i) => ({
+    ...shot,
+    image: (shots[i] as Shot).image,
+  }));
+  return { ...checked, screenshots };
 }
 
 /** Sends with onSubmit, or else POSTs what parseFeedbackRequest reads to the endpoint. */
@@ -76,10 +87,11 @@ export async function deliver(report: FeedbackReport, settings: Settings): Promi
   if (onSubmit) return host(() => onSubmit(report));
   if (!endpoint) throw new Error("Neither onSubmit nor endpoint is set.");
   const body = new FormData();
-  body.append("report", JSON.stringify({ ...report, image: undefined }));
-  if (report.image) {
-    const extension = report.image.type === "image/png" ? "png" : "webp";
-    body.append("image", report.image, `${report.id}.${extension}`);
+  const screenshots = report.screenshots.map(({ image: _, ...shot }) => shot);
+  body.append("report", JSON.stringify({ ...report, screenshots }));
+  for (const [i, { image }] of report.screenshots.entries()) {
+    const extension = image.type === "image/png" ? "png" : "webp";
+    body.append(`image${i}`, image, `${report.id}-${i}.${extension}`);
   }
   const { headers: given } = settings;
   const headers = typeof given === "function" ? await host(given) : (given ?? {});

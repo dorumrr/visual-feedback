@@ -8,19 +8,20 @@ function show(report) {
   const title = document.createElement("h3");
   title.textContent = report.note || "(no note)";
   item.append(title);
-  if (report.image) {
-    const url = URL.createObjectURL(report.image);
+  for (const [i, { image }] of report.screenshots.entries()) {
+    const url = URL.createObjectURL(image);
     const img = document.createElement("img");
     img.src = url;
-    img.alt = "Captured screenshot";
+    img.alt = `Screenshot ${i + 1}`;
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${report.id}.${report.image.type === "image/png" ? "png" : "webp"}`;
-    link.textContent = `Download image (${report.image.type}, ${report.image.size} bytes)`;
+    link.download = `${report.id}-${i}.${image.type === "image/png" ? "png" : "webp"}`;
+    link.textContent = `Download screenshot ${i + 1} (${image.type}, ${image.size} bytes)`;
     item.append(img, link);
   }
+  const screenshots = report.screenshots.map((shot) => ({ ...shot, image: "Blob" }));
   const details = document.createElement("pre");
-  details.textContent = JSON.stringify({ ...report, image: report.image ? "Blob" : null }, null, 2);
+  details.textContent = JSON.stringify({ ...report, screenshots }, null, 2);
   item.append(details);
   list.prepend(item);
   empty.hidden = true;

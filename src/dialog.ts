@@ -290,8 +290,10 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       module = await import("./report");
       if (!report) {
         const capture = await import("./capture");
-        const image = current ? await capture.encode(current, options.capture) : null;
-        const built = await module.build(draft, image, seen, options);
+        const shots = current
+          ? [{ image: await capture.encode(current, options.capture), marks: draft.marks, seen }]
+          : [];
+        const built = await module.build(draft, shots, seen, options);
         if (mounted) report = built;
       }
       // Closed before submit: nothing is sent.

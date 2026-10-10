@@ -95,7 +95,9 @@ async function synthetic(
 async function send(page: Page): Promise<Mark[]> {
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await finish(page);
-  return page.evaluate(() => (window as unknown as Mounted).reports.at(-1)?.marks as never);
+  return page.evaluate(
+    () => (window as unknown as Mounted).reports.at(-1)?.screenshots[0]?.marks as never,
+  );
 }
 
 /** RGB of the shown image at image pixels. */
@@ -617,7 +619,7 @@ test("Send while a stroke is still held down sends that stroke in both the image
   await finish(page);
   await page.mouse.up();
   const marks = await page.evaluate(
-    () => (window as unknown as Mounted).reports.at(-1)?.marks as Mark[],
+    () => (window as unknown as Mounted).reports.at(-1)?.screenshots[0]?.marks as Mark[],
   );
   expect(marks.map((mark) => mark.tool)).toEqual(["pen"]);
   const shot = await read(page, [middle(marks[0])], MARK, true);
@@ -752,7 +754,7 @@ function colours(
         .querySelector("visual-feedback")
         ?.shadowRoot?.querySelector<HTMLCanvasElement>("canvas.image");
       if (sent) {
-        const image = (window as unknown as { reports: { image: Blob }[] }).reports.at(-1)?.image;
+        const image = (window as unknown as Mounted).reports.at(-1)?.screenshots[0]?.image;
         const bitmap = image && (await createImageBitmap(image));
         canvas = document.createElement("canvas");
         canvas.width = bitmap?.width ?? 0;

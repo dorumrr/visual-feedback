@@ -21,7 +21,12 @@ type Page2 = {
   times: Record<string, number>;
   contextCalls: number;
   payloads: unknown[];
-  reports: { id: string; image: Blob | null; note: string; category?: string; marks: unknown[] }[];
+  reports: {
+    id: string;
+    note: string;
+    category?: string;
+    screenshots: { image: Blob; marks: unknown[] }[];
+  }[];
   release?: () => void;
 };
 
@@ -97,7 +102,6 @@ async function create(page: Page, setup: Setup = {}): Promise<void> {
 
 type Received = {
   report: Awaited<ReturnType<typeof parseFeedbackRequest>>["report"];
-  image: Blob | null;
   filename: string | undefined;
   headers: Record<string, string>;
   checked: ReturnType<typeof checkReport>;
@@ -124,7 +128,7 @@ function endpoint(fail = 0): { url: string; received(page: Page): Promise<Receiv
             });
           const parsed = await parseFeedbackRequest(make());
           const form = await make().formData();
-          const part = form.get("image");
+          const part = form.get("image0");
           return {
             ...parsed,
             filename: part instanceof File ? part.name : undefined,
@@ -203,11 +207,14 @@ for (const headers of ["object", "function"] as const) {
     expect(got.report.note).toBe("The total is wrong");
     expect(got.report.category).toBe("idea");
     expect(got.report.context).toEqual({ user: "u1" });
-    expect(got.report.marks).toHaveLength(1);
+    const [shot] = got.report.screenshots;
+    expect(got.report.screenshots).toHaveLength(1);
+    expect(shot?.marks).toHaveLength(1);
+    expect(shot?.page).toEqual(got.report.page);
     expect(got.checked.id).toBe(got.report.id);
-    expect(got.image?.type).toMatch(/^image\/(webp|png)$/);
+    expect(shot?.image.type).toMatch(/^image\/(webp|png)$/);
     expect(got.filename).toBe(
-      `${got.report.id}.${got.image?.type === "image/png" ? "png" : "webp"}`,
+      `${got.report.id}-0.${shot?.image.type === "image/png" ? "png" : "webp"}`,
     );
     expect(got.headers["x-csrf"]).toBe(headers === "object" ? "token-1" : "token-2");
     expect(got.report.page.url).toMatch(/\/widget\/capture\.html$/);
@@ -234,9 +241,13 @@ test("redactUrl drops the query and the hash from page.url, and without it both 
     await sendButton(page).click();
     await expect(page.getByRole("status")).toBeVisible();
   }
-  const [redacted, kept] = (await api.received(page)).map((got) => got.report.page.url);
+  const received = await api.received(page);
+  const [redacted, kept] = received.map((got) => got.report.page.url);
+  const [shotRedacted, shotKept] = received.map((got) => got.report.screenshots[0]?.page.url);
   expect(redacted).toMatch(/\/widget\/capture\.html$/);
+  expect(shotRedacted).toBe(redacted);
   expect(kept).toMatch(/\/widget\/capture\.html\?account=42#bills$/);
+  expect(shotKept).toBe(kept);
 });
 
 test("the page facts in the report are those of the screenshot, not of the moment Send is pressed", async ({
@@ -261,14 +272,19 @@ test("the page facts in the report are those of the screenshot, not of the momen
   await page.setViewportSize({ width: 700, height: 500 });
   await sendButton(page).click();
   await expect(page.getByRole("status")).toBeVisible();
-  const [report] = (await page.evaluate(() => (window as unknown as Page2).reports)) as unknown as {
+  type Facts = {
     page: { url: string; title: string };
     viewport: { width: number; height: number };
     scroll: { x: number; y: number };
-  }[];
-  expect(report?.page).toEqual({ url: before.url, title: before.title });
-  expect(report?.viewport).toMatchObject({ width: 800, height: 600 });
-  expect(report?.scroll).toEqual({ x: 0, y: 120 });
+  };
+  const [report] = (await page.evaluate(
+    () => (window as unknown as Page2).reports,
+  )) as unknown as (Facts & { screenshots: Facts[] })[];
+  for (const facts of [report, report?.screenshots[0]]) {
+    expect(facts?.page).toEqual({ url: before.url, title: before.title });
+    expect(facts?.viewport).toMatchObject({ width: 800, height: 600 });
+    expect(facts?.scroll).toEqual({ x: 0, y: 120 });
+  }
 });
 
 test("the page facts are those of the moment the page was copied, not after a slow render", async ({
@@ -337,10 +353,11 @@ test("a failing endpoint keeps the note and the marks, and Try again sends the s
   expect(received).toHaveLength(2);
   const [first, second] = received as [Received, Received];
   expect(second.report.id).toBe(first.report.id);
-  expect(first.report.marks).toHaveLength(1);
-  expect(second.report.marks).toEqual(first.report.marks);
-  const bytes = async (blob: Blob | null) => Buffer.from(await (blob as Blob).arrayBuffer());
-  expect((await bytes(second.image)).equals(await bytes(first.image))).toBe(true);
+  const [one, two] = [first, second].map((got) => got.report.screenshots[0]);
+  expect(one?.marks).toHaveLength(1);
+  expect(two?.marks).toEqual(one?.marks);
+  const bytes = async (blob: Blob | undefined) => Buffer.from(await (blob as Blob).arrayBuffer());
+  expect((await bytes(two?.image)).equals(await bytes(one?.image))).toBe(true);
   expect(second.report.note).toBe("Keep me");
   const id = first.report.id;
   expect(await log(page)).toEqual([

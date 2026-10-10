@@ -1,5 +1,5 @@
 export type { CaptureOptions } from "./capture";
-export type { FeedbackReport, Mark } from "./shared/report";
+export type { FeedbackReport, Mark, Screenshot } from "./shared/report";
 export type {
   FeedbackEvent,
   FeedbackEvents,

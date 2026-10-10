@@ -45,8 +45,10 @@ test("the packed package, installed in a fresh app, stores a report in its .visu
   expect(mine).toHaveLength(1);
   const [{ id, report }] = mine as [(typeof mine)[number]];
   expect(report.id).toBe(id);
-  expect(report.image).toMatch(/^image\.(png|webp)$/);
-  const image = readFileSync(join(folder, id, report.image));
+  expect(report.screenshots).toHaveLength(1);
+  const [{ image: file }] = report.screenshots;
+  expect(file).toMatch(/^screenshot-0\.(png|webp)$/);
+  const image = readFileSync(join(folder, id, file));
   expect(image.length).toBeGreaterThan(1000);
   // A real PNG or WebP file, by its first bytes.
   const head = image.subarray(0, 12).toString("latin1");

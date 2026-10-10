@@ -28,8 +28,8 @@ import { FeedbackRequestError, parseFeedbackRequest } from "visual-feedback/serv
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const { report, image } = await parseFeedbackRequest(request);
-    // Store `report` and `image` here: docs/recipes/ has tested code for six places.
+    const { report } = await parseFeedbackRequest(request);
+    // Store `report`, images included: docs/recipes/ has tested code for six places.
     return new Response(null, { status: 204 });
   } catch (error) {
     if (error instanceof FeedbackRequestError) {

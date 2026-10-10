@@ -381,7 +381,7 @@ test("update: undefined puts a key back to its default, and capture is replaced 
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
   const image = await page.evaluate(async () => {
-    const blob = (window as unknown as Mounted).reports.at(-1)?.image;
+    const blob = (window as unknown as Mounted).reports.at(-1)?.screenshots[0]?.image;
     return blob ? { type: blob.type, width: (await createImageBitmap(blob)).width } : null;
   });
   expect(image).toEqual({

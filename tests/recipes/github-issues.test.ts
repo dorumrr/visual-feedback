@@ -127,7 +127,7 @@ afterEach(() => {
 function post(report: Record<string, unknown>, image?: Uint8Array, type = "image/png"): Request {
   const form = new FormData();
   form.append("report", JSON.stringify(report));
-  if (image) form.append("image", new Blob([image as Uint8Array<ArrayBuffer>], { type }), "x");
+  if (image) form.append("image0", new Blob([image as Uint8Array<ArrayBuffer>], { type }), "x");
   return new Request("http://localhost/api/feedback", { method: "POST", body: form });
 }
 
@@ -142,13 +142,15 @@ for (const [layout, branch] of [
     const ref = branch ?? "main";
     const report: Record<string, unknown> = { ...valid(), category: "bug" };
     expect((await route.POST(post(report, PNG))).status).toBe(204);
-    expect(decode(files.get(`${ref}:feedback/${report.id}/image.png`))).toEqual(Buffer.from(PNG));
+    expect(decode(files.get(`${ref}:feedback/${report.id}/screenshot-0.png`))).toEqual(
+      Buffer.from(PNG),
+    );
     expect(issues).toHaveLength(1);
     const [issue] = issues as [Issue];
     expect(issue.labels).toEqual(["feedback", "bug"]);
     expect(issue.title).toBe(report.note);
     expect(issue.body).toContain(
-      `![Screenshot](<https://github.com/${REPO}/blob/${ref}/feedback/${report.id}/image.png?raw=true>)`,
+      `![Screenshot 1](<https://github.com/${REPO}/blob/${ref}/feedback/${report.id}/screenshot-0.png?raw=true>)`,
     );
     expect(issue.body).toContain(String((report.page as { url: string }).url));
     expect(issue.body).toContain(String(report.userAgent));
@@ -157,6 +159,9 @@ for (const [layout, branch] of [
     );
     expect(marker.issue).toBe(1);
     expect(marker.note).toBe(report.note);
+    expect(marker.screenshots[0].image).toBe(
+      `https://github.com/${REPO}/blob/${ref}/feedback/${report.id}/screenshot-0.png?raw=true`,
+    );
     // A resend in this layout opens nothing and replaces nothing.
     const before = new Map(files);
     await route.POST(post({ ...report, note: "forged" }, Uint8Array.of(...PNG, 0)));
@@ -173,17 +178,19 @@ for (const [layout, branch] of [
   });
 }
 
-it("a WebP report is committed and linked as image.webp", async () => {
+it("a WebP report is committed and linked as screenshot-0.webp", async () => {
   const report = valid();
   expect((await route.POST(post(report, WEBP, "image/webp"))).status).toBe(204);
-  expect(decode(files.get(`main:feedback/${report.id}/image.webp`))).toEqual(Buffer.from(WEBP));
-  expect(files.has(`main:feedback/${report.id}/image.png`)).toBe(false);
-  expect(issues[0]?.body).toContain(`/blob/main/feedback/${report.id}/image.webp?raw=true`);
+  expect(decode(files.get(`main:feedback/${report.id}/screenshot-0.webp`))).toEqual(
+    Buffer.from(WEBP),
+  );
+  expect(files.has(`main:feedback/${report.id}/screenshot-0.png`)).toBe(false);
+  expect(issues[0]?.body).toContain(`/blob/main/feedback/${report.id}/screenshot-0.webp?raw=true`);
 });
 
 it("a long first line is cut to a title GitHub accepts", async () => {
   const note = `${"a".repeat(300)}\nmore`;
-  expect((await route.POST(post({ ...valid(), note }))).status).toBe(204);
+  expect((await route.POST(post({ ...valid(), screenshots: [], note }))).status).toBe(204);
   expect(issues[0]?.title).toBe(`${"a".repeat(80)}…`);
 });
 
@@ -192,15 +199,15 @@ it("a repo whose default branch is not main gets the image and the link on that 
   branches.add("trunk");
   const report = valid();
   expect((await route.POST(post(report, PNG))).status).toBe(204);
-  expect(files.has(`trunk:feedback/${report.id}/image.png`)).toBe(true);
+  expect(files.has(`trunk:feedback/${report.id}/screenshot-0.png`)).toBe(true);
   expect(files.has(`trunk:feedback/${report.id}/report.json`)).toBe(true);
-  expect(issues[0]?.body).toContain(`/blob/trunk/feedback/${report.id}/image.png?raw=true`);
+  expect(issues[0]?.body).toContain(`/blob/trunk/feedback/${report.id}/screenshot-0.png?raw=true`);
 });
 
 it("an orphan branch that was never created is an error, and no issue opens", async () => {
   process.env.GITHUB_FEEDBACK_BRANCH = "visual-feedback";
   branches.delete("visual-feedback");
-  await expect(route.POST(post(valid(), PNG))).rejects.toThrow(/422 for image\.png/);
+  await expect(route.POST(post(valid(), PNG))).rejects.toThrow(/422 for screenshot-0\.png/);
   expect(issues).toEqual([]);
 });
 
@@ -219,7 +226,9 @@ it("sending the same report again opens no second issue and replaces nothing", a
     (await route.POST(post({ ...report, note: "forged" }, Uint8Array.of(...PNG, 0)))).status,
   ).toBe(204);
   expect(issues).toHaveLength(1);
-  expect(decode(files.get(`main:feedback/${report.id}/image.png`))).toEqual(Buffer.from(PNG));
+  expect(decode(files.get(`main:feedback/${report.id}/screenshot-0.png`))).toEqual(
+    Buffer.from(PNG),
+  );
 });
 
 it("Try again after the issue failed opens it, beside the image already committed", async () => {
@@ -231,7 +240,9 @@ it("Try again after the issue failed opens it, beside the image already committe
   // A different image under the same id must not replace the one already committed.
   expect((await route.POST(post(report, Uint8Array.of(...PNG, 0)))).status).toBe(204);
   expect(issues).toHaveLength(1);
-  expect(decode(files.get(`main:feedback/${report.id}/image.png`))).toEqual(Buffer.from(PNG));
+  expect(decode(files.get(`main:feedback/${report.id}/screenshot-0.png`))).toEqual(
+    Buffer.from(PNG),
+  );
 });
 
 it("a repo GitHub cannot find is a clear error, and nothing is created", async () => {
@@ -248,7 +259,7 @@ it("a failed marker write is an error, as the doc says a resend then opens a sec
 
 it("the note cannot mention anyone or break out of its block", async () => {
   const note = "Ping @everyone ```\n# heading\n@acme/team";
-  await route.POST(post({ ...valid(), note }));
+  await route.POST(post({ ...valid(), screenshots: [], note }));
   const body = issues[0]?.body ?? "";
   // The note sits in a fence longer than any run of backticks in it, so GitHub renders it as text.
   expect(body.startsWith("````text\n")).toBe(true);
@@ -257,7 +268,7 @@ it("the note cannot mention anyone or break out of its block", async () => {
 
 it("the page URL and the browser data stay inside their own blocks", async () => {
   const breakout = "x\n\n@acme/team [link](https://example.test)";
-  const report = valid();
+  const report: Record<string, unknown> = { ...valid(), screenshots: [] };
   await route.POST(
     post({ ...report, page: { ...(report.page as object), url: breakout }, userAgent: breakout }),
   );
@@ -269,7 +280,9 @@ it("the page URL and the browser data stay inside their own blocks", async () =>
 it("a long or odd report still opens an issue GitHub accepts", async () => {
   const category = "c".repeat(80);
   const note = `   \n${"`".repeat(30_000)}${"😀".repeat(40_000)}`;
-  expect((await route.POST(post({ ...valid(), note, category }))).status).toBe(204);
+  expect((await route.POST(post({ ...valid(), screenshots: [], note, category }))).status).toBe(
+    204,
+  );
   const [issue] = issues as [Issue];
   expect(issue.title).toBe("Feedback");
   expect(Array.from(issue.labels[1] ?? "").length).toBeLessThanOrEqual(50);
@@ -282,7 +295,7 @@ it("a branch name with # is encoded in the image link", async () => {
   branches.add("fb#1");
   const report = valid();
   await route.POST(post(report, PNG));
-  expect(issues[0]?.body).toContain(`/blob/fb%231/feedback/${report.id}/image.png?raw=true`);
+  expect(issues[0]?.body).toContain(`/blob/fb%231/feedback/${report.id}/screenshot-0.png?raw=true`);
 });
 
 it("Try again after the issue failed works with an image over 1 MB", async () => {
@@ -304,14 +317,16 @@ it("a commit GitHub refuses as concurrent is tried again, up to two more times",
   expect(issues).toHaveLength(1);
   conflicts = 3;
   await expect(route.POST(post({ ...valid(), id: crypto.randomUUID() }, PNG))).rejects.toThrow(
-    /409 for image\.png/,
+    /409 for screenshot-0\.png/,
   );
 });
 
 it("a category of only space adds no label, and line breaks become spaces", async () => {
-  await route.POST(post({ ...valid(), category: " \n\t " }));
+  await route.POST(post({ ...valid(), screenshots: [], category: " \n\t " }));
   expect(issues[0]?.labels).toEqual(["feedback"]);
-  await route.POST(post({ ...valid(), id: crypto.randomUUID(), category: "ui\nbug" }));
+  await route.POST(
+    post({ ...valid(), screenshots: [], id: crypto.randomUUID(), category: "ui\nbug" }),
+  );
   expect(issues[1]?.labels).toEqual(["feedback", "ui bug"]);
 });
 
@@ -321,12 +336,35 @@ it("a branch name with brackets keeps the image link whole", async () => {
   const report = valid();
   await route.POST(post(report, PNG));
   expect(issues[0]?.body).toContain(
-    `![Screenshot](<https://github.com/${REPO}/blob/fb(1)/feedback/${report.id}/image.png?raw=true>)`,
+    `![Screenshot 1](<https://github.com/${REPO}/blob/fb(1)/feedback/${report.id}/screenshot-0.png?raw=true>)`,
   );
 });
 
-it("a report with no image commits no image and says so", async () => {
-  const report: Record<string, unknown> = { ...valid(), marks: [] };
+it("each screenshot is committed, numbered in order, and shown in the issue in order", async () => {
+  const report = valid();
+  const [shot] = report.screenshots as Record<string, unknown>[];
+  const form = new FormData();
+  form.append("report", JSON.stringify({ ...report, screenshots: [shot, shot] }));
+  form.append("image0", new Blob([PNG], { type: "image/png" }), "x");
+  form.append("image1", new Blob([WEBP], { type: "image/webp" }), "x");
+  const request = new Request("http://localhost/api/feedback", { method: "POST", body: form });
+  expect((await route.POST(request)).status).toBe(204);
+  expect(decode(files.get(`main:feedback/${report.id}/screenshot-1.webp`))).toEqual(
+    Buffer.from(WEBP),
+  );
+  const body = issues[0]?.body ?? "";
+  const first = body.indexOf(
+    `![Screenshot 1](<https://github.com/${REPO}/blob/main/feedback/${report.id}/screenshot-0.png?raw=true>)`,
+  );
+  const second = body.indexOf(
+    `![Screenshot 2](<https://github.com/${REPO}/blob/main/feedback/${report.id}/screenshot-1.webp?raw=true>)`,
+  );
+  expect(first).toBeGreaterThan(-1);
+  expect(second).toBeGreaterThan(first);
+});
+
+it("a report with no screenshots commits no image and says so", async () => {
+  const report: Record<string, unknown> = { ...valid(), screenshots: [] };
   await route.POST(post(report));
   expect([...files.keys()]).toEqual([`main:feedback/${report.id}/report.json`]);
   expect(issues[0]?.body).toContain("No screenshot.");

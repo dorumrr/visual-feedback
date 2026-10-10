@@ -17,10 +17,11 @@ import { createFeedback } from "visual-feedback";
 const feedback = createFeedback({
   onSubmit: async (report) => {
     const body = new FormData();
-    body.append("report", JSON.stringify({ ...report, image: undefined }));
-    if (report.image) {
-      const extension = report.image.type === "image/png" ? "png" : "webp";
-      body.append("image", report.image, `${report.id}.${extension}`);
+    const screenshots = report.screenshots.map(({ image: _, ...shot }) => shot);
+    body.append("report", JSON.stringify({ ...report, screenshots }));
+    for (const [i, { image }] of report.screenshots.entries()) {
+      const extension = image.type === "image/png" ? "png" : "webp";
+      body.append(`image${i}`, image, `${report.id}-${i}.${extension}`);
     }
     const res = await fetch("/api/feedback", { method: "POST", body });
     if (!res.ok) throw new Error("It didn't send. Your note is kept.");
@@ -32,7 +33,7 @@ const feedback = createFeedback({
 | option | type | default | meaning |
 |---|---|---|---|
 | `onSubmit` | `(report) => Promise<void>` | – | Sends the report. A throw shows the send error state, using the error's message. Give this or `endpoint`; with both, `onSubmit` is used. |
-| `endpoint` | `string` | – | POSTs `multipart/form-data` with a `report` part (JSON, no image) and an `image` part named `<id>.webp` or `<id>.png`. An answer that is not 2xx, a redirect included, shows the send error state with the default `error` text. It is a same-origin `fetch`, so it sends cookies only to the page's own origin. |
+| `endpoint` | `string` | – | POSTs `multipart/form-data` with a `report` part (JSON, each screenshot without its image) and one part per screenshot, `image0`, `image1` and on, named `<id>-<n>.webp` or `<id>-<n>.png`. An answer that is not 2xx, a redirect included, shows the send error state with the default `error` text. It is a same-origin `fetch`, so it sends cookies only to the page's own origin. |
 | `headers` | `Record<string, string>` or `() => Record<string, string>` | – | Extra headers for `endpoint`. |
 | `trigger` | `"button" \| "none"` | `"button"` | `"none"` draws nothing; the host calls `open()`. |
 | `position` | `"bottom-right" \| "bottom-left" \| "top-right" \| "top-left"` | `"bottom-right"` | Corner of the trigger. |
@@ -44,7 +45,7 @@ const feedback = createFeedback({
 | `capture.maxWidth` | `number` | `1920` | |
 | `capture.type` | `"image/webp" \| "image/png"` | `"image/webp"` | |
 | `capture.quality` | `number` | `0.85` | For WebP. |
-| `redactUrl` | `boolean` | `false` | Drops the query string and the hash from `page.url`. |
+| `redactUrl` | `boolean` | `false` | Drops the query string and the hash from `page.url`, the report's and each screenshot's. |
 | `context` | `() => Record<string, unknown> \| Promise<…>` | – | Host data added to the report, such as a user id or the app version. Called at Send; a throw shows the send error state, using the error's message. |
 | `strings` | `Partial<FeedbackStrings>` | English | SPEC §12 keys. Keys left out, or given as `undefined`, keep their English text. |
 | `theme` | `"auto" \| "light" \| "dark"` | `"auto"` | THEMING.md. |
@@ -69,8 +70,7 @@ type FeedbackReport = {
   createdAt: string;                // ISO 8601
   note: string;
   category?: string;
-  image: Blob | null;               // marks painted in; null after "Send without screenshot"
-  marks: Mark[];                    // shapes and text labels, in image pixels
+  screenshots: Screenshot[];        // at most 10; empty after "Send without screenshot"
   page: { url: string; title: string };
   viewport: { width: number; height: number; devicePixelRatio: number };
   scroll: { x: number; y: number };
@@ -78,6 +78,13 @@ type FeedbackReport = {
   language: string;
   timeZone: string;
   context: Record<string, unknown>;
+};
+type Screenshot = {
+  image: Blob;                      // marks painted in
+  marks: Mark[];                    // shapes and text labels, in image pixels
+  page: { url: string; title: string };  // the page as it was when this screenshot was taken
+  viewport: { width: number; height: number; devicePixelRatio: number };
+  scroll: { x: number; y: number };
 };
 type Mark =
   | { tool: "pen"; points: [number, number][] }
@@ -103,19 +110,21 @@ import { Feedback } from "visual-feedback/react";
 
 ## parseFeedbackRequest(request, limits?) (`visual-feedback/server`)
 ```ts
-const { report, image } = await parseFeedbackRequest(request, { maxImageBytes: 5_000_000 });
+const { report } = await parseFeedbackRequest(request, { maxImageBytes: 5_000_000 });
 ```
 - It reads the multipart body that `endpoint` sends and checks the report's shape. `id` must be a
   lower-case UUID v4, and `createdAt` an ISO time from 1970 to 9999. Fields that `FeedbackReport`
   does not define, and `__proto__` keys at any depth, are dropped.
 - In the report's text, `context` included, NUL characters are removed and half surrogate pairs (a
   cut emoji) become U+FFFD, so any store, Postgres `jsonb` included, can keep it.
-- It checks that the image is a real WebP or PNG (magic bytes, not the declared type) and within
+- A report holds at most 10 screenshots, and screenshot `n` needs exactly one image part,
+  `image<n>`. An image part with no screenshot is refused, and so is a part named `image`, which
+  visual-feedback 0.1 sent.
+- It checks that each image is a real WebP or PNG (magic bytes, not the declared type) and within
   `maxImageBytes`, which is `10_000_000` by default. The report part may be at most 1 MiB, and
-  the whole body at most `maxImageBytes` plus 1 MiB plus 64 KiB for the multipart framing; a
-  larger body is refused while it streams in.
-- `image` is the checked image, typed from its bytes, or `null` when there is no image part.
-  `report.image` is the same value.
+  the whole body at most 10 times `maxImageBytes` plus 1 MiB plus 64 KiB for the multipart
+  framing; a larger body is refused while it streams in.
+- `report.screenshots[n].image` is the checked image of part `image<n>`, typed from its bytes.
 - If any check fails, it throws a `FeedbackRequestError` that carries a `status` (400 or 413).
 - Storing the report, and checking who sent it, is the host's job. `report.context` comes from the
   browser, so it is never proof of who sent it: take the user from your own session.

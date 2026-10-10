@@ -7,16 +7,30 @@ export type Mark =
 /** The longest text label the widget lets a user type, and the server accepts. */
 export const TEXT_LIMIT = 280;
 
+/** The most screenshots one report holds, in the widget and on the server. */
+export const SCREENSHOT_LIMIT = 10;
+
+type Page = { url: string; title: string };
+type Viewport = { width: number; height: number; devicePixelRatio: number };
+type Scroll = { x: number; y: number };
+
+export type Screenshot = {
+  image: Blob;
+  marks: Mark[];
+  page: Page;
+  viewport: Viewport;
+  scroll: Scroll;
+};
+
 export type FeedbackReport = {
   id: string;
   createdAt: string;
   note: string;
   category?: string;
-  image: Blob | null;
-  marks: Mark[];
-  page: { url: string; title: string };
-  viewport: { width: number; height: number; devicePixelRatio: number };
-  scroll: { x: number; y: number };
+  screenshots: Screenshot[];
+  page: Page;
+  viewport: Viewport;
+  scroll: Scroll;
   userAgent: string;
   language: string;
   timeZone: string;
@@ -110,11 +124,43 @@ function mark(value: unknown, path: string): Mark {
   return fail(`${path}.tool`);
 }
 
+/** A report as JSON carries it: each screenshot without its image. */
+export type ReportFields = Omit<FeedbackReport, "screenshots"> & {
+  screenshots: Omit<Screenshot, "image">[];
+};
+
+function facts(fields: Fields, path: string): Pick<Screenshot, "page" | "viewport" | "scroll"> {
+  const at = path ? `${path}.` : "";
+  const page = object(fields.page, `${at}page`);
+  const viewport = object(fields.viewport, `${at}viewport`);
+  const scroll = object(fields.scroll, `${at}scroll`);
+  return {
+    page: { url: string(page.url, `${at}page.url`), title: string(page.title, `${at}page.title`) },
+    viewport: {
+      width: number(viewport.width, `${at}viewport.width`),
+      height: number(viewport.height, `${at}viewport.height`),
+      devicePixelRatio: number(viewport.devicePixelRatio, `${at}viewport.devicePixelRatio`),
+    },
+    scroll: { x: number(scroll.x, `${at}scroll.x`), y: number(scroll.y, `${at}scroll.y`) },
+  };
+}
+
+function screenshot(value: unknown, path: string): Omit<Screenshot, "image"> {
+  const fields = object(value, path);
+  // The images travel beside the JSON, never inside it.
+  if (fields.image !== undefined && fields.image !== null) fail(`${path}.image`);
+  if (!Array.isArray(fields.marks)) fail(`${path}.marks`);
+  return {
+    marks: fields.marks.map((item, i) => mark(item, `${path}.marks[${i}]`)),
+    ...facts(fields, path),
+  };
+}
+
 /**
- * The one shape check for a report without its image, as JSON carries it. Returns a copy that
+ * The one shape check for a report without its images, as JSON carries it. Returns a copy that
  * holds only the known fields, or throws a TypeError that names the first wrong field.
  */
-export function checkReport(value: unknown): Omit<FeedbackReport, "image"> {
+export function checkReport(value: unknown): ReportFields {
   const fields = object(value, "");
   // The id names stored files, so it must not carry a path.
   if (typeof fields.id !== "string" || !UUID_V4.test(fields.id)) fail("id");
@@ -124,24 +170,15 @@ export function checkReport(value: unknown): Omit<FeedbackReport, "image"> {
   // The widget's own time is always 1970 to 9999; stores such as Postgres refuse years outside it.
   const valid = time >= 0 && time < Date.UTC(10000, 0, 1);
   if (!valid || new Date(time).toISOString() !== createdAt) fail("createdAt");
-  if (fields.image !== undefined && fields.image !== null) fail("image");
-  if (!Array.isArray(fields.marks)) fail("marks");
-  const page = object(fields.page, "page");
-  const viewport = object(fields.viewport, "viewport");
-  const scroll = object(fields.scroll, "scroll");
+  const shots = fields.screenshots;
+  if (!Array.isArray(shots) || shots.length > SCREENSHOT_LIMIT) fail("screenshots");
   return {
     id: fields.id,
     createdAt,
     note: string(fields.note, "note"),
     ...(fields.category === undefined ? {} : { category: string(fields.category, "category") }),
-    marks: fields.marks.map((item, i) => mark(item, `marks[${i}]`)),
-    page: { url: string(page.url, "page.url"), title: string(page.title, "page.title") },
-    viewport: {
-      width: number(viewport.width, "viewport.width"),
-      height: number(viewport.height, "viewport.height"),
-      devicePixelRatio: number(viewport.devicePixelRatio, "viewport.devicePixelRatio"),
-    },
-    scroll: { x: number(scroll.x, "scroll.x"), y: number(scroll.y, "scroll.y") },
+    screenshots: shots.map((item, i) => screenshot(item, `screenshots[${i}]`)),
+    ...facts(fields, ""),
     userAgent: string(fields.userAgent, "userAgent"),
     language: string(fields.language, "language"),
     timeZone: string(fields.timeZone, "timeZone"),

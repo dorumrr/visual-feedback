@@ -2,6 +2,14 @@
 
 ## 0.2.0 (not released yet)
 
+- Breaking: a report holds `screenshots`, a list of up to 10, in place of `image` and `marks`.
+  Each screenshot has its `image`, its `marks` and the `page`, `viewport` and `scroll` as they were
+  when it was taken; the report's own `page`, `viewport` and `scroll` stay. "Send without
+  screenshot" gives an empty list. `endpoint` sends the images as the parts `image0`, `image1` and
+  on, and `parseFeedbackRequest` returns `{ report }` and refuses the old single `image` part, so
+  update the widget and the server together. Its body limit is now 10 times `maxImageBytes`, plus
+  the report. Every recipe stores each image as `screenshot-<n>.png` or `.webp`; the Postgres
+  recipe moves images to a new table, `feedback_screenshots`. New type: `Screenshot`.
 - A new look: a tool rail with icons beside the screenshot, the note as a composer with Send in a
   footer row under it, a close button in the header, and an "Esc to cancel" hint. Text follows the site's font and
   size. In a short window the screenshot gives up height, so the note and Send stay in view.

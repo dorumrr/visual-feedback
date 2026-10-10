@@ -1,10 +1,11 @@
 # Recipe: GitHub Issues (private repo only)
 
-Each report becomes an issue: the note, the page URL, the browser data and the image, with the
-category as a label. The image is committed to the repo with GitHub's contents API, at
-`feedback/<id>/image.png`, and shown inside the issue. Then the whole report is committed beside
-it as `feedback/<id>/report.json`, with `image` set to the image's GitHub link (or `null`) and
-`issue` to the issue number: a resend that finds it opens no second issue. The route checks on every send that the repo
+Each report becomes an issue: the note, the page URL, the browser data and the screenshots, with
+the category as a label. Each screenshot's image is committed to the repo with GitHub's contents
+API, at `feedback/<id>/screenshot-<n>.png`, numbered from 0, and shown inside the issue. Then the
+whole report is committed beside them as `feedback/<id>/report.json`, with each screenshot's `image`
+set to its GitHub link and `issue` to the issue number: a resend that finds it opens no second
+issue. The route checks on every send that the repo
 is private, and refuses otherwise. It uses `fetch` and GitHub's REST API, so it needs no package.
 
 `report.context` comes from the browser (docs/API.md): the issue shows it as data, never as proof
@@ -50,7 +51,7 @@ Create a fine-grained personal access token for that one repo, with **Issues: re
 
 Send PNG from the widget, the image type this recipe was checked with inside an issue:
 `createFeedback({ endpoint: "/api/feedback", capture: { type: "image/png" } })`. Without it the
-widget sends WebP (docs/API.md): the route commits and links `image.webp` the same way, but whether
+widget sends WebP (docs/API.md): the route commits and links `screenshot-<n>.webp` the same way, but whether
 the issue shows a WebP image inline is not checked.
 
 ## 3. The route
@@ -101,14 +102,14 @@ function fenced(text: string, max: number): string {
   return `${fence}text\n${shown}\n${fence}`;
 }
 
-function issueBody(report: FeedbackReport, imageUrl: string | null): string {
+function issueBody(report: FeedbackReport, imageUrls: string[]): string {
   const { page, viewport, userAgent, language, timeZone, createdAt, id } = report;
   const screen = `${viewport.width}x${viewport.height} @${viewport.devicePixelRatio}x`;
   // Each fence starts its own line: after other text on that line it is no block.
   return [
     fenced(report.note || "(no note)", 10_000),
     // The angle brackets keep a ( or ) in a branch name from ending the link.
-    imageUrl ? `![Screenshot](<${imageUrl}>)` : "No screenshot.",
+    imageUrls.map((url, i) => `![Screenshot ${i + 1}](<${url}>)`).join("\n\n") || "No screenshot.",
     `**Page:**\n${fenced(page.url, 2_000)}`,
     `**Browser:**\n${fenced(`${userAgent}\n${screen}, ${language}, ${timeZone}`, 1_000)}`,
     `**Sent:** ${createdAt}, report \`${id}\``,
@@ -118,7 +119,7 @@ function issueBody(report: FeedbackReport, imageUrl: string | null): string {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const { report, image } = await parseFeedbackRequest(request);
+    const { report } = await parseFeedbackRequest(request);
     const api = github();
     const repo = await api("GET", "");
     // Checked on every send: a repo made public later must not receive reports.
@@ -151,24 +152,24 @@ export async function POST(request: Request): Promise<Response> {
         throw new Error(`GitHub answered ${commit.status} for ${name}.`);
       }
     };
-    let imageUrl: string | null = null;
-    if (image) {
-      const name = `image.${image.type === "image/png" ? "png" : "webp"}`;
+    const imageUrls: string[] = [];
+    for (const [i, { image }] of report.screenshots.entries()) {
+      const name = `screenshot-${i}.${image.type === "image/png" ? "png" : "webp"}`;
       await put(name, new Uint8Array(await image.arrayBuffer()));
       const path = `${branch.split("/").map(encodeURIComponent).join("/")}/${folder}/${name}`;
-      imageUrl = `https://github.com/${repo.json.full_name}/blob/${path}?raw=true`;
+      imageUrls.push(`https://github.com/${repo.json.full_name}/blob/${path}?raw=true`);
     }
     // GitHub refuses a label name over 50 characters, and one that is only space.
     const category = cut(report.category?.replace(/\s+/g, " ").trim() ?? "", 49);
     const title = cut(report.note.split("\n")[0]?.trim() || "Feedback", 80);
     const issue = await api("POST", "/issues", {
       title,
-      body: issueBody(report, imageUrl),
+      body: issueBody(report, imageUrls),
       labels: ["feedback", ...(category ? [category] : [])],
     });
     if (issue.status !== 201) throw new Error(`GitHub answered ${issue.status} for the issue.`);
-    const { image: _, ...rest } = report;
-    const json = JSON.stringify({ ...rest, image: imageUrl, issue: issue.json.number }, null, 2);
+    const screenshots = report.screenshots.map((shot, i) => ({ ...shot, image: imageUrls[i] }));
+    const json = JSON.stringify({ ...report, screenshots, issue: issue.json.number }, null, 2);
     await put("report.json", new TextEncoder().encode(json));
     return new Response(null, { status: 204 });
   } catch (error) {

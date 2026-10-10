@@ -19,7 +19,7 @@ it("the README's server route, as written, takes a report and refuses a bad one"
   const post = (image: Uint8Array) => {
     const form = new FormData();
     form.append("report", JSON.stringify(valid()));
-    form.append("image", new Blob([image as Uint8Array<ArrayBuffer>], { type: "image/png" }), "x");
+    form.append("image0", new Blob([image as Uint8Array<ArrayBuffer>], { type: "image/png" }), "x");
     return new Request("http://localhost/api/feedback", { method: "POST", body: form });
   };
   expect((await route.POST(post(PNG))).status).toBe(204);

@@ -1,18 +1,21 @@
 # Recipe: Postgres
 
-Each report becomes one row: the `FeedbackReport` (docs/API.md) without its `image` as `jsonb`, the
-image in `image` (`bytea`) with its type in `image_type`, and the user who sent it, taken from your
-own session. `user_id` is the proof of who sent a report; `report.context` is not (docs/API.md).
+Each report becomes one row in `feedback_reports`: the `FeedbackReport` (docs/API.md), its
+screenshots without their images, as `jsonb`, and the user who sent it, taken from your own session.
+Each screenshot's image becomes one row in `feedback_screenshots`, by its `position` in
+`report.screenshots`: the image in `image` (`bytea`) and its type in `image_type`. `user_id` is the
+proof of who sent a report; `report.context` is not (docs/API.md).
 
 To keep images in a bucket instead (docs/recipes/s3.md):
 
 1. Install `aws4fetch` and set the `S3_*` variables as that recipe's step 1 says.
 2. Copy its `bucket()` function into this route.
-3. Before the insert, PUT the image to `url(report.id, "image.png")` or `"image.webp"`, as that
-   recipe's `POST` does: with `"if-none-match": "*"`, so a reused id never replaces a stored
-   image, and throw on any refusal but 412, so a row never lacks its image.
-4. Insert `null` for `image` and keep `image_type`: `image/png` is the file `image.png`, and
-   `image/webp` is `image.webp`.
+3. Before the insert, PUT each image to `url(report.id, "screenshot-<position>.png")` or `.webp`,
+   as that recipe's `POST` does:
+   with `"if-none-match": "*"`, so a reused id never replaces a stored image, and throw on any
+   refusal but 412, so a row never lacks its image.
+4. Insert `null` for `image` and keep `image_type`: `image/png` is the file
+   `screenshot-<position>.png`, and `image/webp` is `screenshot-<position>.webp`.
 5. Read images back with that recipe's `GET`, its `canRead` replaced by the same admin check your
    screens use.
 
@@ -30,9 +33,15 @@ create table feedback_reports (
   id uuid primary key,
   user_id text not null,
   created_at timestamptz not null,
-  report jsonb not null,
+  report jsonb not null
+);
+
+create table feedback_screenshots (
+  report_id uuid not null references feedback_reports (id) on delete cascade,
+  position integer not null,
   image bytea,
-  image_type text
+  image_type text not null,
+  primary key (report_id, position)
 );
 ```
 
@@ -70,17 +79,30 @@ export async function POST(request: Request): Promise<Response> {
   const user = await currentUser(request);
   if (!user) return new Response(null, { status: 401 });
   try {
-    const { report, image } = await parseFeedbackRequest(request);
-    const { image: _, ...stored } = report;
-    const bytes = image ? new Uint8Array(await image.arrayBuffer()) : null;
+    const { report } = await parseFeedbackRequest(request);
+    const screenshots = report.screenshots.map(({ image: _, ...shot }) => shot);
     // The report was parsed from JSON, so it is JSON; context is only typed as unknown values.
-    const json = db().json(stored as postgres.JSONValue);
-    // A "Try again" sends the same id, so the row it already wrote stays as it is.
-    await db()`
-      insert into feedback_reports (id, user_id, created_at, report, image, image_type)
-      values (${report.id}, ${user}, ${report.createdAt}, ${json}, ${bytes},
-        ${image?.type ?? null})
-      on conflict (id) do nothing`;
+    const json = db().json({ ...report, screenshots } as postgres.JSONValue);
+    const images = await Promise.all(
+      report.screenshots.map(async ({ image }, position) => ({
+        report_id: report.id,
+        position,
+        image: new Uint8Array(await image.arrayBuffer()),
+        image_type: image.type,
+      })),
+    );
+    // One transaction, so a report row never lacks its screenshots.
+    await db().begin(async (sql) => {
+      // A "Try again" sends the same id, so the rows it already wrote stay as they are.
+      const inserted = await sql`
+        insert into feedback_reports (id, user_id, created_at, report)
+        values (${report.id}, ${user}, ${report.createdAt}, ${json})
+        on conflict (id) do nothing
+        returning id`;
+      if (inserted.length && images.length) {
+        await sql`insert into feedback_screenshots ${sql(images)}`;
+      }
+    });
     return new Response(null, { status: 204 });
   } catch (error) {
     if (error instanceof FeedbackRequestError) {

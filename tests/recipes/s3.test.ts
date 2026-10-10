@@ -122,7 +122,28 @@ afterEach(() => {
 function post(report: Record<string, unknown>, image?: Uint8Array, type = "image/png"): Request {
   const form = new FormData();
   form.append("report", JSON.stringify(report));
-  if (image) form.append("image", new Blob([image as Uint8Array<ArrayBuffer>], { type }), "x");
+  if (image) form.append("image0", new Blob([image as Uint8Array<ArrayBuffer>], { type }), "x");
+  return new Request("http://localhost/api/feedback", { method: "POST", body: form });
+}
+
+type Report = Record<string, unknown>;
+// The report as stored: each screenshot's image is its file name.
+const named = (report: Report, ...files: string[]): Report => ({
+  ...report,
+  screenshots: (report.screenshots as Report[]).map((shot, i) => ({ ...shot, image: files[i] })),
+});
+// The sample report with a second screenshot, scrolled further down.
+const two = (report: Report): Report => {
+  const [shot] = report.screenshots as Report[];
+  return { ...report, screenshots: [shot, { ...shot, scroll: { x: 0, y: 900 } }] };
+};
+
+// A report of two screenshots: a PNG, then a WebP.
+function postTwo(report: Report): Request {
+  const form = new FormData();
+  form.append("report", JSON.stringify(two(report)));
+  form.append("image0", new Blob([PNG as Uint8Array<ArrayBuffer>], { type: "image/png" }), "x");
+  form.append("image1", new Blob([WEBP as Uint8Array<ArrayBuffer>], { type: "image/webp" }), "x");
   return new Request("http://localhost/api/feedback", { method: "POST", body: form });
 }
 
@@ -138,16 +159,16 @@ it("a report sent through the recipe lands in the bucket, image first, signed wi
   expect((await route.POST(post(report, PNG))).status).toBe(204);
   expect(requests.map((r) => `${r.method} ${r.key}`)).toEqual([
     `HEAD ${key(report.id, "report.json")}`,
-    `PUT ${key(report.id, "image.png")}`,
+    `PUT ${key(report.id, "screenshot-0.png")}`,
     `PUT ${key(report.id, "report.json")}`,
   ]);
-  expect(objects.get(key(report.id, "image.png"))).toEqual({
+  expect(objects.get(key(report.id, "screenshot-0.png"))).toEqual({
     body: Buffer.from(PNG),
     type: "image/png",
   });
   const stored = objects.get(key(report.id, "report.json"));
   expect(stored?.type).toBe("application/json");
-  expect(JSON.parse(String(stored?.body))).toEqual({ ...report, image: "image.png" });
+  expect(JSON.parse(String(stored?.body))).toEqual(named(report, "screenshot-0.png"));
   for (const { headers } of requests) {
     expect(String(headers.authorization)).toMatch(/^AWS4-HMAC-SHA256 Credential=TESTKEYID\//);
     // Private: nothing asks the bucket to make an object public or grant anyone access.
@@ -155,14 +176,30 @@ it("a report sent through the recipe lands in the bucket, image first, signed wi
   }
 });
 
+it("each screenshot is its own object, numbered in order, all before report.json", async () => {
+  const report = valid();
+  expect((await route.POST(postTwo(report))).status).toBe(204);
+  expect(requests.map((r) => `${r.method} ${r.key}`)).toEqual([
+    `HEAD ${key(report.id, "report.json")}`,
+    `PUT ${key(report.id, "screenshot-0.png")}`,
+    `PUT ${key(report.id, "screenshot-1.webp")}`,
+    `PUT ${key(report.id, "report.json")}`,
+  ]);
+  const stored = JSON.parse(String(objects.get(key(report.id, "report.json"))?.body));
+  expect(stored).toEqual(named(two(report), "screenshot-0.png", "screenshot-1.webp"));
+  const second = await admin.GET(get(String(report.id), "screenshot-1.webp"));
+  expect(second.headers.get("content-type")).toBe("image/webp");
+  expect(new Uint8Array(await second.arrayBuffer())).toEqual(WEBP);
+});
+
 it("the host's checked route reads the report and the image back from the bucket", async () => {
   const report = valid();
   await route.POST(post(report, PNG));
   const json = await admin.GET(get(String(report.id), "report.json"));
   expect(json.status).toBe(200);
-  expect(await json.json()).toEqual({ ...report, image: "image.png" });
+  expect(await json.json()).toEqual(named(report, "screenshot-0.png"));
   expect(json.headers.get("cache-control")).toBe("private, no-store");
-  const image = await admin.GET(get(String(report.id), "image.png"));
+  const image = await admin.GET(get(String(report.id), "screenshot-0.png"));
   expect(image.headers.get("content-type")).toBe("image/png");
   expect(image.headers.get("cache-control")).toBe("private, no-store");
   expect(new Uint8Array(await image.arrayBuffer())).toEqual(PNG);
@@ -184,6 +221,9 @@ it("a read for any other key is refused before the bucket is asked", async () =>
     ["0b6c3a52-7f1e-4c2a-9d3b-5e8f0a1b2c3d", "../../secret"],
     ["0b6c3a52-7f1e-4c2a-9d3b-5e8f0a1b2c3d", "notes.txt"],
     ["0b6c3a52-7f1e-4c2a-9d3b-5e8f0a1b2c3d", "image.jpg"],
+    ["0b6c3a52-7f1e-4c2a-9d3b-5e8f0a1b2c3d", "image.png"],
+    ["0b6c3a52-7f1e-4c2a-9d3b-5e8f0a1b2c3d", "screenshot-10.png"],
+    ["0b6c3a52-7f1e-4c2a-9d3b-5e8f0a1b2c3d", "screenshot-0.gif"],
     ["0B6C3A52-7F1E-4C2A-9D3B-5E8F0A1B2C3D", "report.json"],
     ["", "report.json"],
     ["0b6c3a52-7f1e-4c2a-9d3b-5e8f0a1b2c3d", ""],
@@ -198,17 +238,19 @@ it("a read for any other key is refused before the bucket is asked", async () =>
   expect(requests).toHaveLength(1);
 });
 
-it("a report with no image stores report.json alone, with image: null", async () => {
-  const report: Record<string, unknown> = { ...valid(), marks: [] };
+it("a report with no screenshots stores report.json alone", async () => {
+  const report: Record<string, unknown> = { ...valid(), screenshots: [] };
   expect((await route.POST(post(report))).status).toBe(204);
   expect([...objects.keys()]).toEqual([key(report.id, "report.json")]);
-  expect(JSON.parse(String(objects.get(key(report.id, "report.json"))?.body)).image).toBeNull();
+  expect(JSON.parse(String(objects.get(key(report.id, "report.json"))?.body)).screenshots).toEqual(
+    [],
+  );
 });
 
 it("when the bucket refuses the image, no report.json is written without it", async () => {
   const report = valid();
-  failKey = key(report.id, "image.png");
-  await expect(route.POST(post(report, PNG))).rejects.toThrow(/403 for image\.png/);
+  failKey = key(report.id, "screenshot-0.png");
+  await expect(route.POST(post(report, PNG))).rejects.toThrow(/403 for screenshot-0\.png/);
   expect(objects.has(key(report.id, "report.json"))).toBe(false);
 });
 
@@ -218,8 +260,8 @@ it("a request that reuses a stored report's id replaces neither the report nor i
   const forged = { ...report, note: "forged" };
   expect((await route.POST(post(forged, Uint8Array.of(...PNG, 0)))).status).toBe(204);
   expect((await route.POST(post(forged, WEBP, "image/webp"))).status).toBe(204);
-  expect(objects.get(key(report.id, "image.png"))?.body).toEqual(Buffer.from(PNG));
-  expect(objects.has(key(report.id, "image.webp"))).toBe(false);
+  expect(objects.get(key(report.id, "screenshot-0.png"))?.body).toEqual(Buffer.from(PNG));
+  expect(objects.has(key(report.id, "screenshot-0.webp"))).toBe(false);
   expect(JSON.parse(String(objects.get(key(report.id, "report.json"))?.body)).note).toBe(
     report.note,
   );
@@ -240,7 +282,7 @@ it("Try again after a failed report.json write keeps the image already stored", 
   failKey = "";
   // Every write is create-only, so a second image under the same id cannot replace the first.
   expect((await route.POST(post(report, Uint8Array.of(...PNG, 0)))).status).toBe(204);
-  expect(objects.get(key(report.id, "image.png"))?.body).toEqual(Buffer.from(PNG));
+  expect(objects.get(key(report.id, "screenshot-0.png"))?.body).toEqual(Buffer.from(PNG));
   expect(JSON.parse(String(objects.get(key(report.id, "report.json"))?.body)).id).toBe(report.id);
   for (const put of requests.filter((r) => r.method === "PUT")) {
     expect(put.headers["if-none-match"]).toBe("*");
@@ -262,26 +304,26 @@ it("the widget's endpoint in the recipe is the path its route file serves", () =
 it("a WebP report, as Chromium and Firefox send, is stored and read back as image.webp", async () => {
   const report = valid();
   expect((await route.POST(post(report, WEBP, "image/webp"))).status).toBe(204);
-  const image = await admin.GET(get(String(report.id), "image.webp"));
+  const image = await admin.GET(get(String(report.id), "screenshot-0.webp"));
   expect(image.headers.get("content-type")).toBe("image/webp");
   expect(new Uint8Array(await image.arrayBuffer())).toEqual(WEBP);
-  expect(JSON.parse(String(objects.get(key(report.id, "report.json"))?.body)).image).toBe(
-    "image.webp",
-  );
+  expect(
+    JSON.parse(String(objects.get(key(report.id, "report.json"))?.body)).screenshots[0].image,
+  ).toBe("screenshot-0.webp");
 });
 
 it("a signature made with the wrong secret is refused by the fake bucket, as S3 would", async () => {
   process.env.S3_SECRET_ACCESS_KEY = "a-wrong-secret";
-  await expect(route.POST(post(valid(), PNG))).rejects.toThrow(/403 for image\.png/);
+  await expect(route.POST(post(valid(), PNG))).rejects.toThrow(/403 for screenshot-0\.png/);
   expect(objects.size).toBe(0);
 });
 
 it("a bucket that answers 5xx gives up after a short retry, so the user can try again soon", async () => {
   const report = valid();
-  failKey = key(report.id, "image.png");
+  failKey = key(report.id, "screenshot-0.png");
   failStatus = 500;
   const started = performance.now();
-  await expect(route.POST(post(report, PNG))).rejects.toThrow(/500 for image\.png/);
+  await expect(route.POST(post(report, PNG))).rejects.toThrow(/500 for screenshot-0\.png/);
   expect(performance.now() - started).toBeLessThan(3000);
   expect(requests.filter((r) => r.key === failKey)).toHaveLength(3);
 });

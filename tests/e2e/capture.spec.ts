@@ -82,15 +82,22 @@ test.describe("on a page with a known colour under the trigger", () => {
         string,
         unknown
       >;
-      return { ...last, image: undefined, id: typeof last.id, createdAt: typeof last.createdAt };
+      const screenshots = (last.screenshots as Record<string, unknown>[]).map((shot) => ({
+        ...shot,
+        image: shot.image instanceof Blob,
+      }));
+      return { ...last, screenshots, id: typeof last.id, createdAt: typeof last.createdAt };
     });
-    expect(report).toMatchObject({
-      note: "hello",
-      marks: [],
-      id: "string",
-      createdAt: "string",
+    const where = {
       page: { url: `${new URL(page.url()).origin}/widget/capture.html`, title: "capture fixture" },
       scroll: { x: 0, y: 0 },
+    };
+    expect(report).toMatchObject({
+      note: "hello",
+      screenshots: [{ image: true, marks: [], ...where }],
+      id: "string",
+      createdAt: "string",
+      ...where,
       context: {},
     });
     expect(await events(page)).toEqual(["open", "close"]);
@@ -429,7 +436,7 @@ test.describe("when the capture fails", () => {
     expect(checked.length).toBeGreaterThan(0);
   });
 
-  test("Send without screenshot gives a report with image: null", async ({ page }) => {
+  test("Send without screenshot gives a report with no screenshots", async ({ page }) => {
     await page.getByRole("button", { name: "Send without screenshot" }).click();
     await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
     await expect(page.locator("visual-feedback").locator("canvas")).toHaveCount(0);
@@ -437,9 +444,10 @@ test.describe("when the capture fails", () => {
     await send(page, "no picture");
     const report = await page.evaluate(() => {
       const last = (window as unknown as Mounted).reports.at(-1);
-      return last && { image: last.image, note: last.note, marks: last.marks };
+      const page = (last as unknown as { page: { url: string } } | undefined)?.page;
+      return last && { note: last.note, screenshots: last.screenshots, url: page?.url };
     });
-    expect(report).toEqual({ image: null, note: "no picture", marks: [] });
+    expect(report).toEqual({ note: "no picture", screenshots: [], url: page.url() });
   });
 
   test("Try again captures again, with the dialog hidden from the image", async ({ page }) => {

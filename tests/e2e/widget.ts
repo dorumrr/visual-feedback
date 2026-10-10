@@ -9,7 +9,7 @@ export type Mounted = {
     on(e: string, f: () => void): () => void;
   };
   events: string[];
-  reports: { image: Blob | null; note: string; marks: unknown[] }[];
+  reports: { note: string; screenshots: { image: Blob; marks: unknown[] }[] }[];
   /** onSubmit waits for this, so a test can hold a send open. */
   hold?: Promise<void>;
   release?: () => void;
@@ -85,7 +85,7 @@ export function read(
 ): Promise<Shot | null> {
   return page.evaluate(
     async ({ points, count, imagePixels }) => {
-      const image = (window as unknown as Mounted).reports.at(-1)?.image;
+      const image = (window as unknown as Mounted).reports.at(-1)?.screenshots[0]?.image;
       if (!image) return null;
       const bitmap = await createImageBitmap(image);
       const canvas = document.createElement("canvas");

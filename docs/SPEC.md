@@ -16,7 +16,7 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
 - **capturing:** the trigger and any open panel are hidden, so they are not in the image. The
   screen is captured (SPEC §5), and a screen reader is told the `capturing` text.
 - **capture error:** the `captureError` text, with "Try again" (back to capturing), "Send without
-  screenshot" (annotating with no image: no toolbar, `image: null`, no marks) and Cancel or Esc
+  screenshot" (annotating with no image: no toolbar, no screenshots in the report) and Cancel or Esc
   (idle).
 - **annotating:** a full-viewport overlay shows the image with a tool rail beside it, and the note
   field, with Send in a footer row under it. A close button in the header and Esc cancel.
@@ -64,10 +64,12 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
 
 ## 6. The report
 Defined in `docs/API.md` (`FeedbackReport`). It holds:
-- the flattened image, with the marks painted in, or no image after "Send without screenshot";
-- the marks as vectors;
+- the screenshots, at most 10, or none after "Send without screenshot". Each has its flattened
+  image with the marks painted in, the marks as vectors, and the page URL and title, the viewport
+  and the scroll position as they were when it was taken;
 - the note and the category;
-- the page URL and title, the viewport and the scroll position, as they were at the screenshot;
+- the page URL and title, the viewport and the scroll position, as they were at the screenshot,
+  or at the capture error after "Send without screenshot";
 - the user agent, the language, the time zone and the time of Send;
 - whatever the host's `context()` returns.
 

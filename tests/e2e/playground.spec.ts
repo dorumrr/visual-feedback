@@ -18,20 +18,26 @@ test("the playground loads the built package and shows a report", async ({ page 
       id: "r1",
       note: "The save button does nothing",
       category: "bug",
-      image,
-      marks: [{ tool: "box", x: 1, y: 2, width: 30, height: 10 }],
-      page: { url: "https://example.test/settings?tab=2", title: "Settings" },
+      screenshots: [
+        {
+          image,
+          marks: [{ tool: "box", x: 1, y: 2, width: 30, height: 10 }],
+          page: { url: "https://example.test/settings?tab=2", title: "Settings" },
+        },
+        { image, marks: [], page: { url: "https://example.test/other", title: "Other" } },
+      ],
+      page: { url: "https://example.test/other", title: "Other" },
       context: {},
     });
   });
 
   const report = page.locator(".report");
   await expect(report.getByRole("heading", { name: "The save button does nothing" })).toBeVisible();
-  await expect(report.getByRole("img", { name: "Captured screenshot" })).toBeVisible();
-  await expect(report.getByRole("link", { name: /Download image \(image\/png/ })).toHaveAttribute(
-    "download",
-    "r1.png",
-  );
+  await expect(report.getByRole("img", { name: "Screenshot 1" })).toBeVisible();
+  await expect(report.getByRole("img", { name: "Screenshot 2" })).toBeVisible();
+  await expect(
+    report.getByRole("link", { name: /Download screenshot 2 \(image\/png/ }),
+  ).toHaveAttribute("download", "r1-1.png");
   const details = report.locator("pre");
   await expect(details).toContainText('"category": "bug"');
   await expect(details).toContainText('"tool": "box"');
@@ -48,6 +54,6 @@ test("in the playground, the trigger captures the page and Send shows the report
   await page.getByRole("button", { name: "Send", exact: true }).click();
   const report = page.locator(".report");
   await expect(report.getByRole("heading", { name: "From the playground" })).toBeVisible();
-  await expect(report.getByRole("img", { name: "Captured screenshot" })).toBeVisible();
+  await expect(report.getByRole("img", { name: "Screenshot 1" })).toBeVisible();
   await expect(report.locator("pre")).toContainText('"marks": []');
 });

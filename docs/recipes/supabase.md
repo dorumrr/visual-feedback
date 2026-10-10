@@ -1,10 +1,11 @@
 # Recipe: Supabase
 
-Each report becomes one row in a table and, when it has one, one image in the private Storage
-bucket `feedback`, named `<id>/image.png` or `<id>/image.webp`. The row has the Postgres recipe's columns
-(docs/recipes/postgres.md), except that `user_id` is the Supabase user's uuid and the image is in
-Storage instead of `bytea`. Row-level security lets
-only your app's admins read either, and nobody but your server can write.
+Each report becomes one row in a table and one image per screenshot in the private Storage bucket
+`feedback`, named `<id>/screenshot-<n>.png` or `.webp`, numbered from 0. The row has the columns of
+the Postgres recipe's `feedback_reports` (docs/recipes/postgres.md), except that `user_id` is the
+Supabase user's uuid. The images are in Storage instead of a second table, and each screenshot's
+`image` in `report` is its file name. Row-level security lets only your app's admins read either,
+and nobody but your server can write.
 
 `user_id` is the proof of who sent a report; `report.context` is not (docs/API.md). The images show
 the screen as the user saw it, with nothing masked (SPEC §7).
@@ -26,8 +27,7 @@ create table feedback_reports (
   id uuid primary key,
   user_id uuid not null references auth.users (id) on delete cascade,
   created_at timestamptz not null,
-  report jsonb not null,
-  image_type text
+  report jsonb not null
 );
 alter table feedback_reports enable row level security;
 grant select on feedback_reports to authenticated;
@@ -49,9 +49,9 @@ error, never a row, and a download from `feedback` is refused.
 
 An admin screen reads with the admin's own session, never the service role key:
 `from("feedback_reports").select()` for the rows, filtered and paged as the screen needs, and
-`storage.from("feedback").createSignedUrl("<id>/image.png", 60)` for an image, `image.webp` when
-`image_type` is `image/webp`. A signed URL works for anyone who holds it for those 60 seconds: show
-it, never share it.
+`storage.from("feedback").createSignedUrl("<id>/<image>", 60)` for a screenshot, where `<image>` is
+its `image` in `report`, such as `screenshot-0.png`. A signed URL works for anyone who holds it for
+those 60 seconds: show it, never share it.
 
 Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` on the server. The service role key bypasses
 row-level security: never send it to the browser.
@@ -87,28 +87,28 @@ export async function POST(request: Request): Promise<Response> {
   const user = await currentUser(request);
   if (!user) return new Response(null, { status: 401 });
   try {
-    const { report, image } = await parseFeedbackRequest(request);
+    const { report } = await parseFeedbackRequest(request);
     const db = supabase();
-    // The image first, so a row never lacks its image.
-    if (image) {
-      const name = `${report.id}/image.${image.type === "image/png" ? "png" : "webp"}`;
+    const name = (image: Blob, i: number) =>
+      `screenshot-${i}.${image.type === "image/png" ? "png" : "webp"}`;
+    const screenshots = report.screenshots.map((shot, i) => ({ ...shot, image: name(shot.image, i) }));
+    // The images first, so a row never lacks its images.
+    for (const [i, { image }] of report.screenshots.entries()) {
       const upload = await db.storage
         .from("feedback")
-        .upload(name, image, { contentType: image.type, upsert: false });
+        .upload(`${report.id}/${name(image, i)}`, image, { contentType: image.type, upsert: false });
       // A resend finds its image there (409); the id comes from the browser, so never replace it.
       const error = upload.error;
       const stored = error && "statusCode" in error && error.statusCode === "409";
       if (error && !stored) throw error;
     }
-    const { image: _, ...stored } = report;
     // A "Try again" sends the same id, so the row it already wrote stays as it is.
     const insert = await db.from("feedback_reports").upsert(
       {
         id: report.id,
         user_id: user,
         created_at: report.createdAt,
-        report: stored,
-        image_type: image?.type ?? null,
+        report: { ...report, screenshots },
       },
       { onConflict: "id", ignoreDuplicates: true },
     );

@@ -188,7 +188,7 @@ function post(
 ) {
   const form = new FormData();
   form.append("report", JSON.stringify(report));
-  if (image) form.append("image", new Blob([image as Uint8Array<ArrayBuffer>], { type }), "x");
+  if (image) form.append("image0", new Blob([image as Uint8Array<ArrayBuffer>], { type }), "x");
   return new Request("http://localhost/api/feedback", {
     method: "POST",
     body: form,
@@ -219,22 +219,20 @@ it("a report sent through the recipe is a row and an image, read back by an admi
   const report = valid();
   expect((await signedIn.POST(post(report, USER, PNG))).status).toBe(204);
   expect(requests).toEqual([
-    `POST /storage/v1/object/feedback/${report.id}/image.png`,
+    `POST /storage/v1/object/feedback/${report.id}/screenshot-0.png`,
     "POST /rest/v1/feedback_reports",
   ]);
   const [row] = (await readAs("authenticated", adminClaims, "feedback_reports")) as {
     user_id: string;
     report: Record<string, unknown>;
-    image_type: string;
   }[];
-  const { image: _, ...stored } = { ...report, image: null };
+  const [shot] = report.screenshots as Record<string, unknown>[];
   expect(row?.user_id).toBe(USER);
-  expect(row?.report).toEqual(stored);
-  expect(row?.image_type).toBe("image/png");
+  expect(row?.report).toEqual({ ...report, screenshots: [{ ...shot, image: "screenshot-0.png" }] });
   expect(await readAs("authenticated", adminClaims, "storage.objects")).toEqual([
-    { bucket_id: "feedback", name: `${report.id}/image.png` },
+    { bucket_id: "feedback", name: `${report.id}/screenshot-0.png` },
   ]);
-  expect(objects.get(`feedback/${report.id}/image.png`)).toEqual({
+  expect(objects.get(`feedback/${report.id}/screenshot-0.png`)).toEqual({
     body: Buffer.from(PNG),
     type: "image/png",
   });
@@ -297,24 +295,55 @@ it("sending the same report again leaves the row it already wrote", async () => 
   expect(rows.map((row) => row.report.note)).toEqual([report.note]);
 });
 
-it("a report with no image uploads nothing and stores no type", async () => {
-  await signedIn.POST(post({ ...valid(), marks: [] }, USER));
+it("a report with no screenshots uploads nothing and stores an empty list", async () => {
+  await signedIn.POST(post({ ...valid(), screenshots: [] }, USER));
   expect(requests).toEqual(["POST /rest/v1/feedback_reports"]);
-  expect((await db.query("select image_type from feedback_reports")).rows).toEqual([
-    { image_type: null },
+  expect((await db.query("select report->'screenshots' as s from feedback_reports")).rows).toEqual([
+    { s: [] },
   ]);
 });
 
-it("a WebP image is stored as image.webp with its type", async () => {
+it("each screenshot is its own object, numbered in order, all before the row", async () => {
   const report = valid();
-  await signedIn.POST(post(report, USER, WEBP, "image/webp"));
-  expect(objects.get(`feedback/${report.id}/image.webp`)).toEqual({
+  const [shot] = report.screenshots as Record<string, unknown>[];
+  const both = { ...report, screenshots: [shot, { ...shot, scroll: { x: 0, y: 900 } }] };
+  const form = new FormData();
+  form.append("report", JSON.stringify(both));
+  form.append("image0", new Blob([PNG], { type: "image/png" }), "x");
+  form.append("image1", new Blob([WEBP], { type: "image/webp" }), "x");
+  const request = new Request("http://localhost/api/feedback", {
+    method: "POST",
+    body: form,
+    headers: { "x-test-user": USER },
+  });
+  expect((await signedIn.POST(request)).status).toBe(204);
+  expect(requests).toEqual([
+    `POST /storage/v1/object/feedback/${report.id}/screenshot-0.png`,
+    `POST /storage/v1/object/feedback/${report.id}/screenshot-1.webp`,
+    "POST /rest/v1/feedback_reports",
+  ]);
+  const stored = (
+    await db.query<{ s: string[] }>(
+      "select jsonb_path_query_array(report, '$.screenshots[*].image') as s from feedback_reports",
+    )
+  ).rows;
+  expect(stored).toEqual([{ s: ["screenshot-0.png", "screenshot-1.webp"] }]);
+  expect(objects.get(`feedback/${report.id}/screenshot-1.webp`)).toEqual({
     body: Buffer.from(WEBP),
     type: "image/webp",
   });
-  expect((await db.query("select image_type from feedback_reports")).rows).toEqual([
-    { image_type: "image/webp" },
-  ]);
+});
+
+it("a WebP image is stored as screenshot-0.webp, named so in the report", async () => {
+  const report = valid();
+  await signedIn.POST(post(report, USER, WEBP, "image/webp"));
+  expect(objects.get(`feedback/${report.id}/screenshot-0.webp`)).toEqual({
+    body: Buffer.from(WEBP),
+    type: "image/webp",
+  });
+  expect(
+    (await db.query("select report->'screenshots'->0->>'image' as i from feedback_reports")).rows,
+  ).toEqual([{ i: "screenshot-0.webp" }]);
 });
 
 it("a wrong key is refused by Supabase, and the route does not report success", async () => {
@@ -346,7 +375,7 @@ it("when Storage refuses the image, no row is written without it", async () => {
   failing = "storage";
   const report = valid();
   await expect(signedIn.POST(post(report, USER, PNG))).rejects.toThrow();
-  expect(requests).toEqual([`POST /storage/v1/object/feedback/${report.id}/image.png`]);
+  expect(requests).toEqual([`POST /storage/v1/object/feedback/${report.id}/screenshot-0.png`]);
   expect((await db.query("select 1 from feedback_reports")).rows).toEqual([]);
 });
 
@@ -374,7 +403,7 @@ it("a request that reuses an existing id cannot replace that report's image", as
   // Same id, another PNG at the same key, as a forged request could send.
   const other = Uint8Array.of(...PNG, 0);
   expect((await signedIn.POST(post(report, ADMIN, other))).status).toBe(204);
-  expect(objects.get(`feedback/${report.id}/image.png`)?.body).toEqual(Buffer.from(PNG));
+  expect(objects.get(`feedback/${report.id}/screenshot-0.png`)?.body).toEqual(Buffer.from(PNG));
   const rows = (await db.query<{ user_id: string }>("select user_id from feedback_reports")).rows;
   expect(rows).toEqual([{ user_id: USER }]);
 });
@@ -392,7 +421,7 @@ it("Try again after a failed insert stores the row, beside the image already the
   failing = "";
   expect((await signedIn.POST(post(report, USER, PNG))).status).toBe(204);
   expect((await db.query("select id from feedback_reports")).rows).toEqual([{ id: report.id }]);
-  expect([...objects.keys()]).toEqual([`feedback/${report.id}/image.png`]);
+  expect([...objects.keys()]).toEqual([`feedback/${report.id}/screenshot-0.png`]);
 });
 
 it("an admin reads only the feedback bucket, not the app's other files", async () => {
@@ -418,7 +447,7 @@ it("the browser's roles cannot change or delete a stored report or image", async
     await db.transaction(async (tx) => {
       await tx.exec(`set local role ${role}`);
       await tx.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify(claims)]);
-      await tx.query("update feedback_reports set image_type = 'x'");
+      await tx.query("update feedback_reports set report = '{}'");
       await tx.query("delete from feedback_reports");
       await tx.query("update storage.objects set name = 'moved'");
       await tx.query("delete from storage.objects");
@@ -436,10 +465,10 @@ it("the browser's roles cannot change or delete a stored report or image", async
       role,
     ).rejects.toThrow(/row-level security/);
   }
-  expect((await db.query("select image_type from feedback_reports")).rows).toEqual([
-    { image_type: "image/png" },
+  expect((await db.query("select report->>'note' as note from feedback_reports")).rows).toEqual([
+    { note: report.note },
   ]);
   expect((await db.query("select name from storage.objects")).rows).toEqual([
-    { name: `${report.id}/image.png` },
+    { name: `${report.id}/screenshot-0.png` },
   ]);
 });

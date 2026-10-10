@@ -13,9 +13,8 @@ type Row = {
   user_id: string;
   created_at: Date;
   report: Record<string, unknown>;
-  image: Uint8Array | null;
-  image_type: string | null;
 };
+type Shot = { report_id: string; position: number; image: Uint8Array | null; image_type: string };
 
 let db: PGlite;
 let server: PGLiteSocketServer;
@@ -61,7 +60,7 @@ function post(
 ) {
   const form = new FormData();
   form.append("report", JSON.stringify(report));
-  if (image) form.append("image", new Blob([image as Uint8Array<ArrayBuffer>], { type }), "x");
+  if (image) form.append("image0", new Blob([image as Uint8Array<ArrayBuffer>], { type }), "x");
   return new Request("http://localhost/api/feedback", {
     method: "POST",
     body: form,
@@ -73,18 +72,74 @@ async function rows(): Promise<Row[]> {
   return (await db.query<Row>("select * from feedback_reports order by created_at")).rows;
 }
 
+async function shots(): Promise<Shot[]> {
+  const query = "select * from feedback_screenshots order by report_id, position";
+  return (await db.query<Shot>(query)).rows;
+}
+
+const none = (report: Record<string, unknown>) => ({ ...report, screenshots: [] });
+
 it("a report sent through the recipe is one row, read back with its image", async () => {
   const report = valid();
   expect((await signedIn.POST(post(report, "user-7", PNG))).status).toBe(204);
   const [row, ...rest] = await rows();
   expect(rest).toEqual([]);
-  const { image: _, ...withoutImage } = { ...report, image: null };
   expect(row?.id).toBe(report.id);
   expect(row?.user_id).toBe("user-7");
   expect(row?.created_at.toISOString()).toBe(report.createdAt);
-  expect(row?.report).toEqual(withoutImage);
-  expect(row?.image_type).toBe("image/png");
-  expect(new Uint8Array(row?.image ?? [])).toEqual(PNG);
+  // The sample's screenshots carry no image, as the stored report's do not.
+  expect(row?.report).toEqual(report);
+  const [shot, ...more] = await shots();
+  expect(more).toEqual([]);
+  expect(shot?.report_id).toBe(report.id);
+  expect(shot?.position).toBe(0);
+  expect(shot?.image_type).toBe("image/png");
+  expect(new Uint8Array(shot?.image ?? [])).toEqual(PNG);
+});
+
+it("each screenshot is its own row, by position, beside one report row", async () => {
+  const report = valid();
+  const [first] = report.screenshots as Record<string, unknown>[];
+  const both = { ...report, screenshots: [first, { ...first, scroll: { x: 0, y: 900 } }] };
+  const form = new FormData();
+  form.append("report", JSON.stringify(both));
+  form.append("image0", new Blob([PNG], { type: "image/png" }), "x");
+  form.append("image1", new Blob([WEBP], { type: "image/webp" }), "x");
+  const request = new Request("http://localhost/api/feedback", {
+    method: "POST",
+    body: form,
+    headers: { "x-test-user": "user-7" },
+  });
+  expect((await signedIn.POST(request)).status).toBe(204);
+  expect(await rows()).toHaveLength(1);
+  const stored = await shots();
+  expect(stored.map((shot) => [shot.position, shot.image_type])).toEqual([
+    [0, "image/png"],
+    [1, "image/webp"],
+  ]);
+  expect(new Uint8Array(stored[1]?.image ?? [])).toEqual(WEBP);
+  const [row] = await rows();
+  expect((row?.report.screenshots as unknown[] | undefined)?.[1]).toMatchObject({
+    scroll: { x: 0, y: 900 },
+  });
+});
+
+it("when a screenshot cannot be stored, the report row is not kept either", async () => {
+  await db.exec(`
+    create function refuse() returns trigger language plpgsql as $$
+      begin raise exception 'refused'; end $$;
+    create trigger refuse before insert on feedback_screenshots
+      for each row execute function refuse();`);
+  try {
+    await expect(signedIn.POST(post(valid(), "user-7", PNG))).rejects.toThrow(/refused/);
+    expect(await rows()).toEqual([]);
+  } finally {
+    await db.exec("drop trigger refuse on feedback_screenshots; drop function refuse();");
+  }
+  // The control: without the trigger, the same request stores both.
+  expect((await signedIn.POST(post(valid(), "user-7", PNG))).status).toBe(204);
+  expect(await rows()).toHaveLength(1);
+  expect(await shots()).toHaveLength(1);
 });
 
 it("the user comes from the session, never from report.context", async () => {
@@ -111,20 +166,20 @@ it("sending the same report again leaves the row it already wrote", async () => 
   const all = await rows();
   expect(all).toHaveLength(1);
   expect(all[0]?.report.note).toBe(report.note);
+  expect(await shots()).toHaveLength(1);
 });
 
-it("a report with no image stores no image and no type", async () => {
-  await signedIn.POST(post({ ...valid(), marks: [] }, "user-7"));
-  const [row] = await rows();
-  expect(row?.image).toBeNull();
-  expect(row?.image_type).toBeNull();
+it("a report with no screenshots is one row and no screenshot rows", async () => {
+  expect((await signedIn.POST(post(none(valid()), "user-7"))).status).toBe(204);
+  expect(await rows()).toHaveLength(1);
+  expect(await shots()).toEqual([]);
 });
 
 it("a WebP image is stored with its type", async () => {
   await signedIn.POST(post(valid(), "user-7", WEBP, "image/webp"));
-  const [row] = await rows();
-  expect(row?.image_type).toBe("image/webp");
-  expect(new Uint8Array(row?.image ?? [])).toEqual(WEBP);
+  const [shot] = await shots();
+  expect(shot?.image_type).toBe("image/webp");
+  expect(new Uint8Array(shot?.image ?? [])).toEqual(WEBP);
 });
 
 it("a request the parser refuses gets its status, and nothing is written", async () => {
@@ -160,9 +215,9 @@ it("an unset DATABASE_URL is a clear error, and nothing is written", async () =>
 });
 
 it("the recipe says what the report column holds and how to keep images in a bucket", () => {
-  expect(doc).toContain("without its `image` as `jsonb`");
+  expect(doc.replace(/\s+/g, " ")).toContain("its screenshots without their images, as `jsonb`");
   expect(doc.replace(/\s+/g, " ")).toContain(
-    "keep `image_type`: `image/png` is the file `image.png`, and `image/webp` is `image.webp`.",
+    "keep `image_type`: `image/png` is the file `screenshot-<position>.png`, and `image/webp` is `screenshot-<position>.webp`.",
   );
   // The insert keeps the first row on a reused id, so the image PUT must keep the first image.
   expect(doc).toContain('with `"if-none-match": "*"`, so a reused id never replaces a stored');

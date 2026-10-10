@@ -1,7 +1,8 @@
 # Recipe: Vercel Blob
 
 Each report becomes private blobs, named and shaped as in the S3 recipe (docs/recipes/s3.md):
-`feedback/<id>/report.json` and `feedback/<id>/image.png` or `image.webp`. People read them only
+`feedback/<id>/report.json` and `feedback/<id>/screenshot-<n>.png` or `.webp` for each screenshot.
+People read them only
 through your own route, behind your own admin check. `report.context` comes from the browser
 (docs/API.md), so an admin view must not show it as proof of who sent a report. The images show the
 screen as the user saw it, with nothing masked (SPEC §7).
@@ -16,9 +17,9 @@ on the server. Never send it to the browser. Check it: open
 `https://<store id>.private.blob.vercel-storage.com/feedback/<id>/report.json` without the token,
 where the store id is the part after `vercel_blob_rw_` in the token, and Vercel refuses it.
 
-The route takes images up to 3 MB, so the whole request stays under Vercel's 4.5 MB body limit. A
-larger one is refused with 413 and the widget shows its send error; a smaller `capture.maxWidth`
-(docs/API.md) keeps screenshots under it.
+Vercel refuses a request body over 4.5 MB, all screenshots of a report together, with 413, and the
+widget then shows its send error. The route takes images up to 3 MB each; a smaller
+`capture.maxWidth` (docs/API.md) keeps several screenshots under the limit.
 
 ## 2. The route
 
@@ -72,8 +73,8 @@ function blob() {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    // Vercel refuses a function request body over 4.5 MB; 3 MB plus the report stays under it.
-    const { report, image } = await parseFeedbackRequest(request, { maxImageBytes: 3_000_000 });
+    // Vercel refuses a request body over 4.5 MB, all screenshots together; this caps each image.
+    const { report } = await parseFeedbackRequest(request, { maxImageBytes: 3_000_000 });
     const store = blob();
     // The id comes from the browser: once a report is stored, a later request does not replace it.
     // Two requests with one id at the same moment still can; the check and the write are separate.
@@ -84,10 +85,14 @@ export async function POST(request: Request): Promise<Response> {
     if (stored.status !== 404) {
       throw new Error(`Vercel Blob answered ${stored.status} for report.json.`);
     }
-    const name = image ? `image.${image.type === "image/png" ? "png" : "webp"}` : null;
-    // The image first: a report.json then always has its image beside it.
-    if (image && name) await store.put(report.id, name, image, image.type);
-    const json = JSON.stringify({ ...report, image: name });
+    const name = (image: Blob, i: number) =>
+      `screenshot-${i}.${image.type === "image/png" ? "png" : "webp"}`;
+    const screenshots = report.screenshots.map((shot, i) => ({ ...shot, image: name(shot.image, i) }));
+    // The images first: a report.json then always has its images beside it.
+    for (const [i, { image }] of report.screenshots.entries()) {
+      await store.put(report.id, name(image, i), image, image.type);
+    }
+    const json = JSON.stringify({ ...report, screenshots });
     await store.put(report.id, "report.json", json, "application/json");
     return new Response(null, { status: 204 });
   } catch (error) {
@@ -98,14 +103,15 @@ export async function POST(request: Request): Promise<Response> {
   }
 }
 
-// GET /api/feedback?id=<report id>&file=report.json | image.png | image.webp
+// GET /api/feedback?id=<report id>&file=report.json | screenshot-<n>.png | screenshot-<n>.webp
 export async function GET(request: Request): Promise<Response> {
   if (!(await canRead(request))) return new Response(null, { status: 403 });
   const query = new URL(request.url).searchParams;
   const id = query.get("id") ?? "";
   const file = query.get("file") ?? "";
   // Only a report id and a known file name, so the read cannot leave feedback/<id>/.
-  if (!/^[0-9a-f-]{36}$/.test(id) || !["report.json", "image.png", "image.webp"].includes(file)) {
+  const known = file === "report.json" || /^screenshot-\d\.(png|webp)$/.test(file);
+  if (!/^[0-9a-f-]{36}$/.test(id) || !known) {
     return new Response(null, { status: 400 });
   }
   const object = await blob().read(id, file);
