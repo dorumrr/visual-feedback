@@ -597,7 +597,9 @@ test.describe("real touch, which only Chromium can drive", () => {
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "Playwright can touch-drag only through Chromium's CDP");
-    expect(await scrollable(page, ".toolbar + .image { touch-action: auto }")).toBeGreaterThan(20);
+    expect(
+      await scrollable(page, ".toolbar + .stage > .image { touch-action: auto }"),
+    ).toBeGreaterThan(20);
     await touch(page, UP);
     await expect.poll(() => scrolled(page)).toBeGreaterThan(0);
   });
@@ -670,12 +672,13 @@ test("with marks, Tab reaches Undo and Clear, and disabling them keeps the focus
   ]);
   await page.getByRole("textbox", { name: "Your note" }).focus();
   const seen: string[] = [];
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 13; i++) {
     await page.keyboard.press("Tab");
     seen.push(await focused(page));
   }
   expect(seen).toEqual([
     "send",
+    "minimise",
     "cancel",
     "tool",
     "tool",
@@ -684,6 +687,8 @@ test("with marks, Tab reaches Undo and Clear, and disabling them keeps the focus
     "tool",
     "undo",
     "clear",
+    "thumb-pick",
+    "add",
     "note",
   ]);
   for (const name of ["Undo", "Clear"]) {

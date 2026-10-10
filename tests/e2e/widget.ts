@@ -74,18 +74,19 @@ export type Shot = {
 };
 
 /**
- * Reads the last report's image back in the page. Points are CSS pixels of the viewport, or
- * image pixels with `imagePixels`.
+ * Reads an image of the last report back in the page, the first unless `shot` names another.
+ * Points are CSS pixels of the viewport, or image pixels with `imagePixels`.
  */
 export function read(
   page: Page,
   points: number[][],
   count: number[] = [0xff, 0x23, 0x57],
   imagePixels = false,
+  shot = 0,
 ): Promise<Shot | null> {
   return page.evaluate(
-    async ({ points, count, imagePixels }) => {
-      const image = (window as unknown as Mounted).reports.at(-1)?.screenshots[0]?.image;
+    async ({ points, count, imagePixels, shot }) => {
+      const image = (window as unknown as Mounted).reports.at(-1)?.screenshots[shot]?.image;
       if (!image) return null;
       const bitmap = await createImageBitmap(image);
       const canvas = document.createElement("canvas");
@@ -115,7 +116,7 @@ export function read(
         counted,
       };
     },
-    { points, count, imagePixels },
+    { points, count, imagePixels, shot },
   );
 }
 

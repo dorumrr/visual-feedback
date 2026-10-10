@@ -2,7 +2,8 @@
 
 Each report becomes an issue: the note, the page URL, the browser data and the screenshots, with
 the category as a label. Each screenshot's image is committed to the repo with GitHub's contents
-API, at `feedback/<id>/screenshot-<n>.png`, numbered from 0, and shown inside the issue. Then the
+API, at `feedback/<id>/screenshot-<n>.png`, numbered from 0, and shown inside the issue, with its
+own page URL under it when it was taken on another page than the report's. Then the
 whole report is committed beside them as `feedback/<id>/report.json`, with each screenshot's `image`
 set to its GitHub link and `issue` to the issue number: a resend that finds it opens no second
 issue. The route checks on every send that the repo
@@ -102,6 +103,17 @@ function fenced(text: string, max: number): string {
   return `${fence}text\n${shown}\n${fence}`;
 }
 
+// A screenshot of another page than the report's names its own, as a draft can span routes.
+function shots(report: FeedbackReport, imageUrls: string[]): string {
+  return imageUrls
+    .map((url, i) => {
+      const page = report.screenshots[i]?.page.url ?? report.page.url;
+      const where = page === report.page.url ? "" : `\n${fenced(page, 2_000)}`;
+      return `![Screenshot ${i + 1}](<${url}>)${where}`;
+    })
+    .join("\n\n");
+}
+
 function issueBody(report: FeedbackReport, imageUrls: string[]): string {
   const { page, viewport, userAgent, language, timeZone, createdAt, id } = report;
   const screen = `${viewport.width}x${viewport.height} @${viewport.devicePixelRatio}x`;
@@ -109,7 +121,7 @@ function issueBody(report: FeedbackReport, imageUrls: string[]): string {
   return [
     fenced(report.note || "(no note)", 10_000),
     // The angle brackets keep a ( or ) in a branch name from ending the link.
-    imageUrls.map((url, i) => `![Screenshot ${i + 1}](<${url}>)`).join("\n\n") || "No screenshot.",
+    shots(report, imageUrls) || "No screenshot.",
     `**Page:**\n${fenced(page.url, 2_000)}`,
     `**Browser:**\n${fenced(`${userAgent}\n${screen}, ${language}, ${timeZone}`, 1_000)}`,
     `**Sent:** ${createdAt}, report \`${id}\``,

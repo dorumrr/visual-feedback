@@ -505,7 +505,7 @@ test("Send sits in a footer under the note, with the hint, and Tab goes note, ca
   const root = page.locator("visual-feedback");
   await expect(root.locator(".composer .send")).toHaveCount(0);
   await expect(root.locator(".footer .send")).toHaveCount(1);
-  await expect(root.locator(".footer .hint")).toHaveText("Esc to cancel");
+  await expect(root.locator(".footer .hint")).toHaveText("Esc keeps it as a draft");
   await footer(page);
   await note(page).focus();
   await page.keyboard.press("Tab");

@@ -1,11 +1,11 @@
-const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100% - 32px);display:grid;gap:12px}.dialog.wide{width:min(1100px,100% - 32px)}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.image:only-child{grid-column:1/-1}.image{display:block;max-width:100%;max-height:min(60vh,100vh - 22em);margin:0 auto;color:var(--_mark)}.body{position:relative}.toolbar+.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}`;
+const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100% - 32px);display:grid;gap:12px}.dialog.wide{width:min(1100px,100% - 32px)}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.minimise{margin-left:auto}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.stage:only-child{grid-column:1/-1}.stage{position:relative;display:grid;gap:8px;min-width:0}.image{display:block;max-width:100%;max-height:min(60vh,100vh - 22em);margin:0 auto;color:var(--_mark)}.toolbar+.stage>.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg,.draft svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.strip{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}.thumb{position:relative;display:flex}.thumb-pick{position:relative;display:block;margin:0;padding:0;line-height:0}.thumb-image{display:block;height:3em;width:auto}.thumb-number{position:absolute;left:4px;top:4px;line-height:1.2}.thumb-remove{position:absolute;top:-.5em;right:-.5em}.add,.capture-view{display:inline-flex;align-items:center;gap:6px}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px;margin-left:auto}.draft{position:fixed;z-index:var(--_z);box-sizing:border-box;max-width:calc(100% - 2 * var(--_off));display:flex;flex-wrap:wrap;align-items:center;gap:8px}.draft-thumbs{display:flex;gap:4px}.draft-thumbs .thumb-image{height:1.75em}.drafting>.trigger{display:none}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}`;
 
-const THEME = `.backdrop{background:var(--_bd)}.dialog{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header .cancel,.toolbar button{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header .cancel:hover,.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.image{cursor:crosshair}.selection{border:2px dashed var(--_f);border-radius:4px}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.send{background:var(--_a);color:var(--_at);border-color:var(--_a)}.send:where([data-ink=dark]){color:#000}[aria-disabled=true]{opacity:.6;cursor:progress}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}`;
+const THEME = `.backdrop{background:var(--_bd)}.dialog,.draft{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.draft{padding:8px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header button,.toolbar button,.thumb-remove{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header button:hover,.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.stage>.image{cursor:crosshair}.selection{border:2px dashed var(--_f);border-radius:4px}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.thumb-pick{border:2px solid transparent;border-radius:calc(var(--_r) / 2.5);background:none;overflow:hidden;cursor:pointer}.thumb-pick[aria-current=true]{border-color:var(--_a)}.thumb-image{border-radius:calc(var(--_r) / 4);box-shadow:0 0 0 1px var(--_b)}.thumb-number{font-size:.75em;font-weight:600;padding:0 4px;border-radius:4px;background:var(--_s);color:var(--_t)}.thumb-remove{width:1.5em;height:1.5em;border:1px solid var(--_b);border-radius:50%;background:var(--_s)}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button,.add,.draft button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.add{border-style:dashed;color:var(--_m)}.send,.draft .capture-view{background:var(--_a);color:var(--_at);border-color:var(--_a)}.send:where([data-ink=dark]),.draft .capture-view:where([data-ink=dark]){color:#000}.draft button:disabled{opacity:.5;cursor:default}.draft-label{margin:0 4px;font-size:.9em;font-weight:600}[aria-disabled=true]{opacity:.6;cursor:progress}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}`;
 
-import { annotate, type Tool } from "./annotate";
+import { type Annotator, annotate, type Tool } from "./annotate";
 import { icon } from "./icon";
 import { look, type Seen, shots } from "./seen";
-import type { FeedbackReport, Mark } from "./shared/report";
+import { type FeedbackReport, type Mark, SCREENSHOT_LIMIT } from "./shared/report";
 import type { FeedbackEvent, FeedbackEvents, FeedbackOptions, FeedbackStrings } from "./widget";
 
 const ICONS = {
@@ -19,6 +19,9 @@ const ICONS = {
   clear: "M4 7h16m-10 4v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3",
   cancel: "M6 6l12 12M18 6 6 18",
   send: "M5 12h13m-6-7 7 7-7 7",
+  minimise: "M5 17h14",
+  add: "M12 5v14M5 12h14",
+  camera: "M4 8h3l2-3h6l2 3h3v11H4zm8 8.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
 };
 
 type Texts = Omit<FeedbackStrings, "trigger" | "triggerText">;
@@ -46,7 +49,15 @@ const ENGLISH: Texts = {
   sent: "Thanks, it's sent.",
   error: "It didn't send. Your note is kept.",
   retry: "Try again",
-  escHint: "Esc to cancel",
+  escHint: "Esc keeps it as a draft",
+  minimise: "Keep as draft",
+  screenshot: "Screenshot",
+  addScreenshot: "Add screenshot",
+  removeScreenshot: "Remove screenshot",
+  draft: "Feedback draft",
+  captureView: "Capture this view",
+  reopen: "Open",
+  discard: "Discard",
 };
 
 // A key given as undefined, as an i18n lookup can return, keeps its English text.
@@ -78,11 +89,15 @@ export function css(unstyled: boolean): string[] {
 /** What the dialog shows: the capture error, or the note with the image when there is one. */
 export type View = { error: true } | { error?: false; image: HTMLCanvasElement | null };
 
+/** One screenshot as Send takes it: its image, the marks on it and the page it shows. */
+export type Shot = { image: HTMLCanvasElement; marks: Mark[]; seen: Seen };
+
 /** What the user wrote and drew, taken once when Send is pressed. */
-export type Draft = { note: string; category: string | undefined; marks: Mark[] };
+export type Draft = { note: string; category: string | undefined; shots: Shot[] };
 
 export type Handlers = {
   close(): void;
+  /** Takes a screenshot again and hands it to capture(). */
   retry(): void;
   emit<E extends FeedbackEvent>(event: E, ...args: FeedbackEvents[E]): void;
   /** The options as they are at Send, after any update(). */
@@ -122,6 +137,28 @@ function iconButton(name: string, text: string, d: string, onClick: () => void):
   result.title = text;
   result.append(icon(d, "icon"));
   return result;
+}
+
+// Halved step by step: one big step skips pixels in Chromium and WebKit, and a thin mark vanishes.
+function copy(small: HTMLCanvasElement, image: HTMLCanvasElement): void {
+  let source: HTMLCanvasElement = image;
+  while (source.width > small.width * 2) {
+    const half = document.createElement("canvas");
+    half.width = Math.ceil(source.width / 2);
+    half.height = Math.ceil(source.height / 2);
+    half.getContext("2d")?.drawImage(source, 0, 0, half.width, half.height);
+    source = half;
+  }
+  small.getContext("2d")?.drawImage(source, 0, 0, small.width, small.height);
+}
+
+/** A small copy of a screenshot, its marks included, for the strip and the draft bar. */
+function thumbnail(image: HTMLCanvasElement): HTMLCanvasElement {
+  const small = element("canvas", "thumb-image", { "aria-hidden": "true" });
+  small.height = 96;
+  small.width = Math.max(1, Math.round((96 * image.width) / Math.max(1, image.height)));
+  copy(small, image);
+  return small;
 }
 
 // Chromium's own pair, white on rgb(0 117 255), fails contrast, so unset text is black or white.
@@ -189,15 +226,28 @@ const NOTE_LIMIT = 2000;
 
 export type Mounted = {
   show(view: View): void;
-  /** The screenshot, or null for the capture error; the page stops scrolling. */
+  /**
+   * The screenshot, or null when taking it failed. The first one opens the note view, or the
+   * capture error; a later one is added to the draft, which opens again.
+   */
   capture(image: HTMLCanvasElement | null): void;
+  /** Opens a draft kept in the draft bar again; does nothing otherwise. */
+  reopen(): void;
   /** Lets the page scroll, or stops it; unmount lets it scroll. */
   lock(on: boolean): void;
   unmount(): void;
 };
 
+/** One screenshot of the draft: its image, its marks with their Undo history, and its page. */
+type Taken = { image: HTMLCanvasElement; annotator: Annotator | undefined; seen: Seen };
+
 export function mount(parent: HTMLElement, handlers: Handlers, settings: Settings = {}): Mounted {
   const tools = settings.tools ?? ["pen", "box", "arrow", "text", "select"];
+  const choices = [...new Set(tools)].filter((tool) =>
+    ["pen", "box", "arrow", "text", "select"].includes(tool),
+  );
+  // Select alone has nothing to act on, so there is nothing to draw with.
+  const drawing = choices.some((choice) => choice !== "select");
   const text = texts(settings.strings);
   const backdrop = element("dialog", "backdrop", {
     "aria-modal": "true",
@@ -206,12 +256,27 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   const panel = element("div", "dialog");
   const title = element("h2", "title", { id: "vf-title" });
   title.textContent = text.title;
-  // One header for every view; its close button is the dialog's Cancel.
+  // One header for every view; its close button is the dialog's Cancel, which discards.
   const header = element("div", "header");
-  header.append(title, iconButton("cancel", text.cancel, ICONS.cancel, handlers.close));
+  const cancel = iconButton("cancel", text.cancel, ICONS.cancel, handlers.close);
+  const keep = iconButton("minimise", text.minimise, ICONS.minimise, () => minimise());
+  header.append(title, cancel);
   backdrop.append(panel);
 
-  let marks = (): Mark[] => [];
+  const taken: Taken[] = [];
+  let at = 0;
+  let tool: Tool | undefined;
+  let annotator: Annotator | undefined;
+  // Set by the toolbar: puts its Undo, Clear and Delete in step with the shown screenshot.
+  let refresh = () => {};
+  let body: HTMLElement | undefined;
+  let stage: HTMLElement | undefined;
+  let strip: HTMLElement | undefined;
+  let note: HTMLTextAreaElement | undefined;
+  let notice: HTMLElement | undefined;
+  let bar: HTMLElement | undefined;
+  let minimised = false;
+  let folding = false;
   // Set by each annotating view: the controls a send locks, and the button that sends.
   let locked: (HTMLButtonElement | HTMLTextAreaElement | HTMLSelectElement)[] = [];
   let inert: HTMLElement[] = [];
@@ -220,58 +285,180 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // Where a send error is shown: under the composer.
   let composer: HTMLElement | undefined;
   let failure: HTMLElement | undefined;
+  const root = () => parent.getRootNode() as ShadowRoot;
 
-  function toolbar(image: HTMLCanvasElement): HTMLElement[] {
-    const choices = [...new Set(tools)].filter((tool) =>
-      ["pen", "box", "arrow", "text", "select"].includes(tool),
-    );
-    // Select alone has nothing to act on.
-    if (!choices.some((choice) => choice !== "select")) return [];
-    const bar = element("div", "toolbar");
-    const undo = iconButton("undo", text.undo, ICONS.undo, () => annotator.undo());
-    const clear = iconButton("clear", text.clear, ICONS.clear, () => annotator.clear());
-    const remove = iconButton("remove", text.remove, ICONS.remove, () => annotator.remove());
+  function toolbar(): HTMLElement[] {
+    if (!drawing) return [];
+    const toolbar = element("div", "toolbar");
+    const undo = iconButton("undo", text.undo, ICONS.undo, () => annotator?.undo());
+    const clear = iconButton("clear", text.clear, ICONS.clear, () => annotator?.clear());
+    const remove = iconButton("remove", text.remove, ICONS.remove, () => annotator?.remove());
     // Only Select picks a mark, so without it Delete could never act.
     const actions = choices.includes("select") ? [remove, undo, clear] : [undo, clear];
-    const update = () => {
+    refresh = () => {
       const off = new Map([
-        [undo, !annotator.canUndo],
-        [clear, annotator.marks.length === 0],
-        [remove, !annotator.selected],
+        [undo, !annotator?.canUndo],
+        [clear, !annotator?.marks.length],
+        [remove, !annotator?.selected],
       ]);
-      const root = parent.getRootNode() as ShadowRoot;
       // A disabled button drops the focus out of the dialog, past the Tab trap.
-      if (off.get(root.activeElement as HTMLButtonElement)) {
+      if (off.get(root().activeElement as HTMLButtonElement)) {
         buttons.find((choice) => choice.getAttribute("aria-pressed") === "true")?.focus();
       }
       for (const [control, disabled] of off) control.disabled = disabled;
     };
-    const annotator = annotate(image, update, text.text);
-    const pick = (tool: Tool) => {
-      annotator.tool = tool;
+    const pick = (next: Tool) => {
+      tool = next;
+      if (annotator) annotator.tool = next;
       for (const [i, choice] of buttons.entries()) {
-        const active = choices[i] === tool;
+        const active = choices[i] === next;
         choice.setAttribute("aria-pressed", String(active));
         choice.setAttribute("part", active ? "tool tool-active" : "tool");
       }
     };
-    const buttons = choices.map((tool) =>
-      iconButton("tool", text[tool], ICONS[tool], () => pick(tool)),
+    const buttons = choices.map((choice) =>
+      iconButton("tool", text[choice], ICONS[choice], () => pick(choice)),
     );
     // Open on something that draws, even when Select is listed first.
     pick(choices.find((choice) => choice !== "select") as Tool);
-    update();
-    marks = () => {
-      annotator.end();
-      return [...annotator.marks];
-    };
-    bar.append(...buttons, element("span", "divider", { "aria-hidden": "true" }), ...actions);
+    toolbar.append(...buttons, element("span", "divider", { "aria-hidden": "true" }), ...actions);
     locked.push(...buttons, ...actions);
-    return [bar];
+    return [toolbar];
   }
 
-  // What Send encodes: the image on show now, or none.
-  let current: HTMLCanvasElement | null = null;
+  // The shown screenshot's thumbnail, redrawn as its marks change.
+  let thumb: HTMLCanvasElement | undefined;
+  function changed(): void {
+    refresh();
+    const shown = taken[at]?.image;
+    if (thumb && shown) copy(thumb, shown);
+  }
+
+  function add(image: HTMLCanvasElement): void {
+    image.className = "image";
+    image.setAttribute("part", "image");
+    // snapdom sizes its canvas inline, which beats max-height and squashes the image.
+    image.removeAttribute("style");
+    const marks = drawing ? annotate(image, changed, text.text) : undefined;
+    taken.push({ image, annotator: marks, seen: shots.get(image) ?? look() });
+    showShot(taken.length - 1);
+  }
+
+  function showShot(index: number): void {
+    const focused = strip?.contains(root().activeElement) ?? false;
+    // Ends a stroke or a label on the one left, and takes its selection outline away.
+    annotator?.end();
+    stage?.querySelector(":scope > .image")?.remove();
+    at = index;
+    const shot = taken[at] as Taken;
+    annotator = shot.annotator;
+    if (annotator && tool) annotator.tool = tool;
+    stage?.prepend(shot.image);
+    renderStrip();
+    refresh();
+    if (focused) strip?.querySelector<HTMLElement>("[aria-current=true]")?.focus();
+  }
+
+  function drop(index: number): void {
+    if (taken.length < 2) return;
+    const focused = strip?.contains(root().activeElement) ?? false;
+    const [gone] = taken.splice(index, 1);
+    if (index === at) {
+      gone?.annotator?.end();
+      annotator = undefined;
+      showShot(Math.min(index, taken.length - 1));
+    } else {
+      if (index < at) at--;
+      renderStrip();
+    }
+    if (focused) strip?.querySelector<HTMLElement>("[aria-current=true]")?.focus();
+  }
+
+  function renderStrip(): void {
+    if (!strip) return;
+    const items = taken.map((shot, i) => {
+      const item = element("div", "thumb");
+      const name = `${text.screenshot} ${i + 1}`;
+      const pick = element("button", "thumb-pick", {
+        type: "button",
+        "aria-label": name,
+        title: name,
+        "aria-current": String(i === at),
+      });
+      const number = element("span", "thumb-number", { "aria-hidden": "true" });
+      number.textContent = String(i + 1);
+      const small = thumbnail(shot.image);
+      if (i === at) thumb = small;
+      pick.append(small, number);
+      pick.addEventListener("click", () => showShot(i));
+      item.append(pick);
+      if (taken.length > 1) {
+        const label = `${text.removeScreenshot} ${i + 1}`;
+        item.append(iconButton("thumb-remove", label, ICONS.cancel, () => drop(i)));
+      }
+      return item;
+    });
+    const more = button("add", text.addScreenshot, () => minimise());
+    more.prepend(icon(ICONS.add, "icon"));
+    strip.replaceChildren(...items, ...(taken.length < SCREENSHOT_LIMIT ? [more] : []));
+  }
+
+  // Esc and the keep button fold an unsent draft into the bar; the page scrolls under it.
+  function minimise(): void {
+    if (minimised || !taken.length || draft) return;
+    annotator?.end();
+    minimised = true;
+    // Already closed when Chrome took the Escape itself; then no close event will come.
+    if (backdrop.open) {
+      folding = true;
+      backdrop.close();
+    }
+    // Out of the page while folded: WebKit kept the hidden state a capture gave it, inside it.
+    backdrop.remove();
+    lockPage(false);
+    parent.classList.add("drafting");
+    bar = draftBar();
+    parent.append(bar);
+    for (const accent of bar.querySelectorAll<HTMLElement>(".capture-view")) ink(accent);
+    bar.querySelector<HTMLElement>(".capture-view:enabled, .reopen")?.focus();
+  }
+
+  function draftBar(): HTMLElement {
+    const result = element("div", "draft", { role: "region", "aria-label": text.draft });
+    const [y, x] = (handlers.options().position ?? "bottom-right").split("-");
+    result.dataset.y = y;
+    result.dataset.x = x;
+    const label = element("span", "draft-label");
+    label.textContent = `${text.draft} · ${taken.length}`;
+    const thumbs = element("span", "draft-thumbs", { "aria-hidden": "true" });
+    thumbs.append(...taken.map((shot) => thumbnail(shot.image)));
+    const again = button("capture-view", text.captureView, handlers.retry);
+    again.prepend(icon(ICONS.camera, "icon"));
+    again.disabled = taken.length >= SCREENSHOT_LIMIT;
+    result.append(
+      label,
+      thumbs,
+      again,
+      button("reopen", text.reopen, reopen),
+      button("discard", text.discard, handlers.close),
+    );
+    return result;
+  }
+
+  function reopen(): void {
+    if (!minimised) return;
+    minimised = false;
+    bar?.remove();
+    bar = undefined;
+    parent.classList.remove("drafting");
+    parent.append(backdrop);
+    backdrop.showModal();
+    lockPage(true);
+    renderStrip();
+    note?.focus();
+  }
+
+  // What Send encodes: every screenshot, in strip order, or none.
   let seen: Seen;
   // The report a send error keeps, so "Try again" sends the same one.
   let report: FeedbackReport | undefined;
@@ -285,10 +472,13 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       module = await import("./report");
       if (!report) {
         const capture = await import("./capture");
-        const shots = current
-          ? [{ image: await capture.encode(current, options.capture), marks: draft.marks, seen }]
-          : [];
-        const built = await module.build(draft, shots, seen, options);
+        const shots = [];
+        // One at a time: ten full-size encodes at once can run a phone out of memory.
+        for (const shot of draft.shots) {
+          shots.push({ ...shot, image: await capture.encode(shot.image, options.capture) });
+        }
+        // The report's own page is the first screenshot's still in it, not one removed.
+        const built = await module.build(draft, shots, draft.shots[0]?.seen ?? seen, options);
         if (mounted) report = built;
       }
       // Closed before submit: nothing is sent.
@@ -304,14 +494,13 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   }
 
   function show(view: View): void {
-    current = view.error ? null : view.image;
-    marks = () => [];
     locked = [];
     inert = [];
     primary = undefined;
     draft = undefined;
     failure = undefined;
     composer = undefined;
+    header.replaceChildren(title, cancel);
     if (view.error) {
       const message = element("p", "error", { role: "alert" });
       message.textContent = text.captureError;
@@ -328,17 +517,18 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     }
     const label = element("label", "label", { for: "vf-note" });
     label.textContent = text.noteLabel;
-    const note = element("textarea", "note", {
+    const field = element("textarea", "note", {
       id: "vf-note",
       placeholder: text.notePlaceholder,
       maxlength: String(NOTE_LIMIT),
     });
+    note = field;
     const required = element("p", "error", { id: "vf-note-error", role: "alert" });
     required.textContent = text.noteRequired;
-    note.addEventListener("input", () => {
-      if (!note.value.trim()) return;
-      note.removeAttribute("aria-invalid");
-      note.removeAttribute("aria-describedby");
+    field.addEventListener("input", () => {
+      if (!field.value.trim()) return;
+      field.removeAttribute("aria-invalid");
+      field.removeAttribute("aria-describedby");
       required.remove();
     });
     const fields: HTMLElement[] = [];
@@ -356,36 +546,47 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       fields.push(name, category);
     }
     const image = view.image;
+    body = element("div", "body");
     if (image) {
-      image.className = "image";
-      image.setAttribute("part", "image");
-      // snapdom sizes its canvas inline, which beats max-height and squashes the image.
-      image.removeAttribute("style");
-      inert.push(image);
+      stage = element("div", "stage");
+      strip = element("div", "strip");
+      stage.append(strip);
+      body.append(...toolbar(), stage);
+      header.replaceChildren(title, keep, cancel);
+      locked.push(keep);
+      inert.push(stage);
+      add(image);
     }
-    const body = element("div", "body");
-    if (image) body.append(...toolbar(image), image);
     const send = button("send", text.send, () => {
       if (draft) {
         // Sending, or a send error: the same draft goes again, never a second one at once.
         if (send.getAttribute("aria-disabled") !== "true") void deliver(draft);
         return;
       }
-      if (settings.requireNote !== false && !note.value.trim()) {
-        note.setAttribute("aria-invalid", "true");
-        note.setAttribute("aria-describedby", required.id);
+      if (settings.requireNote !== false && !field.value.trim()) {
+        field.setAttribute("aria-invalid", "true");
+        field.setAttribute("aria-describedby", required.id);
         box.after(required);
-        note.focus();
+        field.focus();
         return;
       }
-      draft = { note: note.value, category: category?.value, marks: marks() };
+      annotator?.end();
+      draft = {
+        note: field.value,
+        category: category?.value,
+        shots: taken.map((shot) => ({
+          image: shot.image,
+          marks: [...(shot.annotator?.marks ?? [])],
+          seen: shot.seen,
+        })),
+      };
       void deliver(draft);
     });
     send.append(icon(ICONS.send, "icon"));
     primary = send;
-    locked.push(note, ...(category ? [category] : []));
+    locked.push(field, ...(category ? [category] : []));
     const box = element("div", "composer");
-    box.append(note);
+    box.append(field);
     // The category, when there is one, stays with the note; Send goes to the footer.
     if (fields.length) {
       const bar = element("div", "composer-bar");
@@ -393,18 +594,24 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       box.append(bar);
     }
     composer = box;
-    const hint = element("p", "hint");
-    hint.textContent = text.escHint;
     const footer = element("div", "footer");
-    footer.append(hint, send);
+    // Esc keeps a draft only when there is a screenshot to keep.
+    if (image) {
+      const hint = element("p", "hint");
+      hint.textContent = text.escHint;
+      footer.append(hint);
+    }
+    footer.append(send);
     panel.classList.toggle("wide", Boolean(image));
     panel.replaceChildren(header, ...(image ? [body] : []), label, box, footer);
     ink(send);
-    note.focus();
+    field.focus();
   }
 
   function sending(): void {
     if (!primary) return;
+    // From here Esc closes, so the hint that it keeps a draft goes.
+    panel.querySelector(".hint")?.remove();
     for (const control of locked) control.disabled = true;
     for (const item of inert) item.inert = true;
     failure?.remove();
@@ -419,6 +626,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     const status = element("p", "status", { role: "status", tabindex: "-1" });
     status.textContent = text.sent;
     panel.classList.remove("wide");
+    header.replaceChildren(title, cancel);
     panel.replaceChildren(header, status);
     status.focus();
     done = setTimeout(handlers.close, 3000);
@@ -435,12 +643,22 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     primary.focus();
   }
 
-  // Escape: close at once, not on the later native close event. Chrome can skip cancel, so both.
+  // Escape: keep an unsent draft, else close at once, not on the later native close event.
+  // Chrome can skip cancel, so both.
   backdrop.addEventListener("cancel", (event) => {
     event.preventDefault();
-    handlers.close();
+    if (taken.length && !draft) minimise();
+    else handlers.close();
   });
-  backdrop.addEventListener("close", handlers.close);
+  // Folding into the draft bar closes the native dialog too. Its close event comes later, maybe
+  // after the draft opened again, so that one event is passed over, whenever it comes. Any other
+  // close is Escape that Chrome handled without a cancel event.
+  const closed = () => {
+    if (folding) folding = false;
+    else if (taken.length && !draft) minimise();
+    else handlers.close();
+  };
+  backdrop.addEventListener("close", closed);
   // Every Tab is handled here, so the trap holds where the browser skips buttons (WebKit).
   backdrop.addEventListener("keydown", (event) => {
     if (event.key !== "Tab") return;
@@ -449,7 +667,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       (item) =>
         !item.matches(":disabled") && !item.closest("[inert]") && item.getClientRects().length > 0,
     );
-    const active = (parent.getRootNode() as ShadowRoot).activeElement as HTMLElement | null;
+    const active = root().activeElement as HTMLElement | null;
     const index = active ? items.indexOf(active) : -1;
     const step = event.shiftKey ? -1 : 1;
     const next = index < 0 ? (event.shiftKey ? items.length - 1 : 0) : index + step;
@@ -465,26 +683,40 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   }
   let done: ReturnType<typeof setTimeout> | undefined;
   let scrollLocked = false;
-  const lock = (on: boolean) => {
+  function lockPage(on: boolean): void {
     if (on !== scrollLocked) (on ? lockScroll : unlockScroll)();
     scrollLocked = on;
-  };
+  }
   return {
     show,
     capture(image) {
+      if (taken.length) {
+        reopen();
+        notice?.remove();
+        if (image) add(image);
+        else {
+          notice = element("p", "error", { role: "alert" });
+          notice.textContent = text.captureError;
+          body?.after(notice);
+        }
+        return;
+      }
       // Without an image, the page as it is at the capture error.
       seen = (image && shots.get(image)) ?? look();
       show(image ? { image } : { error: true });
-      lock(true);
+      lockPage(true);
     },
-    lock,
+    reopen,
+    lock: lockPage,
     unmount() {
       mounted = false;
       clearTimeout(done);
-      lock(false);
-      backdrop.removeEventListener("close", handlers.close);
+      lockPage(false);
+      backdrop.removeEventListener("close", closed);
       if (backdrop.open) backdrop.close();
       backdrop.remove();
+      bar?.remove();
+      parent.classList.remove("drafting");
     },
   };
 }

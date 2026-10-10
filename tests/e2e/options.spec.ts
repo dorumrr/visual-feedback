@@ -27,6 +27,14 @@ const KEYS = [
   "text",
   "select",
   "remove",
+  "minimise",
+  "screenshot",
+  "addScreenshot",
+  "removeScreenshot",
+  "draft",
+  "captureView",
+  "reopen",
+  "discard",
 ] as const;
 const STRINGS = Object.fromEntries(KEYS.map((key) => [key, `X ${key}`]));
 
@@ -88,9 +96,19 @@ test("strings replace every text the widget shows", async ({ page }) => {
     "X clear",
     "X cancel",
     "X send",
+    "X minimise",
+    "X screenshot 1",
+    "X addScreenshot",
   ]) {
     await expect(dialog.getByRole("button", { name })).toBeVisible();
   }
+  await dialog.getByRole("button", { name: "X addScreenshot" }).click();
+  const bar = page.getByRole("region", { name: "X draft" });
+  await expect(bar).toContainText("X draft · 1");
+  await expect(bar.getByRole("button", { name: "X reopen" })).toBeVisible();
+  await expect(bar.getByRole("button", { name: "X discard" })).toBeVisible();
+  await bar.getByRole("button", { name: "X captureView" }).click();
+  await expect(dialog.getByRole("button", { name: "X removeScreenshot 2" })).toBeVisible();
   await expect(dialog.getByLabel("X noteLabel")).toHaveAttribute(
     "placeholder",
     "X notePlaceholder",
@@ -190,7 +208,7 @@ test("a shortcut on a digit or a named key also opens it", async ({ page }) => {
   await mount(page, { shortcut: "Control+Shift+1" });
   await page.keyboard.press("Control+Shift+Digit1");
   await expect(page.getByRole("dialog")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Cancel" }).click();
   await vf(page, "update", { shortcut: "Alt+F2" });
   await page.keyboard.press("Control+Shift+Digit1");
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -241,7 +259,11 @@ test("update leaves an open dialog as it is, and its dialog options apply at the
   await vf(page, "update", { tools: ["box"], strings: { title: "Later" } });
   await expect(dialog.getByRole("button", { name: "Draw" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Send feedback" })).toBeVisible();
+  // A kept draft opens again as it was.
   await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Send feedback" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Send feedback" }).click();
   await expect(page.getByRole("dialog", { name: "Later" })).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("button", { name: "Draw" })).toHaveCount(0);
@@ -321,7 +343,7 @@ test("the shortcut leaves fields, IME input, AltGr, held keys and unknown names 
   await expect(page.getByRole("dialog")).toBeVisible();
   // Open already: the key goes on to the page.
   expect(await taken(page, controlAltL)).toBe(false);
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   await vf(page, "update", { shortcut: "Cmd+K" });

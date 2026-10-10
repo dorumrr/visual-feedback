@@ -259,7 +259,7 @@ test.describe("on a page with a known colour under the trigger", () => {
       await trigger(page).click();
       await expect(page.locator("visual-feedback").locator("canvas.image")).toBeVisible();
       expect(await nodes()).toBe(before);
-      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Cancel" }).click();
       expect(await nodes()).toBe(before);
       expect(await page.locator("visual-feedback").locator("canvas").count()).toBe(0);
     }

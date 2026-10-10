@@ -120,7 +120,7 @@ test("after open, update and destroy with the shortcut on, nothing is left", asy
 
   await page.keyboard.press("Alt+Shift+KeyF");
   await expect(page.getByRole("dialog")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   await page.evaluate(() =>

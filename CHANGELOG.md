@@ -10,8 +10,19 @@
   update the widget and the server together. Its body limit is now 10 times `maxImageBytes`, plus
   the report. Every recipe stores each image as `screenshot-<n>.png` or `.webp`; the Postgres
   recipe moves images to a new table, `feedback_screenshots`. New type: `Screenshot`.
+- Several screenshots in one report, up to 10. A strip under the image shows each one; each
+  keeps its own marks and Undo. "Add screenshot", Esc, or the header's "Keep as draft" fold the
+  dialog into a small draft bar in the trigger's corner, so the user can scroll or move to another
+  route: "Capture this view" adds the next screenshot, "Open" (or `open()`) brings the dialog back,
+  and "Discard" or the header's close button ends the draft. Breaking: Esc keeps the draft instead
+  of cancelling; `close` fires when the draft ends, not when it folds. New strings `minimise`,
+  `screenshot`, `addScreenshot`, `removeScreenshot`, `draft`, `captureView`, `reopen` and
+  `discard`, and the `escHint` text below reads "Esc keeps it as a draft". New part names: `minimise`, `stage`,
+  `strip`, `thumb`, `thumb-pick`, `thumb-image`, `thumb-number`, `thumb-remove`, `add`, `draft`,
+  `draft-label`, `draft-thumbs`, `capture-view`, `reopen`, `discard`; host CSS aimed at
+  `.toolbar + .image` needs `.toolbar + .stage > .image`.
 - A new look: a tool rail with icons beside the screenshot, the note as a composer with Send in a
-  footer row under it, a close button in the header, and an "Esc to cancel" hint. Text follows the site's font and
+  footer row under it, a close button in the header, and an Esc hint. Text follows the site's font and
   size. In a short window the screenshot gives up height, so the note and Send stay in view.
 - The trigger is a pill with an icon and a short label: new `strings.triggerText` ("Feedback"), and
   new `strings.escHint`; code that types a full `FeedbackStrings` object needs both keys.

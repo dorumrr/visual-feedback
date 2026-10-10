@@ -8,8 +8,11 @@ package stores nothing and sends nothing by itself.
 ## 2. Flow
 ```
 idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> sent --3 s--> idle
-                   |                          |                    |
-                   +--fails--> capture error  +--Cancel/Esc--> idle +--fails--> send error
+                   |                          |   ^                |
+                   +--fails--> capture error  |   |                +--fails--> send error
+                                              |   +--Open, or Capture this view (capturing first)
+                                              +--Esc / Keep as draft / Add screenshot--> draft
+annotating, draft --Cancel / Discard--> idle
 ```
 - **idle:** the trigger button shows (`trigger: "button"`), or nothing shows (`trigger: "none"`,
   where the host calls `open()`).
@@ -17,14 +20,23 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
   screen is captured (SPEC §5), and a screen reader is told the `capturing` text.
 - **capture error:** the `captureError` text, with "Try again" (back to capturing), "Send without
   screenshot" (annotating with no image: no toolbar, no screenshots in the report) and Cancel or Esc
-  (idle).
-- **annotating:** a full-viewport overlay shows the image with a tool rail beside it, and the note
-  field, with Send in a footer row under it. A close button in the header and Esc cancel.
+  (idle). This is the first screenshot only; a later one that fails is the draft's (below).
+- **annotating:** a full-viewport overlay shows the image with a tool rail beside it, a strip of
+  the report's screenshots under it, and the note field, with Send in a footer row under that.
+  Esc and the header's Keep as draft fold it into the draft; the header's close button (Cancel)
+  discards it. Without a screenshot ("Send without screenshot"), Esc cancels.
+- **draft:** a small bar in the trigger's corner, in place of the trigger: the `draft` label with
+  the number of screenshots, small copies of them, "Capture this view", "Open" and "Discard". The
+  page scrolls, and a single-page app can change route, while it shows. "Capture this view" takes
+  another screenshot of the page as it is now, the bar and the dialog left out, adds it, and opens
+  the dialog on it; a capture that fails opens the dialog on the kept draft with the
+  `captureError` text, where Esc keeps the draft again and Cancel discards it. "Open", and `open()`, open the dialog as it was. A full page load ends the draft.
 - **sending:** the note, the category and the tools are disabled, and the Send button shows
-  progress. Cancel and Esc still close the dialog.
+  progress. The Esc hint goes: from Send on, Cancel and Esc close the dialog.
 - **sent:** a short confirmation, then idle.
 - **send error:** the message comes from the host's error, or else the `error` text. The note and
-  the marks are kept, and "Try again" sends the same report.
+  the marks are kept, and "Try again" sends the same report. Cancel and Esc close the dialog, and
+  the draft goes with it.
 
 ## 3. The trigger
 - It is a small pill, 2.5em high by default (40 px on a 16 px site), in a corner (`position`), with
@@ -48,6 +60,11 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
 - **Note:** a textarea of 2000 characters at most, with a visible label (`noteLabel`). It is
   required unless `requireNote: false`.
 - **Category:** shown only when `categories` is given, with a visible label (`categoryLabel`).
+- **Screenshots:** a report holds up to 10. Each keeps its own marks and its own Undo; the tool
+  chosen stays the same across them. The strip numbers them in the order they are sent: a click
+  shows one, and its remove button, there only when there are two or more, takes one out. "Add
+  screenshot" folds the dialog into the draft, and is gone at 10. The note and the category are one
+  for the whole report.
 - Sending without any mark is allowed.
 
 ## 5. Capture
@@ -68,22 +85,24 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
   image with the marks painted in, the marks as vectors, and the page URL and title, the viewport
   and the scroll position as they were when it was taken;
 - the note and the category;
-- the page URL and title, the viewport and the scroll position, as they were at the screenshot,
-  or at the capture error after "Send without screenshot";
+- the page URL and title, the viewport and the scroll position, as they were at the first
+  screenshot, or at the capture error after "Send without screenshot";
 - the user agent, the language, the time zone and the time of Send;
 - whatever the host's `context()` returns.
 
 ## 7. Privacy
 - The image is what the user sees. Nothing on the page is masked, hidden or redacted, password
   fields included. Only the widget itself is left out (SPEC §2, capturing).
-- The image is never kept after `close()`.
+- No screenshot is kept after the draft ends: Send, Cancel, Discard or `close()`.
 - No console logs, network logs, cookies, storage or keystrokes are collected.
 - The query string and the hash of the URL are kept unless `redactUrl: true` is set.
 
 ## 8. Accessibility
 - The overlay is a `role="dialog"` with `aria-modal="true"` and a label.
-- Focus stays inside the dialog, and Escape cancels it. While it is open, the page does not
-  scroll. On close, focus goes back to the trigger, or to where it was before.
+- Focus stays inside the dialog. Escape keeps an unsent draft in the draft bar, and moves the
+  focus to it ("Capture this view", or "Open" at 10 screenshots); without a draft it cancels.
+  While the dialog is open, the page does not scroll. On close, focus goes back to the trigger,
+  or to where it was before.
 - Every control has an accessible name and a visible focus ring (`--vf-focus`).
 - With the keyboard alone, the user can still write the note, choose a category and send without
   marks.
@@ -138,4 +157,10 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | error | It didn't send. Your note is kept. |
 | retry | Try again |
 | triggerText | Feedback, or the `trigger` text when only that is replaced |
-| escHint | Esc to cancel |
+| escHint | Esc keeps it as a draft |
+| minimise | Keep as draft |
+| screenshot | Screenshot (each one is named with its number, as "Screenshot 2") |
+| addScreenshot | Add screenshot |
+| removeScreenshot | Remove screenshot (with the number, as "Remove screenshot 2") |
+| draft | Feedback draft (the bar shows the number of screenshots after it) |
+| captureView / reopen / discard | Capture this view / Open / Discard |

@@ -144,9 +144,11 @@ test("text, icons and buttons follow the site's font size", async ({ page }) => 
       await page.getByRole("button", { name: "Draw" }).boundingBox(),
       await page.locator("visual-feedback .tool svg").first().boundingBox(),
       await page.getByRole("button", { name: "Send", exact: true }).boundingBox(),
-      await page.getByText("Esc to cancel").evaluate((hint) => getComputedStyle(hint).fontSize),
+      await page
+        .getByText("Esc keeps it as a draft")
+        .evaluate((hint) => getComputedStyle(hint).fontSize),
     ];
-    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Cancel" }).click();
     return sizes as [{ height: number }, { height: number }, { height: number }, string];
   };
   await mount(page);
@@ -260,6 +262,13 @@ test("every element of every view has its ::part() name, and the page can style 
   await page.mouse.click((box?.x ?? 0) + 110, (box?.y ?? 0) + 60);
   await expect(page.locator("visual-feedback .selection")).toBeVisible();
   await scan("a selected mark");
+  await page.getByRole("button", { name: "Add screenshot" }).click();
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toBeVisible();
+  await scan("draft bar");
+  await page.getByRole("button", { name: "Capture this view" }).click();
+  await expect(page.getByRole("button", { name: "Screenshot 2", exact: true })).toBeVisible();
+  await scan("two screenshots");
+  await page.getByRole("button", { name: "Screenshot 1", exact: true }).click();
   await page.getByRole("button", { name: "Clear", exact: true }).click();
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("alert")).toBeVisible();
@@ -297,7 +306,7 @@ test("css goes after every default sheet, the dialog's included", async ({ page 
     await trigger.click();
     const title = page.getByRole("heading", { name: "Send feedback" });
     await expect(title).toHaveCSS("margin-top", "9px");
-    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Cancel" }).click();
     await expect(title).toHaveCount(0);
   }
 });

@@ -25,9 +25,9 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 | `--vf-focus` | `--vf-accent` | focus ring |
 | `--vf-mark` | `#e5243b` | marks on the screenshot |
 | `--vf-backdrop` | `rgb(0 0 0 / 45%)` | overlay behind the image |
-| `--vf-shadow` | `0 12px 32px -12px rgb(0 0 0 / 35%)` | trigger and panel |
+| `--vf-shadow` | `0 12px 32px -12px rgb(0 0 0 / 35%)` | trigger, panel and draft bar |
 | `--vf-trigger-size` | `2.5em`, 40px on a 16px site | trigger height |
-| `--vf-offset` | `16px` | trigger distance from the edges |
+| `--vf-offset` | `16px` | trigger and draft bar distance from the edges |
 | `--vf-z` | `2147483000` | stacking |
 
 ```css
@@ -40,9 +40,12 @@ visual-feedback {
 
 ## 3. `::part()`
 Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`, `backdrop`,
-`dialog`, `header`, `title`, `body`, `image`, `toolbar`, `tool`, `tool-active`, `divider`, `undo`,
-`clear`, `remove`, `icon`, `text-input`, `selection`, `label`, `composer`, `note`, `composer-bar`, `category`, `footer`, `actions`, `cancel`, `send`,
-`hint`, `status`, `error`, `retry`, `send-without`.
+`dialog`, `header`, `title`, `minimise`, `body`, `stage`, `image`, `toolbar`, `tool`, `tool-active`,
+`divider`, `undo`, `clear`, `remove`, `icon`, `text-input`, `selection`, `strip`, `thumb`,
+`thumb-pick`, `thumb-image`, `thumb-number`, `thumb-remove`, `add`, `label`, `composer`, `note`,
+`composer-bar`, `category`, `footer`, `actions`, `cancel`, `send`, `hint`, `status`, `error`,
+`retry`, `send-without`, `draft`, `draft-label`, `draft-thumbs`, `capture-view`, `reopen`,
+`discard`.
 
 ```css
 visual-feedback::part(trigger) { opacity: .6; }

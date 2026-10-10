@@ -353,6 +353,8 @@ it("each screenshot is committed, numbered in order, and shown in the issue in o
     Buffer.from(WEBP),
   );
   const body = issues[0]?.body ?? "";
+  // Both on the report's own page: no page line of their own.
+  expect(body.match(/example\.test\/bills/g)).toHaveLength(1);
   const first = body.indexOf(
     `![Screenshot 1](<https://github.com/${REPO}/blob/main/feedback/${report.id}/screenshot-0.png?raw=true>)`,
   );
@@ -361,6 +363,23 @@ it("each screenshot is committed, numbered in order, and shown in the issue in o
   );
   expect(first).toBeGreaterThan(-1);
   expect(second).toBeGreaterThan(first);
+});
+
+it("a screenshot of another page than the report's names that page under its image", async () => {
+  const report = valid();
+  const [shot] = report.screenshots as Record<string, unknown>[];
+  const other = { ...shot, page: { url: "https://example.test/settings", title: "Settings" } };
+  const form = new FormData();
+  form.append("report", JSON.stringify({ ...report, screenshots: [shot, other] }));
+  form.append("image0", new Blob([PNG], { type: "image/png" }), "x");
+  form.append("image1", new Blob([PNG], { type: "image/png" }), "x");
+  const request = new Request("http://localhost/api/feedback", { method: "POST", body: form });
+  expect((await route.POST(request)).status).toBe(204);
+  const body = issues[0]?.body ?? "";
+  const second = body.indexOf("![Screenshot 2]");
+  expect(second).toBeGreaterThan(-1);
+  expect(body.indexOf("https://example.test/settings")).toBeGreaterThan(second);
+  expect(body.indexOf("```text\nhttps://example.test/settings\n```")).toBeGreaterThan(-1);
 });
 
 it("a report with no screenshots commits no image and says so", async () => {
