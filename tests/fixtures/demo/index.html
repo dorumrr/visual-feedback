@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Northwind Orders</title>
+<style>
+  :root { color-scheme: light; font-family: system-ui, sans-serif; color: #1d2433; }
+  body { margin: 0; background: #f4f6fa; }
+  header { display: flex; align-items: center; gap: 24px; padding: 14px 32px; background: #1d2433; color: #fff; }
+  header strong { font-size: 18px; }
+  header nav { display: flex; gap: 18px; opacity: .8; font-size: 14px; }
+  main { padding: 28px 32px; display: grid; gap: 20px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .tile { background: #fff; border-radius: 10px; padding: 16px 18px; box-shadow: 0 1px 3px rgb(0 0 0 / 8%); }
+  .tile small { color: #6b7385; } .tile b { display: block; font-size: 26px; margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgb(0 0 0 / 8%); font-size: 14px; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid #eef0f4; }
+  th { background: #fafbfc; color: #6b7385; font-weight: 600; }
+  .total { text-align: right; } .late { color: #b42318; font-weight: 600; }
+</style>
+</head>
+<body>
+<header><strong>Northwind Orders</strong><nav><span>Orders</span><span>Customers</span><span>Reports</span></nav></header>
+<main>
+  <div class="tiles">
+    <div class="tile"><small>Open orders</small><b>128</b></div>
+    <div class="tile"><small>Shipped this week</small><b>342</b></div>
+    <div class="tile"><small>Late</small><b class="late">7</b></div>
+  </div>
+  <table>
+    <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th class="total">Total</th></tr></thead>
+    <tbody>
+      <tr><td>#1042</td><td>Blue Harbor Cafe</td><td>Packed</td><td class="total">$412.00</td></tr>
+      <tr><td>#1043</td><td>Maple Street Books</td><td class="late">Late</td><td class="total">$NaN</td></tr>
+      <tr><td>#1044</td><td>Copper Kettle</td><td>Shipped</td><td class="total">$96.50</td></tr>
+      <tr><td>#1045</td><td>Lantern Studio</td><td>Packed</td><td class="total">$1,280.00</td></tr>
+      <tr><td>#1046</td><td>Riverbend Florist</td><td>Shipped</td><td class="total">$58.20</td></tr>
+    </tbody>
+  </table>
+</main>
+<script type="module">
+  import { createFeedback } from "/dist/index.mjs";
+
+  createFeedback({ onSubmit: async () => {} });
+</script>
+</body>
+</html>

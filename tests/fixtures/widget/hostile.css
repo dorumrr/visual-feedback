@@ -1,0 +1,6 @@
+* {
+  all: unset;
+}
+button {
+  display: none;
+}

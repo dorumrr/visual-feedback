@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Cross-origin image</title>
+<link rel="stylesheet" href="base.css" />
+</head>
+<body>
+<main><div class="card">An image from another origin, served without CORS:</div><img id="img" width="160" height="120" alt="checker" /><div class="band"></div></main>
+<script>document.getElementById("img").src = `${location.protocol}//${location.hostname}:${Number(location.port) + 1}/capture/checker.png`;</script>
+</body>
+</html>

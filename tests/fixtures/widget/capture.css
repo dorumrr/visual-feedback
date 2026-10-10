@@ -1,0 +1,35 @@
+html,
+body {
+  margin: 0;
+}
+html {
+  background: #eeeff1;
+}
+main {
+  padding: 16px;
+}
+.corner {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 160px;
+  height: 160px;
+  background: #65ff6b;
+}
+.band {
+  position: absolute;
+  top: 1500px;
+  left: 0;
+  width: 200px;
+  height: 100px;
+  background: #60e4f9;
+}
+.tall {
+  height: 3000px;
+}
+visual-feedback {
+  --vf-surface: #ff2357;
+  --vf-border: #ff2357;
+  --vf-text: #ff2357;
+  --vf-shadow: none;
+}

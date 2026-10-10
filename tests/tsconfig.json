@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["**/*", "../*.config.ts"],
+  // The Next.js app is type-checked by next build, with its own JSX settings.
+  "exclude": ["react/next-app"]
+}

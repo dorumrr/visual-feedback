@@ -1,0 +1,65 @@
+# visual-feedback: theming
+
+The widget lives in one shadow root, so the site's CSS cannot break it, and its CSS cannot leak
+out. There are four ways to adapt it, from lightest to heaviest:
+
+## 1. It inherits
+Inside the shadow root, the widget sets `font: inherit` and `color-scheme: light dark`, so a site
+rule such as `* { all: unset }` cannot reset them. The defaults use the system colours `Canvas`,
+`CanvasText` and `AccentColor`. With no theming at all, it takes the site's font and follows light
+and dark mode.
+
+## 2. CSS custom properties
+Set these on `visual-feedback` (or on any ancestor). Custom properties cross the shadow boundary.
+
+| variable | default | used for |
+|---|---|---|
+| `--vf-font` | `inherit` | font family of all text, such as `Inter, sans-serif` |
+| `--vf-radius` | `12px` | panel, inputs, buttons |
+| `--vf-surface` | `Canvas` | panel and toolbar background |
+| `--vf-text` | `CanvasText` | text |
+| `--vf-muted` | text at 60% | hints, counters |
+| `--vf-border` | text at 15% | hairlines |
+| `--vf-accent` | `AccentColor`, or `#0b57d0` where the browser has no `AccentColor` | Send button, active tool |
+| `--vf-accent-text` | black or white, whichever contrasts more with the accent | text on the accent |
+| `--vf-focus` | `--vf-accent` | focus ring |
+| `--vf-mark` | `#e5243b` | marks on the screenshot |
+| `--vf-backdrop` | `rgb(0 0 0 / 45%)` | overlay behind the image |
+| `--vf-shadow` | `0 4px 16px rgb(0 0 0 / 12%)` | trigger and panel |
+| `--vf-trigger-size` | `36px` | trigger diameter |
+| `--vf-offset` | `16px` | trigger distance from the edges |
+| `--vf-z` | `2147483000` | stacking |
+
+```css
+visual-feedback {
+  --vf-accent: #2563eb;
+  --vf-accent-text: #fff;
+  --vf-radius: 8px;
+}
+```
+
+## 3. `::part()`
+Every visible element has a part name: `trigger`, `trigger-icon`, `backdrop`, `dialog`, `title`,
+`image`, `toolbar`, `tool`, `tool-active`, `undo`, `clear`, `label`, `note`, `category`, `actions`, `cancel`, `send`,
+`status`, `error`, `retry`, `send-without`.
+
+```css
+visual-feedback::part(trigger) { opacity: .6; }
+visual-feedback::part(trigger):hover { opacity: 1; }
+```
+
+## 4. The `css` option and `unstyled`
+- `css` is a string. It is added as a constructable stylesheet inside the shadow root, after the
+  defaults, so it can reach anything, including states that `::part()` cannot select.
+- `unstyled: true` drops every default except the layout-critical rules (the trigger's position and
+  size, the overlay's position, the panel's layout, canvas size, hidden states). Then the `css` option styles everything.
+
+```ts
+createFeedback({ onSubmit, css: `.toolbar { gap: 2px } .send { text-transform: uppercase }` });
+```
+Class names used inside the shadow root are part of the public API from 1.0. Before 1.0 they may
+change.
+
+## Theme
+`theme: "light" | "dark"` sets `color-scheme` inside the shadow root, which forces that scheme.
+`"auto"` follows the system.

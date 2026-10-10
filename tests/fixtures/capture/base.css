@@ -1,0 +1,30 @@
+@font-face {
+  font-family: "Lato";
+  src: url("../fonts/lato-latin-400-normal.woff2") format("woff2");
+}
+html,
+body {
+  margin: 0;
+}
+body {
+  font:
+    18px / 1.5 system-ui,
+    sans-serif;
+  color: #09090b;
+  background: #eeeff1;
+}
+main {
+  padding: 32px;
+}
+.card {
+  width: 360px;
+  padding: 16px;
+  margin: 0 0 16px;
+  background: #fff;
+  border: 1px solid #09090b;
+  border-radius: 12px;
+}
+.band {
+  height: 48px;
+  background: #65ff6b;
+}

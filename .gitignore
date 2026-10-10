@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+*.tgz
+.phi/
+.DS_Store
+.visual-feedback/
+# Working notes, kept local
+PLAN.md
+CLAUDE.md
+docs/BACKGROUND.md

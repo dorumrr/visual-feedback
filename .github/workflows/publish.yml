@@ -1,0 +1,71 @@
+name: publish
+
+# Started by hand from the Actions tab. A dry run is the default.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Pack and check everything, publish nothing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  # Signs the provenance: the record that the package was built from this commit.
+  id-token: write
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: npm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run check
+      # A dry run only warns, so it can rehearse before the version is bumped.
+      - name: The version has its CHANGELOG entry
+        continue-on-error: ${{ inputs.dry_run }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          # The dots of the version are literal, not "any character".
+          pattern="^## $(printf '%s' "$version" | sed 's/[.]/\\./g')( |$)"
+          heading=$(grep -cE "$pattern" CHANGELOG.md || true)
+          if [ "$heading" -ne 1 ]; then
+            echo "CHANGELOG.md has no '## ${version}' entry for package.json's version ${version}"
+            exit 1
+          fi
+          unreleased=$(grep -E "$pattern" CHANGELOG.md | grep -ciE "not (yet )?released|unreleased" || true)
+          if [ "$unreleased" -ne 0 ]; then
+            echo "CHANGELOG.md's '## ${version}' heading still says it is not released"
+            exit 1
+          fi
+      - name: A real publish comes from main only
+        if: ${{ !inputs.dry_run }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "A real publish runs from main, not ${GITHUB_REF}"
+            exit 1
+          fi
+      - name: Publish (dry run)
+        if: inputs.dry_run
+        run: npm publish --provenance --access public --dry-run
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --provenance --access public
+        env:
+          # A short-lived granular token for 0.1.0 only; trusted publishing replaces it.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

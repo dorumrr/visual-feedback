@@ -1,0 +1,100 @@
+{
+  "name": "visual-feedback",
+  "version": "0.1.0",
+  "description": "A small button lets your users screenshot the page, mark it up and write a note. You receive one report and store it where you want.",
+  "keywords": [
+    "feedback",
+    "bug-report",
+    "screenshot",
+    "annotate",
+    "widget",
+    "react",
+    "nextjs"
+  ],
+  "license": "MIT",
+  "author": "Doru Moraru",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dorumrr/visual-feedback.git"
+  },
+  "homepage": "https://github.com/dorumrr/visual-feedback#readme",
+  "bugs": "https://github.com/dorumrr/visual-feedback/issues",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./server": {
+      "types": "./dist/server.d.mts",
+      "import": "./dist/server.mjs"
+    },
+    "./react": {
+      "types": "./dist/react.d.mts",
+      "import": "./dist/react.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist",
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "docs/API.md",
+    "docs/SPEC.md",
+    "docs/THEMING.md",
+    "docs/recipes"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
+    "test": "vitest run",
+    "test:edge": "deno test --no-config --sloppy-imports tests/server/parse.deno.ts",
+    "test:e2e": "playwright test",
+    "test:react": "playwright test -c tests/react/playwright.config.ts",
+    "test:pack": "playwright test -c tests/pack-smoke/playwright.config.ts",
+    "size": "size-limit",
+    "publint": "publint --strict",
+    "check": "npm run lint && npm run typecheck && npm run build && npm run test && npm run test:edge && npm run test:e2e && npm run test:react && npm run test:pack && npm run size && npm run publint",
+    "prepack": "npm run --silent build -- --logLevel warn",
+    "dev": "node tests/dev.mjs",
+    "demo": "node tests/demo.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@biomejs/biome": "^2.5.15",
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
+    "@playwright/test": "^1.64.0",
+    "@size-limit/preset-small-lib": "^14.2.0",
+    "@supabase/supabase-js": "^2.117.3",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "aws4fetch": "^1.0.20",
+    "next": "^16.4.0",
+    "postgres": "^3.4.9",
+    "publint": "^0.3.25",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "size-limit": "^14.2.0",
+    "tsdown": "^0.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@zumer/snapdom": "3.3.0"
+  }
+}

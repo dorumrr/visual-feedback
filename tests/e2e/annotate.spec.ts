@@ -1,0 +1,692 @@
+import AxeBuilder from "@axe-core/playwright";
+import { expect, type Page, test } from "@playwright/test";
+import { defaultType, finish, focused, type Mounted, mount, near, read, signature } from "./widget";
+
+/** The default `--vf-mark`, #e5243b. */
+const MARK = [0xe5, 0x24, 0x3b];
+/** WebP is lossy, so a stroke comes back a few units off its colour. */
+const LOSSY = 20;
+
+type Point = [number, number];
+type Mark =
+  | { tool: "pen"; points: Point[] }
+  | { tool: "box"; x: number; y: number; width: number; height: number }
+  | { tool: "arrow"; from: Point; to: Point };
+
+const trigger = (page: Page) => page.getByRole("button", { name: "Send feedback" });
+const image = (page: Page) => page.locator("visual-feedback").locator("canvas.image");
+const tool = (page: Page, name: string) => page.getByRole("button", { name, exact: true });
+
+async function opened(page: Page, options: Record<string, unknown> = {}): Promise<void> {
+  await page.goto("/widget/capture.html");
+  // These tests are about drawing; the note rule has its own tests in send.spec.ts.
+  await mount(page, { requireNote: false, ...options });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+}
+
+/** CSS pixels of the page at fractions of the shown image's box. */
+async function on(page: Page, path: number[][]): Promise<Point[]> {
+  const box = await image(page).boundingBox();
+  if (!box) throw new Error("no image");
+  return path.map(([x = 0, y = 0]) => [box.x + box.width * x, box.y + box.height * y]);
+}
+
+async function drag(page: Page, path: number[][]): Promise<void> {
+  const [first, ...rest] = await on(page, path);
+  await page.mouse.move(...(first as Point));
+  await page.mouse.down();
+  for (const point of rest) await page.mouse.move(...point, { steps: 6 });
+  await page.mouse.up();
+}
+
+/** Pointer events of type touch, sent by the page itself, for browsers Playwright cannot touch-drag. */
+async function synthetic(
+  page: Page,
+  path: number[][],
+  end = "pointerup",
+  release?: number[],
+): Promise<void> {
+  // The mouse's own pointer id, which the browser knows, so setPointerCapture accepts it.
+  await page.evaluate(() =>
+    document.addEventListener(
+      "pointermove",
+      (e) => Object.assign(window, { pointer: e.pointerId }),
+      { once: true },
+    ),
+  );
+  await page.mouse.move(2, 2);
+  await page.mouse.move(3, 3);
+  const points = await on(page, path);
+  const [last] = await on(page, [release ?? path.at(-1) ?? []]);
+  await page.evaluate(
+    async ({ points, end, last }) => {
+      const canvas = document
+        .querySelector("visual-feedback")
+        ?.shadowRoot?.querySelector<HTMLCanvasElement>("canvas.image");
+      if (!canvas) throw new Error("no image");
+      const id = (window as unknown as { pointer?: number }).pointer;
+      if (typeof id !== "number") throw new Error("the mouse's pointer id was not seen");
+      const fire = (type: string, [x = 0, y = 0]: number[], buttons: number) =>
+        canvas.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+            pointerId: id,
+            pointerType: "touch",
+            isPrimary: true,
+            button: type === "pointermove" ? -1 : 0,
+            buttons,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+      const [first, ...rest] = points;
+      fire("pointerdown", first ?? [], 1);
+      for (const point of rest) fire("pointermove", point, 1);
+      fire(end, last ?? [], 0);
+    },
+    { points, end, last },
+  );
+}
+
+async function send(page: Page): Promise<Mark[]> {
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await finish(page);
+  return page.evaluate(() => (window as unknown as Mounted).reports.at(-1)?.marks as never);
+}
+
+/** RGB of the shown image at image pixels. */
+function shown(page: Page, points: number[][]): Promise<number[][]> {
+  return page.evaluate((points) => {
+    const canvas = document
+      .querySelector("visual-feedback")
+      ?.shadowRoot?.querySelector<HTMLCanvasElement>("canvas.image");
+    const context = canvas?.getContext("2d");
+    return points.map(([x = 0, y = 0]) =>
+      [...(context?.getImageData(x, y, 1, 1).data ?? [])].slice(0, 3),
+    );
+  }, points);
+}
+
+const middle = (mark: Mark | undefined): Point => {
+  if (mark?.tool !== "pen") throw new Error(`not a pen mark: ${JSON.stringify(mark)}`);
+  return mark.points[Math.floor(mark.points.length / 2)] as Point;
+};
+
+/** A point on the page background, away from every mark these tests draw. */
+const AWAY: Point = [5, 5];
+
+test("the shown image keeps its shape when the window's height limits it", async ({ page }) => {
+  await opened(page);
+  const [shown, natural, height, limit] = await image(page).evaluate(
+    (canvas: HTMLCanvasElement) => [
+      canvas.clientWidth / canvas.clientHeight,
+      canvas.width / canvas.height,
+      canvas.clientHeight,
+      innerHeight * 0.6,
+    ],
+  );
+  // The height limit is the one that applies here.
+  expect(Math.abs((height ?? 0) - (limit ?? 0))).toBeLessThan(1);
+  expect(Math.abs((shown ?? 0) - (natural ?? 0))).toBeLessThan(0.02);
+});
+
+test("a pen stroke drawn by mouse is in the sent image in the mark colour, and in the marks", async ({
+  page,
+}) => {
+  await opened(page);
+  await expect(tool(page, "Draw")).toHaveAttribute("aria-pressed", "true");
+  await drag(page, [
+    [0.2, 0.5],
+    [0.4, 0.5],
+    [0.6, 0.5],
+  ]);
+  const marks = await send(page);
+  expect(marks).toHaveLength(1);
+  expect(marks[0]?.tool).toBe("pen");
+  const centre = middle(marks[0]);
+  const shot = await read(page, [centre, AWAY], MARK, true);
+  expect(near(shot?.at[0], MARK, LOSSY), `stroke centre ${shot?.at[0]}`).toBe(true);
+  expect(near(shot?.at[1], MARK, 60), `away ${shot?.at[1]}`).toBe(false);
+  // The points are where the pointer went, in image pixels.
+  const first = marks[0]?.tool === "pen" ? marks[0].points[0] : undefined;
+  expect(Math.abs((first?.[0] ?? 0) - (shot?.width ?? 0) * 0.2)).toBeLessThan(4);
+  expect(Math.abs((first?.[1] ?? 0) - (shot?.height ?? 0) * 0.5)).toBeLessThan(4);
+  // Every point is in image pixels, inside the image.
+  for (const [x, y] of marks[0]?.tool === "pen" ? marks[0].points : []) {
+    expect(x).toBeGreaterThanOrEqual(0);
+    expect(x).toBeLessThanOrEqual(shot?.width ?? 0);
+    expect(y).toBeGreaterThanOrEqual(0);
+    expect(y).toBeLessThanOrEqual(shot?.height ?? 0);
+  }
+  // PNG only where the canvas cannot encode WebP (SPEC §5), as WebKit on macOS.
+  expect(shot?.type).toBe(await defaultType(page));
+  expect(signature(shot?.magic)).toBe(shot?.type);
+});
+
+/** A CSS colour as the browser resolves it, as RGB numbers. */
+function resolve(page: Page, color: string): Promise<number[]> {
+  return page.evaluate((color) => {
+    const probe = document.createElement("i");
+    probe.style.color = color;
+    document.body.append(probe);
+    const value = getComputedStyle(probe).color.match(/\d+/g)?.map(Number) ?? [];
+    probe.remove();
+    return value.slice(0, 3);
+  }, color);
+}
+
+test("the mark colour is --vf-mark from an ancestor, resolved at each open, exact in a PNG, and thick", async ({
+  page,
+}) => {
+  await page.goto("/widget/capture.html");
+  await page.addStyleTag({ content: "body { --vf-mark: hsl(230 100% 56%) }" });
+  await mount(page, { requireNote: false, capture: { type: "image/png" } });
+  for (const color of ["hsl(230 100% 56%)", "hsl(130 100% 25%)"]) {
+    await page.addStyleTag({ content: `body { --vf-mark: ${color} }` });
+    const expected = await resolve(page, color);
+    await trigger(page).click();
+    await expect(image(page)).toBeVisible();
+    await drag(page, [
+      [0.2, 0.4],
+      [0.6, 0.4],
+    ]);
+    const marks = await send(page);
+    // At least 4 image pixels thick: the rows 2 above and 1 below the centre are fully covered.
+    const [x, y] = middle(marks[0]);
+    const shot = await read(
+      page,
+      [
+        [x, y],
+        [x, y - 2],
+        [x, y + 1],
+      ],
+      MARK,
+      true,
+    );
+    expect(shot?.at, `stroke rows vs ${expected}`).toEqual([expected, expected, expected]);
+  }
+});
+
+test("Box draws a rectangle outline, with an empty inside", async ({ page }) => {
+  await opened(page);
+  await tool(page, "Box").click();
+  await expect(tool(page, "Box")).toHaveAttribute("aria-pressed", "true");
+  await expect(tool(page, "Draw")).toHaveAttribute("aria-pressed", "false");
+  // Drawn from the bottom right up to the top left: the box is still stored top left first.
+  await drag(page, [
+    [0.5, 0.6],
+    [0.3, 0.3],
+  ]);
+  const marks = await send(page);
+  expect(marks).toHaveLength(1);
+  const box = marks[0];
+  if (box?.tool !== "box") throw new Error(`not a box: ${JSON.stringify(box)}`);
+  const sent = await read(page, [], MARK);
+  const [width, height] = [sent?.width ?? 0, sent?.height ?? 0];
+  expect(Math.abs(box.x - width * 0.3)).toBeLessThan(6);
+  expect(Math.abs(box.y - height * 0.3)).toBeLessThan(6);
+  expect(Math.abs(box.width - width * 0.2)).toBeLessThan(6);
+  expect(Math.abs(box.height - height * 0.3)).toBeLessThan(6);
+  const [cx, cy] = [Math.round(box.x + box.width / 2), Math.round(box.y + box.height / 2)];
+  const sides = [
+    [box.x, cy],
+    [box.x + box.width, cy],
+    [cx, box.y],
+    [cx, box.y + box.height],
+  ];
+  const shot = await read(page, [[cx, cy], ...sides], MARK, true);
+  expect(near(shot?.at[0], MARK, 60), `inside ${shot?.at[0]}`).toBe(false);
+  for (const [i, rgb] of (shot?.at ?? []).slice(1).entries()) {
+    expect(near(rgb, MARK, LOSSY), `side ${i} ${rgb}`).toBe(true);
+  }
+});
+
+test("Arrow draws a line with a head at its end", async ({ page }) => {
+  await opened(page);
+  await tool(page, "Arrow").click();
+  await drag(page, [
+    [0.3, 0.7],
+    [0.6, 0.7],
+  ]);
+  const width = await page.evaluate(
+    () =>
+      document
+        .querySelector("visual-feedback")
+        ?.shadowRoot?.querySelector<HTMLCanvasElement>("canvas.image")
+        ?.getContext("2d")?.lineWidth ?? 0,
+  );
+  const marks = await send(page);
+  expect(marks).toHaveLength(1);
+  const arrow = marks[0];
+  if (arrow?.tool !== "arrow") throw new Error(`not an arrow: ${JSON.stringify(arrow)}`);
+  const sent = await read(page, [], MARK);
+  const [w, h] = [sent?.width ?? 0, sent?.height ?? 0];
+  for (const [actual, expected] of [
+    [arrow.from[0], w * 0.3],
+    [arrow.from[1], h * 0.7],
+    [arrow.to[0], w * 0.6],
+    [arrow.to[1], h * 0.7],
+  ]) {
+    expect(Math.abs((actual ?? 0) - (expected ?? 0))).toBeLessThan(4);
+  }
+  const [[x1, y1], [x2, y2]] = [arrow.from, arrow.to];
+  const shaft = [Math.round((x1 + x2) / 2), Math.round((y1 + y2) / 2)];
+  // Half way along one side of the head, which leaves the tip at 30 degrees back from the line.
+  // The head probes below assume a stroke at least 4 pixels wide.
+  expect(width).toBeGreaterThanOrEqual(4);
+  const size = width * 4;
+  const head = [Math.round(x2 - size * 0.433), Math.round(y2 + size * 0.25)];
+  const below = [Math.round(x2 - size * 0.433), Math.round(y2 + size * 0.6)];
+  const other = [Math.round(x2 - size * 0.433), Math.round(y2 - size * 0.25)];
+  // Where a head at the start would be: there is none.
+  const start = [Math.round(x1 + size * 0.433), Math.round(y1 + size * 0.25)];
+  const shot = await read(page, [shaft, head, below, other, start], MARK, true);
+  expect(near(shot?.at[3], MARK, LOSSY), `other side of the head ${shot?.at[3]}`).toBe(true);
+  expect(near(shot?.at[4], MARK, 60), `no head at the start ${shot?.at[4]}`).toBe(false);
+  expect(near(shot?.at[0], MARK, LOSSY), `shaft ${shot?.at[0]}`).toBe(true);
+  expect(near(shot?.at[1], MARK, LOSSY), `head ${shot?.at[1]}`).toBe(true);
+  expect(near(shot?.at[2], MARK, 60), `below the head ${shot?.at[2]}`).toBe(false);
+});
+
+test("Undo removes the last mark and Clear removes all, back to the clean capture", async ({
+  page,
+}) => {
+  await opened(page);
+  await expect(tool(page, "Undo")).toBeDisabled();
+  await expect(tool(page, "Clear")).toBeDisabled();
+  const [width, height] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+    canvas.width,
+    canvas.height,
+  ]);
+  // On both strokes, in the page's green corner, and in the middle.
+  const samples = [
+    [Math.round(width * 0.4), Math.round(height * 0.3)],
+    [Math.round(width * 0.4), Math.round(height * 0.6)],
+    [width - 40, height - 40],
+    [Math.round(width / 2), Math.round(height / 2)],
+  ];
+  const before = await shown(page, samples);
+  await drag(page, [
+    [0.2, 0.3],
+    [0.6, 0.3],
+  ]);
+  await expect(tool(page, "Undo")).toBeEnabled();
+  await drag(page, [
+    [0.2, 0.6],
+    [0.6, 0.6],
+  ]);
+  await tool(page, "Undo").click();
+  await tool(page, "Undo").click();
+  await expect(tool(page, "Undo")).toBeDisabled();
+  expect(await shown(page, samples)).toEqual(before);
+  await drag(page, [
+    [0.2, 0.3],
+    [0.6, 0.3],
+  ]);
+  await drag(page, [
+    [0.2, 0.6],
+    [0.6, 0.6],
+  ]);
+  await tool(page, "Undo").click();
+  const marks = await send(page);
+  expect(marks).toHaveLength(1);
+  const kept = middle(marks[0]);
+  // The undone stroke ran at 60% of the image's height, at the same x.
+  const undone: Point = [kept[0], Math.round(height * 0.6)];
+  const shot = await read(page, [kept, undone], MARK, true);
+  expect(near(shot?.at[0], MARK, LOSSY), `kept mark ${shot?.at[0]}`).toBe(true);
+  expect(near(shot?.at[1], MARK, 60), `undone mark ${shot?.at[1]}`).toBe(false);
+
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  // This capture's own clean pixels, not the first dialog's.
+  const fresh = await shown(page, samples);
+  for (const y of [0.3, 0.6]) {
+    await drag(page, [
+      [0.2, y],
+      [0.6, y],
+    ]);
+  }
+  expect(await shown(page, samples)).not.toEqual(fresh);
+  await tool(page, "Clear").click();
+  await expect(tool(page, "Clear")).toBeDisabled();
+  expect(await shown(page, samples)).toEqual(fresh);
+  expect(await send(page)).toEqual([]);
+  expect((await read(page, [], MARK))?.counted).toBe(0);
+});
+
+test("the toolbar follows the tools option, and an empty list draws nothing", async ({ page }) => {
+  await opened(page, { tools: ["arrow", "pen", "arrow", "circle"] });
+  const toolbar = page.locator("visual-feedback").locator(".toolbar button");
+  await expect(toolbar).toHaveText(["Arrow", "Draw", "Undo", "Clear"]);
+  await expect(tool(page, "Arrow")).toHaveAttribute("aria-pressed", "true");
+  await expect(tool(page, "Arrow")).toHaveAttribute("part", "tool tool-active");
+  await expect(tool(page, "Draw")).toHaveAttribute("part", "tool");
+  await page.addStyleTag({ content: "visual-feedback { --vf-accent: rgb(1, 2, 3) }" });
+  await expect(tool(page, "Arrow")).toHaveCSS("border-top-color", "rgb(1, 2, 3)");
+  await expect(tool(page, "Draw")).not.toHaveCSS("border-top-color", "rgb(1, 2, 3)");
+  await drag(page, [
+    [0.3, 0.5],
+    [0.5, 0.5],
+  ]);
+  expect((await send(page)).map((mark) => mark.tool)).toEqual(["arrow"]);
+
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await mount(page, { requireNote: false, tools: [] });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await expect(page.locator("visual-feedback").locator(".toolbar")).toHaveCount(0);
+  // Nothing can be drawn, so the image pans and zooms by touch and shows no crosshair.
+  await expect(image(page)).toHaveCSS("touch-action", "auto");
+  await expect(image(page)).not.toHaveCSS("cursor", "crosshair");
+  await drag(page, [
+    [0.3, 0.5],
+    [0.5, 0.5],
+  ]);
+  expect(await send(page)).toEqual([]);
+});
+
+test("a click without a drag adds no mark", async ({ page }) => {
+  await opened(page);
+  for (const name of ["Draw", "Box", "Arrow"]) {
+    await tool(page, name).click();
+    const [point] = await on(page, [[0.4, 0.4]]);
+    await page.mouse.click(...(point as Point));
+  }
+  await expect(tool(page, "Undo")).toBeDisabled();
+  expect(await send(page)).toEqual([]);
+});
+
+test("a drag that leaves the image keeps drawing, held inside the image's edges", async ({
+  page,
+}) => {
+  await opened(page);
+  await drag(page, [
+    [0.5, 0.5],
+    [1.3, 0.5],
+  ]);
+  // Down over the label and the note, still inside the window.
+  await drag(page, [
+    [0.5, 0.5],
+    [0.5, 1.2],
+  ]);
+  // Drawing does not take the focus from the note.
+  await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
+  await tool(page, "Arrow").click();
+  await drag(page, [
+    [0.5, 0.5],
+    [-0.08, -0.08],
+  ]);
+  const [width, height] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+    canvas.width,
+    canvas.height,
+  ]);
+  const marks = await send(page);
+  const points = marks[0]?.tool === "pen" ? marks[0].points : [];
+  expect(points.at(-1)?.[0]).toBe(width);
+  const down = marks[1]?.tool === "pen" ? marks[1].points : [];
+  expect(down.at(-1)?.[1]).toBe(height);
+  const arrow = marks[2];
+  expect(arrow?.tool === "arrow" && arrow.to).toEqual([0, 0]);
+});
+
+test("touch-type pointer events draw, and a cancelled pointer leaves no mark", async ({ page }) => {
+  await opened(page);
+  // Only Chromium can drive a real touch drag; elsewhere this is what keeps a finger from panning.
+  await expect(image(page)).toHaveCSS("touch-action", "none");
+  const [width, height] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+    canvas.width,
+    canvas.height,
+  ]);
+  // On the cancelled stroke, half way along it.
+  const on = [[Math.round((width ?? 0) * 0.3), Math.round((height ?? 0) * 0.5)]];
+  const before = await shown(page, on);
+  await synthetic(
+    page,
+    [
+      [0.2, 0.5],
+      [0.4, 0.5],
+    ],
+    "pointercancel",
+  );
+  await expect(tool(page, "Undo")).toBeDisabled();
+  expect(await shown(page, on)).toEqual(before);
+  await synthetic(page, [
+    [0.2, 0.5],
+    [0.4, 0.5],
+    [0.6, 0.5],
+  ]);
+  const marks = await send(page);
+  expect(marks.map((mark) => mark.tool)).toEqual(["pen"]);
+  const shot = await read(page, [middle(marks[0])], MARK, true);
+  expect(near(shot?.at[0], MARK, LOSSY), `stroke centre ${shot?.at[0]}`).toBe(true);
+});
+
+test("with unstyled, marks are still drawn in the mark colour", async ({ page }) => {
+  await opened(page, { unstyled: true });
+  await drag(page, [
+    [0.2, 0.5],
+    [0.6, 0.5],
+  ]);
+  const marks = await send(page);
+  const shot = await read(page, [middle(marks[0])], MARK, true);
+  expect(near(shot?.at[0], MARK, LOSSY), `stroke centre ${shot?.at[0]}`).toBe(true);
+});
+
+test("the annotating view passes axe, toolbar included", async ({ page }) => {
+  await opened(page);
+  await drag(page, [
+    [0.2, 0.5],
+    [0.6, 0.5],
+  ]);
+  const axe = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(axe.violations.map((v) => `${v.id} ${v.nodes.map((n) => n.target).join()}`)).toEqual([]);
+  const checked = axe.passes
+    .flatMap((rule) => rule.nodes)
+    .map((node) => JSON.stringify(node.target))
+    .filter((target) => target.startsWith('[["visual-feedback"') && /tool|undo/.test(target));
+  expect(checked.length).toBeGreaterThan(0);
+});
+
+test.describe("real touch, which only Chromium can drive", () => {
+  test.use({ hasTouch: true, viewport: { width: 800, height: 420 } });
+
+  async function touch(page: Page, path: number[][]): Promise<void> {
+    const cdp = await page.context().newCDPSession(page);
+    const points = await on(page, path);
+    const go = (type: string, at: Point[]) =>
+      cdp.send("Input.dispatchTouchEvent", {
+        type: type as "touchStart",
+        touchPoints: at.map(([x, y]) => ({ x, y })),
+      });
+    const [first, ...rest] = points;
+    await go("touchStart", [first as Point]);
+    for (const point of rest) await go("touchMove", [point]);
+    await go("touchEnd", []);
+  }
+
+  /** Opens with the dialog taller than the window, scrolled to its top. */
+  async function scrollable(page: Page, css = ""): Promise<number> {
+    await opened(page, { css });
+    return page.evaluate(() => {
+      const backdrop = document
+        .querySelector("visual-feedback")
+        ?.shadowRoot?.querySelector<HTMLElement>(".backdrop");
+      if (!backdrop) return 0;
+      backdrop.scrollTop = 0;
+      return backdrop.scrollHeight - backdrop.clientHeight;
+    });
+  }
+
+  const scrolled = (page: Page) =>
+    page.evaluate(
+      () =>
+        document.querySelector("visual-feedback")?.shadowRoot?.querySelector(".backdrop")
+          ?.scrollTop ?? -1,
+    );
+
+  // Finger moving up over the image: on a page that scrolls, that scrolls the dialog down.
+  const UP = [
+    [0.5, 0.9],
+    [0.5, 0.7],
+    [0.5, 0.5],
+    [0.5, 0.3],
+    [0.5, 0.1],
+  ];
+
+  test("a touch drag on the image draws, and does not scroll the dialog", async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "Playwright can touch-drag only through Chromium's CDP");
+    expect(await scrollable(page)).toBeGreaterThan(20);
+    await touch(page, UP);
+    // A scroll lands after the touch ends, so give it frames to arrive before reading none.
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+    await page.waitForTimeout(250);
+    expect(await scrolled(page)).toBe(0);
+    const marks = await send(page);
+    expect(marks.map((mark) => mark.tool)).toEqual(["pen"]);
+    const shot = await read(page, [middle(marks[0])], MARK, true);
+    expect(near(shot?.at[0], MARK, LOSSY), `stroke centre ${shot?.at[0]}`).toBe(true);
+  });
+
+  test("control: with touch-action back to auto, the same drag scrolls the dialog", async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "Playwright can touch-drag only through Chromium's CDP");
+    expect(await scrollable(page, ".toolbar + .image { touch-action: auto }")).toBeGreaterThan(20);
+    await touch(page, UP);
+    await expect.poll(() => scrolled(page)).toBeGreaterThan(0);
+  });
+});
+
+test("Send while a stroke is still held down sends that stroke in both the image and the marks", async ({
+  page,
+}) => {
+  await opened(page);
+  const [from, to] = await on(page, [
+    [0.2, 0.5],
+    [0.6, 0.5],
+  ]);
+  await page.mouse.move(...(from as Point));
+  await page.mouse.down();
+  await page.mouse.move(...(to as Point), { steps: 6 });
+  await page.getByRole("button", { name: "Send", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await finish(page);
+  await page.mouse.up();
+  const marks = await page.evaluate(
+    () => (window as unknown as Mounted).reports.at(-1)?.marks as Mark[],
+  );
+  expect(marks.map((mark) => mark.tool)).toEqual(["pen"]);
+  const shot = await read(page, [middle(marks[0])], MARK, true);
+  expect(near(shot?.at[0], MARK, LOSSY), `stroke centre ${shot?.at[0]}`).toBe(true);
+});
+
+test("the release point ends the mark, even past the last move", async ({ page }) => {
+  await opened(page);
+  await tool(page, "Arrow").click();
+  await synthetic(
+    page,
+    [
+      [0.3, 0.5],
+      [0.4, 0.5],
+    ],
+    "pointerup",
+    [0.6, 0.5],
+  );
+  const width = await image(page).evaluate((canvas: HTMLCanvasElement) => canvas.width);
+  const marks = await send(page);
+  const arrow = marks[0];
+  if (arrow?.tool !== "arrow") throw new Error(`not an arrow: ${JSON.stringify(arrow)}`);
+  expect(Math.abs(arrow.to[0] - width * 0.6)).toBeLessThan(4);
+});
+
+test("a flat box is kept as the line it shows", async ({ page }) => {
+  await opened(page);
+  await tool(page, "Box").click();
+  await synthetic(page, [
+    [0.3, 0.5],
+    [0.6, 0.5],
+  ]);
+  const marks = await send(page);
+  const box = marks[0];
+  if (box?.tool !== "box") throw new Error(`not a box: ${JSON.stringify(box)}`);
+  expect(box.height).toBe(0);
+  const shot = await read(page, [[Math.round(box.x + box.width / 2), box.y]], MARK, true);
+  expect(near(shot?.at[0], MARK, LOSSY), `line ${shot?.at[0]}`).toBe(true);
+});
+
+test("with marks, Tab reaches Undo and Clear, and disabling them keeps the focus in the dialog", async ({
+  page,
+}) => {
+  await opened(page);
+  await drag(page, [
+    [0.2, 0.5],
+    [0.6, 0.5],
+  ]);
+  await page.getByRole("textbox", { name: "Your note" }).focus();
+  const seen: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    await page.keyboard.press("Tab");
+    seen.push(await focused(page));
+  }
+  expect(seen).toEqual(["cancel", "send", "tool", "tool", "tool", "undo", "clear", "note"]);
+  for (const name of ["Undo", "Clear"]) {
+    if (name === "Clear") {
+      await drag(page, [
+        [0.2, 0.5],
+        [0.6, 0.5],
+      ]);
+    }
+    await tool(page, name).focus();
+    await page.keyboard.press("Enter");
+    await expect(tool(page, name)).toBeDisabled();
+    await expect(tool(page, "Draw")).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(tool(page, "Box")).toBeFocused();
+  }
+});
+
+test("a move with no button pressed ends a stroke whose release was lost", async ({ page }) => {
+  await opened(page);
+  // Down and a move, then no pointerup: the next move arrives with no button held.
+  await synthetic(
+    page,
+    [
+      [0.2, 0.5],
+      [0.4, 0.5],
+    ],
+    "pointermove",
+    [0.2, 0.5],
+  );
+  await expect(tool(page, "Undo")).toBeEnabled();
+  // A new drag draws a second, separate mark.
+  await drag(page, [
+    [0.2, 0.7],
+    [0.4, 0.7],
+  ]);
+  const marks = await send(page);
+  expect(marks).toHaveLength(2);
+  const first = marks[0]?.tool === "pen" ? marks[0].points : [];
+  expect(Math.max(...first.map(([x]) => x))).toBe(first.at(-1)?.[0]);
+});
+
+test("Undo and Clear look disabled while there are no marks", async ({ page }) => {
+  await opened(page);
+  await expect(tool(page, "Undo")).toHaveCSS("opacity", "0.5");
+  await drag(page, [
+    [0.2, 0.5],
+    [0.4, 0.5],
+  ]);
+  await expect(tool(page, "Undo")).toHaveCSS("opacity", "1");
+});
