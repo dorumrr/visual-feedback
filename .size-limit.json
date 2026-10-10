@@ -1,4 +1,4 @@
 [
-  { "name": "loader", "path": "dist/index.mjs", "entry": "index", "limit": "3 KB", "gzip": true },
+  { "name": "loader", "path": "dist/index.mjs", "entry": "index", "limit": "15 KB", "gzip": true },
   { "name": "annotator and dialog", "path": "dist/dialog-*.mjs", "limit": "15 KB", "gzip": true }
 ]

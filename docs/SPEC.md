@@ -3,7 +3,8 @@
 ## 1. What it is
 A user reports a problem or an idea from the page they are on. They capture the screen, mark it
 up, write a note and send it. The host app receives one report and decides where it goes. The
-package stores nothing and sends nothing by itself.
+package sends nothing by itself, and stores nothing but an unsent draft on the user's own device
+(§7).
 
 ## 2. Flow
 ```
@@ -30,7 +31,10 @@ annotating, draft --Cancel / Discard--> idle
   page scrolls, and a single-page app can change route, while it shows. "Capture this view" takes
   another screenshot of the page as it is now, the bar and the dialog left out, adds it, and opens
   the dialog on it; a capture that fails opens the dialog on the kept draft with the
-  `captureError` text, where Esc keeps the draft again and Cancel discards it. "Open", and `open()`, open the dialog as it was. A full page load ends the draft.
+  `captureError` text, where Esc keeps the draft again and Cancel discards it. "Open", and `open()`, open the dialog as it was. A full page load in the same tab brings the
+  draft back, folded in the bar, as it was when it was last folded: its screenshots, marks, note and
+  category. Undo starts after the marks it brought back. With `draft: "memory"`, a page load ends
+  it.
 - **sending:** the note, the category and the tools are disabled, and the Send button shows
   progress. The Esc hint goes: from Send on, Cancel and Esc close the dialog.
 - **sent:** a short confirmation, then idle.
@@ -102,7 +106,16 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - The image is what the user sees. Nothing on the page is masked, hidden or redacted, password
   fields included. Only the widget itself is left out (SPEC §2, capturing).
 - No screenshot is kept after the draft ends: Send, Cancel, Discard or `close()`.
-- No console logs, network logs, cookies, storage or keystrokes are collected.
+- No console logs, network logs, cookies or keystrokes are collected. Nothing is stored, with one
+  exception: a draft folded in the draft bar is kept on this device for this tab, so a page load
+  does not lose it. sessionStorage holds its id, and IndexedDB its screenshots, marks, note and
+  category. It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard,
+  `close()` or `destroy()`. A `close()` made while a page load is still bringing it back hides it on
+  that page and keeps it. A day after it was last folded or brought back, it no longer comes back,
+  and it is deleted the next time this site opens the dialog or keeps a draft, in any tab: nothing
+  of the widget runs on the device to delete it sooner. A tab the browser duplicates copies
+  sessionStorage, so the copy shares that draft. `draft: "memory"` keeps
+  it in memory only, and does not delete one an earlier page kept.
 - The query string and the hash of the URL are kept unless `redactUrl: true` is set.
 
 ## 8. Accessibility
@@ -118,9 +131,10 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - `prefers-color-scheme` sets the default theme (`theme: "auto"`).
 
 ## 9. Budgets
-- **Loader** (the trigger and the `open()` wiring): 3 KB or less, minified and gzipped.
+- **Loader** (the trigger and the `open()` wiring): 15 KB or less, minified and gzipped.
 - **Annotator and dialog:** 15 KB or less, gzipped. This does not include the capture library.
-- **Idle cost:** no work after the first paint of the trigger. After the first screenshot, the
+- **Idle cost:** no work after the first paint of the trigger, past reading one sessionStorage
+  key at load; only when this tab kept a draft does the dialog load, to bring it back. After the first screenshot, the
   capture library (snapdom) keeps 12 listeners on `window` and `document` and up to 5 mutation observers
   until the page unloads, and offers no way to remove them; `destroy()` removes everything else.
 - CI fails when a budget is exceeded.

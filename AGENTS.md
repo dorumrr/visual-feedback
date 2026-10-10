@@ -4,8 +4,9 @@ This guide is for an agent adding visual-feedback to an app. To work on the pack
 follow the instructions in its repository instead.
 
 visual-feedback adds a small button. A user takes a screenshot of the page, marks it up and writes
-a note, and the app's server receives one report. The package stores nothing and sends nothing on
-its own: the developer picks where reports go.
+a note, and the app's server receives one report. The package sends nothing on its own, and keeps
+nothing but the user's unsent draft on their own device (docs/SPEC.md §7): the developer picks
+where reports go.
 
 ## 1. Ask which recipe to use
 

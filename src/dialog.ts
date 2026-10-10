@@ -238,13 +238,21 @@ export type Mounted = {
   capture(image: HTMLCanvasElement | null): void;
   /** Opens a draft kept in the draft bar again; does nothing otherwise. */
   reopen(): void;
+  /** Brings back, folded in the draft bar, the draft this tab kept before a page load. */
+  revive(): Promise<boolean>;
   /** Lets the page scroll, or stops it; unmount lets it scroll. */
   lock(on: boolean): void;
   unmount(): void;
 };
 
 /** One screenshot of the draft: its image, its marks with their Undo history, and its page. */
-type Taken = { image: HTMLCanvasElement; annotator: Annotator | undefined; seen: Seen };
+type Taken = {
+  image: HTMLCanvasElement;
+  annotator: Annotator | undefined;
+  seen: Seen;
+  /** The screenshot with no mark, as a PNG, for a draft kept across page loads. */
+  blob: Promise<Blob> | undefined;
+};
 
 export function mount(parent: HTMLElement, handlers: Handlers, settings: Settings = {}): Mounted {
   const tools = settings.tools ?? ["pen", "box", "arrow", "text", "select"];
@@ -291,6 +299,17 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   let composer: HTMLElement | undefined;
   let failure: HTMLElement | undefined;
   const root = () => parent.getRootNode() as ShadowRoot;
+  // Where this tab keeps its draft's id: one per widget tag, as the loader reads it.
+  const key = `visual-feedback:${root().host.localName}`;
+  const keeping = () => handlers.options().draft !== "memory";
+  // The marks of screenshots brought back from an earlier page, given to their annotators.
+  const restored = new WeakMap<HTMLCanvasElement, Mark[]>();
+  let kept: string | undefined;
+  // Each draft that ends bumps it, so a write queued for it stops; writes run one at a time.
+  let ended = 0;
+  let writing = Promise.resolve();
+  let reviving = false;
+  let picker: HTMLSelectElement | undefined;
 
   function toolbar(): HTMLElement[] {
     if (!drawing) return [];
@@ -344,9 +363,27 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     image.setAttribute("part", "image");
     // snapdom sizes its canvas inline, which beats max-height and squashes the image.
     image.removeAttribute("style");
-    const marks = drawing ? annotate(image, changed, text.text) : undefined;
-    taken.push({ image, annotator: marks, seen: shots.get(image) ?? look() });
+    const shot: Taken = {
+      image,
+      annotator: undefined,
+      seen: shots.get(image) ?? look(),
+      blob: undefined,
+    };
+    taken.push(shot);
     showShot(taken.length - 1);
+    // Made once the image is in the page: marks take their colour from its style.
+    if (drawing) {
+      shot.annotator = annotate(image, changed, text.text, restored.get(image));
+      annotator = shot.annotator;
+      if (tool) annotator.tool = tool;
+      changed();
+    }
+    const clean = shot.annotator?.clean ?? image;
+    shot.blob = keeping()
+      ? import("./capture").then((capture) => capture.encode(clean, { type: "image/png" }))
+      : undefined;
+    // A failed encode only means this screenshot is not kept across a page load.
+    shot.blob?.catch(() => {});
   }
 
   function showShot(index: number): void {
@@ -409,7 +446,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   }
 
   // Esc and the keep button fold an unsent draft into the bar; the page scrolls under it.
-  function minimise(): void {
+  function minimise(focus = true): void {
     if (minimised || !taken.length || draft) return;
     annotator?.end();
     minimised = true;
@@ -424,7 +461,61 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     bar = draftBar();
     parent.append(bar);
     for (const accent of bar.querySelectorAll<HTMLElement>(".capture-view")) ink(accent);
-    bar.querySelector<HTMLElement>(".capture-view:enabled, .reopen")?.focus();
+    if (focus) bar.querySelector<HTMLElement>(".capture-view:enabled, .reopen")?.focus();
+    store();
+  }
+
+  // The draft ended (sent, cancelled, discarded, closed): nothing of it stays on the device,
+  // also when it ended while a page load was still bringing it back.
+  function discard(): void {
+    ended++;
+    unkeep();
+  }
+
+  function unkeep(): void {
+    let id = kept;
+    kept = undefined;
+    try {
+      id ??= sessionStorage.getItem(key) ?? undefined;
+      sessionStorage.removeItem(key);
+    } catch {}
+    if (id) {
+      const gone = id;
+      void import("./keep").then(({ forget }) => forget(gone)).catch(() => {});
+    }
+  }
+
+  // Keeps the folded draft for this tab, as it is now, so a page load brings it back. Storage
+  // can be off, full or private; the draft then lives in memory only, as before.
+  function store(): void {
+    if (!keeping()) return;
+    const turn = ended;
+    const shots = taken.map((shot) => ({
+      blob: shot.blob,
+      marks: [...(shot.annotator?.marks ?? [])],
+      seen: shot.seen,
+    }));
+    const draft = { note: note?.value ?? "", category: picker?.value };
+    writing = writing.then(async () => {
+      try {
+        const images = [];
+        for (const { blob, ...shot } of shots) {
+          if (!blob) throw new Error("not kept");
+          images.push({ ...shot, image: await blob });
+        }
+        const { keep, forget } = await import("./keep");
+        if (turn !== ended) return;
+        kept ??= [...crypto.getRandomValues(new Uint32Array(2))].join("-");
+        const id = kept;
+        sessionStorage.setItem(key, id);
+        await keep(id, { saved: Date.now(), ...draft, shots: images });
+        // Ended while it was written: discard() already let go of the key, so the record goes too.
+        if (turn !== ended) await forget(id);
+      } catch {
+        // Not kept this time: an earlier fold must not come back in its place.
+        if (turn === ended) unkeep();
+      }
+    });
   }
 
   function draftBar(): HTMLElement {
@@ -488,6 +579,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       if (!mounted || !report) return;
       handlers.emit("submit", report);
       await module.deliver(report, options);
+      // Sent: a load during the short confirmation must not bring it back.
+      discard();
       handlers.emit("sent", report);
       if (mounted) sent();
     } catch (error) {
@@ -590,10 +683,12 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     });
     const fields: HTMLElement[] = [];
     let category: HTMLSelectElement | undefined;
+    picker = undefined;
     if (settings.categories?.length) {
       const name = element("label", "label", { for: "vf-category" });
       name.textContent = text.categoryLabel;
       category = element("select", "category", { id: "vf-category" });
+      picker = category;
       for (const choice of settings.categories) {
         const option = document.createElement("option");
         option.value = choice.id;
@@ -612,7 +707,6 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       header.replaceChildren(title, keep, cancel);
       locked.push(keep);
       inert.push(stage);
-      add(image);
     }
     const send = button("send", text.send, () => {
       if (draft) {
@@ -702,6 +796,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     footer.append(split);
     panel.classList.toggle("wide", Boolean(image));
     panel.replaceChildren(header, ...(image ? [body] : []), label, box, footer);
+    // Added once the view is in the page, so the image's marks resolve their colour.
+    if (image) add(image);
     ink(send);
     ink(more);
     field.focus();
@@ -778,13 +874,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // The trigger stays hidden while there is a draft, open or folded: behind the dialog it would
   // sit under Send, and two controls would share one spot.
   parent.classList.add("drafting");
-  try {
-    backdrop.showModal();
-  } catch (error) {
-    backdrop.remove();
-    parent.classList.remove("drafting");
-    throw error;
-  }
+  // A draft a closed tab left behind goes after a day, even if no draft is folded again.
+  if (keeping()) void import("./keep").then(({ sweep }) => sweep()).catch(() => {});
   let done: ReturnType<typeof setTimeout> | undefined;
   let scrollLocked = false;
   function lockPage(on: boolean): void {
@@ -805,14 +896,60 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         }
         return;
       }
+      // Shown here, not at mount: a draft brought back from an earlier page starts folded.
+      backdrop.showModal();
       // Without an image, the page as it is at the capture error.
       seen = (image && shots.get(image)) ?? look();
       show(image ? { image } : { error: true });
       lockPage(true);
     },
     reopen,
+    async revive() {
+      reviving = true;
+      try {
+        const id = sessionStorage.getItem(key);
+        const { read, forget, KEPT_FOR } = await import("./keep");
+        const draft = id ? await read(id) : undefined;
+        if (!id || !draft?.shots.length || draft.saved < Date.now() - KEPT_FOR) {
+          sessionStorage.removeItem(key);
+          if (id) await forget(id);
+          return false;
+        }
+        const images = [];
+        for (const shot of draft.shots) {
+          const bitmap = await createImageBitmap(shot.image);
+          const image = document.createElement("canvas");
+          image.width = bitmap.width;
+          image.height = bitmap.height;
+          image.getContext("2d")?.drawImage(bitmap, 0, 0);
+          shots.set(image, shot.seen);
+          restored.set(image, shot.marks);
+          images.push(image);
+        }
+        // Closed while it was read: nothing comes back.
+        if (!mounted) return false;
+        kept = id;
+        seen = draft.shots[0]?.seen ?? look();
+        show({ image: images[0] ?? null });
+        for (const image of images.slice(1)) add(image);
+        showShot(0);
+        if (note) note.value = draft.note;
+        // A category the host has since taken away is left at the default.
+        if ([...(picker?.options ?? [])].some((option) => option.value === draft.category)) {
+          (picker as HTMLSelectElement).value = draft.category as string;
+        }
+        minimise(false);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        reviving = false;
+      }
+    },
     lock: lockPage,
     unmount() {
+      // Twice is harmless: a close() and a late page-load restore can both end it.
+      if (!mounted) return;
       mounted = false;
       clearTimeout(done);
       lockPage(false);
@@ -821,6 +958,9 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       backdrop.remove();
       bar?.remove();
       parent.classList.remove("drafting");
+      // Closed while a page load brings it back: the user never saw it end, so it stays kept.
+      if (reviving) ended++;
+      else discard();
     },
   };
 }

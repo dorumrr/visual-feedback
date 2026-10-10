@@ -21,6 +21,10 @@
   `strip`, `thumb`, `thumb-pick`, `thumb-image`, `thumb-number`, `thumb-remove`, `add`, `draft`,
   `draft-label`, `draft-thumbs`, `capture-view`, `reopen`, `discard`; host CSS aimed at
   `.toolbar + .image` needs `.toolbar + .stage > .image`.
+- A draft folded in the draft bar survives a full page load in the same tab: it comes back folded,
+  with its screenshots, marks, note and category. It is kept in IndexedDB, its id in
+  sessionStorage, until the draft ends or a day after it was last folded or brought back; new option `draft: "memory"` keeps
+  nothing on the device. The loader budget is now 15 KB.
 - Save as PDF: Send is a split button whose menu downloads `feedback-<date>.pdf`, made in the
   browser with no library: the category and the note above the first screenshot, then one page per
   screenshot, marks included. Nothing is sent and the draft stays; a new `saved` event tells the

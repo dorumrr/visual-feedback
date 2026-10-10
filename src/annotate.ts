@@ -10,6 +10,8 @@ type Step = { kind: "add" } | { kind: "move" | "remove"; index: number; mark: Ma
 
 export type Annotator = {
   tool: Tool;
+  /** The screenshot as it was taken, with no mark on it. */
+  readonly clean: HTMLCanvasElement;
   readonly marks: readonly Mark[];
   readonly canUndo: boolean;
   readonly selected: boolean;
@@ -85,13 +87,15 @@ export function annotate(
   canvas: HTMLCanvasElement,
   onChange: () => void,
   textLabel: string,
+  kept: readonly Mark[] = [],
 ): Annotator {
   const clean = document.createElement("canvas");
   clean.width = canvas.width;
   clean.height = canvas.height;
   context(clean).drawImage(canvas, 0, 0);
   const target = context(canvas);
-  const marks: Mark[] = [];
+  // Marks a draft kept from an earlier page; Undo starts after them.
+  const marks: Mark[] = [...kept];
   const history: Step[] = [];
   let tool: Tool = "pen";
   let selected: number | null = null;
@@ -456,6 +460,7 @@ export function annotate(
   });
 
   const annotator: Annotator = {
+    clean,
     get tool() {
       return tool;
     },
@@ -506,5 +511,6 @@ export function annotate(
       onChange();
     },
   };
+  if (marks.length) paint();
   return annotator;
 }

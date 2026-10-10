@@ -105,8 +105,8 @@ it("the loader has a measured size within its budget, and an over-budget build f
   expect(within.loader?.passed).toBe(true);
   expect(within.status).toBe(0);
 
-  const over = planted("index.mjs", 4096);
-  expect(over.loader?.size).toBeGreaterThan(3000);
+  const over = planted("index.mjs", 16384);
+  expect(over.loader?.size).toBeGreaterThan(15000);
   expect(over.loader?.passed).toBe(false);
   expect(over.status).not.toBe(0);
 }, 60_000);

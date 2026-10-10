@@ -76,6 +76,7 @@ export type FeedbackOptions = {
   unstyled?: boolean;
   container?: HTMLElement;
   tagName?: string;
+  draft?: "session" | "memory";
 };
 
 export type FeedbackWidget = {
@@ -274,6 +275,14 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
   apply();
   // A script in <head> runs before <body> exists.
   (options.container ?? document.body ?? document.documentElement).append(host);
+  // A draft this tab kept before a page load shows its bar again.
+  try {
+    if (options.draft !== "memory" && sessionStorage.getItem(`visual-feedback:${tag}`)) {
+      state = "opening";
+      pending = show(++session, true);
+      pending.catch(() => {});
+    }
+  } catch {}
 
   // Hidden, so neither the trigger nor the dialog is in the image (SPEC §2, capturing). A modal
   // dialog gets visibility: visible from the browser, so the backdrop is hidden by name.
@@ -332,15 +341,15 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
     (target as HTMLElement | undefined)?.focus?.();
   }
 
-  async function show(mine: number): Promise<void> {
+  async function show(mine: number, kept?: boolean): Promise<void> {
     returnFocus = deepActive();
-    const stream = requestDisplay();
+    const stream = kept ? undefined : requestDisplay();
     try {
       const [loaded, capture] = await Promise.all([import("./dialog"), import("./capture")]);
       if (mine !== session) return stop(stream);
       view = loaded;
       sheets();
-      const image = await grab(capture, mine, stream);
+      const image = kept ? null : await grab(capture, mine, stream);
       if (mine !== session) return;
       // The host app may have removed the element while the dialog loaded; showModal() would throw.
       if (!host.isConnected) {
@@ -362,7 +371,14 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
         },
         options,
       );
-      dialog.capture(image);
+      const mounted = dialog;
+      if (!kept) mounted.capture(image);
+      // Nothing kept after all (expired, storage off), or closed while it came back. A dialog a
+      // later open() mounted meanwhile is left alone, and so is the focus.
+      else if (!(await mounted.revive()) || mine !== session) {
+        if (mine === session) state = "idle";
+        return mounted.unmount();
+      }
     } catch (error) {
       stop(stream);
       if (mine === session) {
@@ -389,7 +405,12 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
 
   const widget: FeedbackWidget = {
     open() {
-      if (state === "opening" && pending) return pending;
+      // A kept draft still coming back opens once it is back.
+      if (state === "opening" && pending) {
+        const mine = session;
+        // Once it is back, or found gone, the click still opens something, unless closed meanwhile.
+        return pending.then(() => (mine === session ? widget.open() : undefined));
+      }
       // Open, or kept as a draft: a draft bar's dialog opens again.
       if (state !== "idle") return dialog?.reopen(), Promise.resolve();
       state = "opening";

@@ -53,14 +53,15 @@ const feedback = createFeedback({
 | `unstyled` | `boolean` | `false` | Keeps only the layout-critical CSS. THEMING.md. |
 | `container` | `HTMLElement` | `document.body` | Where the host element is appended. |
 | `tagName` | `string` | `"visual-feedback"` | The custom element name, if it clashes. |
+| `draft` | `"session" \| "memory"` | `"session"` | Where a draft folded in the draft bar is kept. `"session"` keeps it for this tab across page loads, as it was last folded, until it ends or a day after it was last folded or brought back (SPEC §7); `"memory"` keeps nothing on the device, so a page load ends it. |
 
 ### FeedbackWidget
 | member | meaning |
 |---|---|
-| `open(): Promise<void>` | Starts a capture. When a draft is kept in the draft bar, it opens the dialog on that draft instead; when the dialog is open already, it does nothing. When the dialog cannot load or be shown, it rejects and `error` fires. |
+| `open(): Promise<void>` | Starts a capture. When a draft is kept in the draft bar, it opens the dialog on that draft instead, also once a page load has brought it back; when the dialog is open already, it does nothing. When the dialog cannot load or be shown, it rejects and `error` fires. |
 | `close(): void` | Cancels and discards the draft, also when it is kept in the draft bar. Before `submit` fires, nothing is sent; after it, the delivery is not stopped, and `sent` or `error` still fires when it ends. |
 | `destroy(): void` | Removes the element, its listeners and its stylesheet, but not what the capture library keeps (SPEC §9). If the dialog is open, or a draft is kept in the draft bar, `close` fires, and it is the last event: a delivery still under way fires neither `sent` nor `error`. |
-| `on(event, fn): () => void` | Events: `open` (when a draft starts), `close` (when it ends: sent and closed, Cancel, Discard or `close()`; folding into the draft bar and opening it again fire neither), `submit` (with the report, before each attempt), `sent` (with the report), `error` (with the error), `saved` (after Save as PDF downloads the PDF; nothing is sent). The type `FeedbackEvents` maps each event to what it passes. Returns an unsubscribe function. |
+| `on(event, fn): () => void` | Events: `open` (when a draft starts, and when a page load brings a kept draft back), `close` (when it ends: sent and closed, Cancel, Discard or `close()`; folding into the draft bar and opening it again fire neither), `submit` (with the report, before each attempt), `sent` (with the report), `error` (with the error), `saved` (after Save as PDF downloads the PDF; nothing is sent). The type `FeedbackEvents` maps each event to what it passes. Returns an unsubscribe function. |
 | `update(options): void` | Merges these options into the current ones, key by key: a key given as `undefined` goes back to its default, and `strings` or `capture` replaces the whole object. `tagName` and `container` are ignored. The trigger, `position` (a draft bar already shown moves at its next fold), `theme`, `css`, `unstyled`, `strings.trigger`, `strings.triggerText` and `shortcut` change at once. The dialog's texts, `tools`, `categories` and `requireNote` apply from the next open, and the rest at the next capture or send. |
 
 ## FeedbackReport
