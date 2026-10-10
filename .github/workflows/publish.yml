@@ -65,7 +65,5 @@ jobs:
         run: npm publish --provenance --access public --dry-run
       - name: Publish
         if: ${{ !inputs.dry_run }}
+        # No token: npm trusts this workflow and its npm environment (trusted publishing).
         run: npm publish --provenance --access public
-        env:
-          # A short-lived granular token for 0.1.0 only; trusted publishing replaces it.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
