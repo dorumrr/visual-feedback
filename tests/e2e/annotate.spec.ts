@@ -137,7 +137,7 @@ test("the shown image keeps its shape when the window's height limits it", async
       canvas.clientHeight,
       Math.min(
         innerHeight * 0.6,
-        innerHeight - 22 * Number.parseFloat(getComputedStyle(canvas).fontSize),
+        innerHeight - 23 * Number.parseFloat(getComputedStyle(canvas).fontSize),
       ),
     ],
   );

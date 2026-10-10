@@ -88,7 +88,9 @@ test("a folded draft comes back after a page load, whole: screenshots, marks, pa
     { id: "bug", label: "Bug" },
     { id: "idea", label: "Idea" },
   ];
-  await mount(page, { categories });
+  // PNG: lossy WebP shifts a thin mark's colour over a busy page, and the pixel count below is exact.
+  const capture = { type: "image/png" };
+  await mount(page, { categories, capture });
   await trigger(page).click();
   await stroke(page);
   await note(page).fill("Kept across a load");
@@ -104,7 +106,7 @@ test("a folded draft comes back after a page load, whole: screenshots, marks, pa
   await expect(bar(page)).toBeVisible();
   await expect.poll(() => stored(page)).toBe(1);
 
-  await load(page, { categories });
+  await load(page, { categories, capture });
   await expect(bar(page)).toContainText("Feedback draft · 2");
   expect(await events(page)).toEqual(["open"]);
   await expect(trigger(page)).toBeHidden();
@@ -421,8 +423,11 @@ test("of two widgets with one tag, the first owns the kept draft; the second kee
   // Only the owner, the first, in the bottom-right corner, brings it back.
   const back = page.getByRole("region", { name: "Feedback draft" });
   await expect(back).toHaveCount(1);
+  // Its right and bottom edges, not its width: Linux fonts make the bar wider than half the page.
   const box = await back.boundingBox();
-  expect((box?.x ?? 0) > (page.viewportSize()?.width ?? 0) / 2).toBe(true);
+  const view = page.viewportSize();
+  expect((view?.width ?? 0) - (box?.x ?? 0) - (box?.width ?? 0)).toBeLessThan(40);
+  expect((view?.height ?? 0) - (box?.y ?? 0) - (box?.height ?? 0)).toBeLessThan(40);
 });
 
 test("a widget made after the owner was destroyed owns the tag, so a StrictMode remount restores", async ({
@@ -823,7 +828,8 @@ test("a click with a draft still kept in this tab opens that draft, not a new ca
   });
   await mount(page);
   await page.evaluate(() => (window as unknown as Mounted).vf.close());
-  await page.unroute("**/dist/dialog-*.mjs");
+  // A slow runner still has the handler waiting here; a plain unroute then fails it.
+  await page.unrouteAll({ behavior: "wait" });
   await expect(trigger(page)).toBeVisible();
   await trigger(page).click();
   await expect(note(page)).toHaveValue("Kept, then clicked");

@@ -63,7 +63,8 @@
     "check": "npm run lint && npm run typecheck && npm run build && npm run test && npm run test:edge && npm run test:e2e && npm run test:react && npm run test:pack && npm run size && npm run publint",
     "prepack": "npm run --silent build -- --logLevel warn",
     "dev": "node tests/dev.mjs",
-    "demo": "node tests/demo.mjs"
+    "demo": "node tests/demo.mjs",
+    "release": "node tests/release.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
