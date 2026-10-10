@@ -1,6 +1,6 @@
 {
   "name": "visual-feedback",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A small button lets your users screenshot the page, mark it up and write a note. You receive one report and store it where you want.",
   "keywords": [
     "feedback",

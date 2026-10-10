@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (not released yet)
+## 0.2.0 (2026-10-10)
 
 - Breaking: a report holds `screenshots`, a list of up to 10, in place of `image` and `marks`.
   Each screenshot has its `image`, its `marks` and the `page`, `viewport` and `scroll` as they were
@@ -32,17 +32,17 @@
   logout. `close` fires only when a draft ends, so a
   `destroy()` or removal that keeps it fires none. A second widget with the same tag keeps its
   draft in memory only. A click while the tab keeps a draft opens that draft, and a draft brought back at a page load fires
-  `open` with no click. A PDF page the
-  browser has no memory for (as on iOS) shows the PDF error, never a blank page. The loader
-  budget is now 15 KB, and the annotator and dialog budget 135 KB.
+  `open` with no click.
+- Budgets: the loader is now 15 KB, and the annotator and dialog 135 KB, gzipped.
 - A pen stroke keeps only the points its line needs, so many long strokes stay far under the
   1 MiB report limit. The GitHub Issues recipe shortens its fields until GitHub accepts the
   issue body, however long the report.
 - Save as PDF: Send is a split button whose menu downloads `feedback-<date>.pdf`, made in the
   browser with no library: the category and the note above the first screenshot, then one page per
   screenshot, marks included. Nothing is sent and the draft stays; a new `saved` event tells the
-  host. New strings `moreSend`, `savePdf` and `pdfError`; new part names `split`, `send-more`, `menu`,
-  `save-pdf`.
+  host. A PDF page the browser has no memory for (as on iOS) shows the PDF error, never a blank
+  page. New strings `moreSend`, `savePdf` and `pdfError`; new part names `split`, `send-more`,
+  `menu`, `save-pdf`.
 - A new look: a tool rail with icons beside the screenshot, the note as a composer with Send in a
   footer row under it, a close button in the header, and an Esc hint. Text follows the site's font and
   size. In a short window the screenshot gives up height, so the note and Send stay in view.
