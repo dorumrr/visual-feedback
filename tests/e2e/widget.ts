@@ -32,6 +32,7 @@ export async function mount(page: Page, options: Record<string, unknown> = {}): 
     });
     w.vf.on("open", () => w.events.push("open"));
     w.vf.on("close", () => w.events.push("close"));
+    w.vf.on("saved", () => w.events.push("saved"));
   }, options);
 }
 

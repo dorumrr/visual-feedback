@@ -81,7 +81,12 @@ test("each variable reaches the element that uses it, and its default matches TH
     }, color);
   await page.emulateMedia({ colorScheme: "light" });
   await mount(page);
-  const trigger = page.getByRole("button", { name: "Send feedback" });
+  // By class, not role: a draft hides the trigger, and its colours still resolve while hidden.
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  await expect(trigger).toHaveCSS("background-color", await probe("Canvas"));
+  await expect(trigger).toHaveCSS("color", await probe("CanvasText"));
+  await expect(trigger).toHaveCSS("box-shadow", "rgba(0, 0, 0, 0.35) 0px 12px 32px -12px");
+  await expect(trigger).toHaveCSS("z-index", "2147483000");
   await trigger.click();
   const panel = page.locator("visual-feedback .dialog");
   const backdrop = page.getByRole("dialog");
@@ -89,10 +94,6 @@ test("each variable reaches the element that uses it, and its default matches TH
   const muted = () => note.evaluate((element) => getComputedStyle(element, "::placeholder").color);
   const composer = page.locator("visual-feedback .composer");
 
-  await expect(trigger).toHaveCSS("background-color", await probe("Canvas"));
-  await expect(trigger).toHaveCSS("color", await probe("CanvasText"));
-  await expect(trigger).toHaveCSS("box-shadow", "rgba(0, 0, 0, 0.35) 0px 12px 32px -12px");
-  await expect(trigger).toHaveCSS("z-index", "2147483000");
   await expect(panel).toHaveCSS("border-top-left-radius", "16px");
   await expect(backdrop).toHaveCSS("background-color", "rgba(0, 0, 0, 0.45)");
   await expect(trigger).toHaveCSS(
@@ -268,6 +269,10 @@ test("every element of every view has its ::part() name, and the page can style 
   await page.getByRole("button", { name: "Capture this view" }).click();
   await expect(page.getByRole("button", { name: "Screenshot 2", exact: true })).toBeVisible();
   await scan("two screenshots");
+  await page.getByRole("button", { name: "More send options" }).click();
+  await expect(page.getByRole("menuitem", { name: "Save as PDF" })).toBeVisible();
+  await scan("send menu");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Screenshot 1", exact: true }).click();
   await page.getByRole("button", { name: "Clear", exact: true }).click();
   await page.getByRole("button", { name: "Send", exact: true }).click();

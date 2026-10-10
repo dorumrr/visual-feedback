@@ -61,9 +61,9 @@ test("the dialog traps focus, Escape keeps a draft, Discard closes, and focus go
     seen.push(await focused(page));
   }
   // Undo and Clear are disabled while there are no marks, so Tab skips them.
-  expect(seen).toEqual(["send", "minimise", "cancel", "tool", "tool", "tool", "tool", "tool"]);
+  expect(seen).toEqual(["send", "send-more", "minimise", "cancel", "tool", "tool", "tool", "tool"]);
   await page.keyboard.press("Shift+Tab");
-  await expect(page.getByRole("button", { name: "Text", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Arrow", exact: true })).toBeFocused();
 
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
@@ -85,10 +85,8 @@ test("the keyboard alone can write the note and cancel", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
   await page.keyboard.type("Typed with keys");
   await expect(page.getByRole("textbox", { name: "Your note" })).toHaveValue("Typed with keys");
-  // Past Send, the focus wraps to the header: Keep as draft, then the close button.
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
+  // Past Send and its menu caret, the focus wraps to the header: Keep as draft, then Cancel.
+  for (let i = 0; i < 4; i++) await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toHaveCount(0);

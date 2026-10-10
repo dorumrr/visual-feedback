@@ -43,9 +43,9 @@ Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`
 `dialog`, `header`, `title`, `minimise`, `body`, `stage`, `image`, `toolbar`, `tool`, `tool-active`,
 `divider`, `undo`, `clear`, `remove`, `icon`, `text-input`, `selection`, `strip`, `thumb`,
 `thumb-pick`, `thumb-image`, `thumb-number`, `thumb-remove`, `add`, `label`, `composer`, `note`,
-`composer-bar`, `category`, `footer`, `actions`, `cancel`, `send`, `hint`, `status`, `error`,
-`retry`, `send-without`, `draft`, `draft-label`, `draft-thumbs`, `capture-view`, `reopen`,
-`discard`.
+`composer-bar`, `category`, `footer`, `split`, `send-more`, `menu`, `save-pdf`, `actions`, `cancel`,
+`send`, `hint`, `status`, `error`, `retry`, `send-without`, `draft`, `draft-label`, `draft-thumbs`,
+`capture-view`, `reopen`, `discard`.
 
 ```css
 visual-feedback::part(trigger) { opacity: .6; }

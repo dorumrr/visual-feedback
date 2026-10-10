@@ -1,6 +1,6 @@
-const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100% - 32px);display:grid;gap:12px}.dialog.wide{width:min(1100px,100% - 32px)}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.minimise{margin-left:auto}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.stage:only-child{grid-column:1/-1}.stage{position:relative;display:grid;gap:8px;min-width:0}.image{display:block;max-width:100%;max-height:min(60vh,100vh - 22em);margin:0 auto;color:var(--_mark)}.toolbar+.stage>.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg,.draft svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.strip{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}.thumb{position:relative;display:flex}.thumb-pick{position:relative;display:block;margin:0;padding:0;line-height:0}.thumb-image{display:block;height:3em;width:auto}.thumb-number{position:absolute;left:4px;top:4px;line-height:1.2}.thumb-remove{position:absolute;top:-.5em;right:-.5em}.add,.capture-view{display:inline-flex;align-items:center;gap:6px}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px;margin-left:auto}.draft{position:fixed;z-index:var(--_z);box-sizing:border-box;max-width:calc(100% - 2 * var(--_off));display:flex;flex-wrap:wrap;align-items:center;gap:8px}.draft-thumbs{display:flex;gap:4px}.draft-thumbs .thumb-image{height:1.75em}.drafting>.trigger{display:none}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}`;
+const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100% - 32px);display:grid;gap:12px}.dialog.wide{width:min(1100px,100% - 32px)}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.minimise{margin-left:auto}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.stage:only-child{grid-column:1/-1}.stage{position:relative;display:grid;gap:8px;min-width:0}.image{display:block;max-width:100%;max-height:min(60vh,100vh - 22em);margin:0 auto;color:var(--_mark)}.toolbar+.stage>.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg,.draft svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.strip{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}.thumb{position:relative;display:flex}.thumb-pick{position:relative;display:block;margin:0;padding:0;line-height:0}.thumb-image{display:block;height:3em;width:auto}.thumb-number{position:absolute;left:4px;top:4px;line-height:1.2}.thumb-remove{position:absolute;top:-.5em;right:-.5em}.add,.capture-view{display:inline-flex;align-items:center;gap:6px}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.split{position:relative;display:flex;margin-left:auto}.send-more{display:inline-flex;align-items:center}.menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:1;display:grid;min-width:max-content}.menu[hidden]{display:none}.save-pdf{display:inline-flex;align-items:center;gap:8px}.draft{position:fixed;z-index:var(--_z);box-sizing:border-box;max-width:calc(100% - 2 * var(--_off));display:flex;flex-wrap:wrap;align-items:center;gap:8px}.draft-thumbs{display:flex;gap:4px}.draft-thumbs .thumb-image{height:1.75em}.drafting>.trigger{display:none}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}`;
 
-const THEME = `.backdrop{background:var(--_bd)}.dialog,.draft{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.draft{padding:8px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header button,.toolbar button,.thumb-remove{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header button:hover,.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.stage>.image{cursor:crosshair}.selection{border:2px dashed var(--_f);border-radius:4px}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.thumb-pick{border:2px solid transparent;border-radius:calc(var(--_r) / 2.5);background:none;overflow:hidden;cursor:pointer}.thumb-pick[aria-current=true]{border-color:var(--_a)}.thumb-image{border-radius:calc(var(--_r) / 4);box-shadow:0 0 0 1px var(--_b)}.thumb-number{font-size:.75em;font-weight:600;padding:0 4px;border-radius:4px;background:var(--_s);color:var(--_t)}.thumb-remove{width:1.5em;height:1.5em;border:1px solid var(--_b);border-radius:50%;background:var(--_s)}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button,.add,.draft button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.add{border-style:dashed;color:var(--_m)}.send,.draft .capture-view{background:var(--_a);color:var(--_at);border-color:var(--_a)}.send:where([data-ink=dark]),.draft .capture-view:where([data-ink=dark]){color:#000}.draft button:disabled{opacity:.5;cursor:default}.draft-label{margin:0 4px;font-size:.9em;font-weight:600}[aria-disabled=true]{opacity:.6;cursor:progress}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}`;
+const THEME = `.backdrop{background:var(--_bd)}.dialog,.draft{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.draft{padding:8px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header button,.toolbar button,.thumb-remove{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header button:hover,.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.stage>.image{cursor:crosshair}.selection{border:2px dashed var(--_f);border-radius:4px}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.thumb-pick{border:2px solid transparent;border-radius:calc(var(--_r) / 2.5);background:none;overflow:hidden;cursor:pointer}.thumb-pick[aria-current=true]{border-color:var(--_a)}.thumb-image{border-radius:calc(var(--_r) / 4);box-shadow:0 0 0 1px var(--_b)}.thumb-number{font-size:.75em;font-weight:600;padding:0 4px;border-radius:4px;background:var(--_s);color:var(--_t)}.thumb-remove{width:1.5em;height:1.5em;border:1px solid var(--_b);border-radius:50%;background:var(--_s)}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button,.add,.draft button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.add{border-style:dashed;color:var(--_m)}.send,.draft .capture-view{background:var(--_a);color:var(--_at);border-color:var(--_a)}.split .send{border-radius:calc(var(--_r) / 1.6) 0 0 calc(var(--_r) / 1.6)}.send-more{font:inherit;height:2.25em;padding:0 .55em;border:1px solid var(--_a);border-left-color:color-mix(in srgb,var(--_at) 40%,var(--_a));border-radius:0 calc(var(--_r) / 1.6) calc(var(--_r) / 1.6) 0;background:var(--_a);color:var(--_at);cursor:pointer}.send-more:disabled{opacity:.6;cursor:progress}.send:where([data-ink=dark]),.send-more:where([data-ink=dark]),.draft .capture-view:where([data-ink=dark]){color:#000}.menu{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:var(--_t);box-shadow:var(--_sh)}.save-pdf{font:inherit;padding:.5em .8em;border:0;border-radius:calc(var(--_r) / 2.5);background:none;color:inherit;cursor:pointer;white-space:nowrap}.save-pdf:hover,.save-pdf:focus-visible{background:color-mix(in srgb,var(--_t) 8%,transparent)}.draft button:disabled{opacity:.5;cursor:default}.draft-label{margin:0 4px;font-size:.9em;font-weight:600}[aria-disabled=true]{opacity:.6;cursor:progress}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}`;
 
 import { type Annotator, annotate, type Tool } from "./annotate";
 import { icon } from "./icon";
@@ -22,6 +22,8 @@ const ICONS = {
   minimise: "M5 17h14",
   add: "M12 5v14M5 12h14",
   camera: "M4 8h3l2-3h6l2 3h3v11H4zm8 8.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
+  more: "m7 10 5 5 5-5",
+  pdf: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6m-6 4h6",
 };
 
 type Texts = Omit<FeedbackStrings, "trigger" | "triggerText">;
@@ -58,6 +60,9 @@ const ENGLISH: Texts = {
   captureView: "Capture this view",
   reopen: "Open",
   discard: "Discard",
+  moreSend: "More send options",
+  savePdf: "Save as PDF",
+  pdfError: "Couldn't save the PDF.",
 };
 
 // A key given as undefined, as an i18n lookup can return, keeps its English text.
@@ -416,7 +421,6 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     // Out of the page while folded: WebKit kept the hidden state a capture gave it, inside it.
     backdrop.remove();
     lockPage(false);
-    parent.classList.add("drafting");
     bar = draftBar();
     parent.append(bar);
     for (const accent of bar.querySelectorAll<HTMLElement>(".capture-view")) ink(accent);
@@ -450,7 +454,6 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     minimised = false;
     bar?.remove();
     bar = undefined;
-    parent.classList.remove("drafting");
     parent.append(backdrop);
     backdrop.showModal();
     lockPage(true);
@@ -490,6 +493,60 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     } catch (error) {
       handlers.emit("error", error);
       if (mounted) failed(module?.shown(error));
+    }
+  }
+
+  // Builds the PDF in the page and downloads it; nothing is sent, and the draft stays as it is.
+  let saving = false;
+  let pdfError: HTMLElement | undefined;
+  async function savePdf(note: string, category: string | undefined): Promise<void> {
+    if (saving) return;
+    saving = true;
+    pdfError?.remove();
+    annotator?.end();
+    const font = getComputedStyle(panel).fontFamily;
+    try {
+      // Copied before the first await: a screenshot added, removed or marked while the PDF
+      // builds must not change it.
+      const pages = taken.map(({ image }) => {
+        const page = document.createElement("canvas");
+        page.width = image.width;
+        page.height = image.height;
+        page.getContext("2d")?.drawImage(image, 0, 0);
+        return page;
+      });
+      // Two awaits, not Promise.all: size-limit then counts the capture library in this chunk.
+      const capture = await import("./capture");
+      const writer = await import("./pdf");
+      const [first, ...rest] = pages;
+      const file = await writer.pdf(
+        [writer.cover(note, category, first, font), ...rest],
+        capture.encode,
+      );
+      // Cancelled while it was built: nothing is saved.
+      if (!mounted) return;
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(file);
+      // The user's own date, not UTC: near midnight the two differ.
+      const now = new Date();
+      const day = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
+        .map((part) => String(part).padStart(2, "0"))
+        .join("-");
+      link.download = `feedback-${day}.pdf`;
+      link.hidden = true;
+      panel.append(link);
+      link.click();
+      link.remove();
+      // A download reads the URL after the click returns, so it is let go a little later.
+      setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+      handlers.emit("saved");
+    } catch {
+      if (!mounted || !composer) return;
+      pdfError = element("p", "error", { role: "alert" });
+      pdfError.textContent = text.pdfError;
+      composer.after(pdfError);
+    } finally {
+      saving = false;
     }
   }
 
@@ -601,17 +658,60 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       hint.textContent = text.escHint;
       footer.append(hint);
     }
-    footer.append(send);
+    const more = iconButton("send-more", text.moreSend, ICONS.more, () =>
+      menu(list.hidden === true),
+    );
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", "false");
+    const list = element("div", "menu", { role: "menu", "aria-label": text.moreSend });
+    list.hidden = true;
+    const save = button("save-pdf", text.savePdf, () => {
+      menu(false);
+      more.focus();
+      void savePdf(field.value, category?.selectedOptions[0]?.textContent ?? undefined);
+    });
+    save.setAttribute("role", "menuitem");
+    save.prepend(icon(ICONS.pdf, "icon"));
+    list.append(save);
+    function menu(open: boolean): void {
+      list.hidden = !open;
+      more.setAttribute("aria-expanded", String(open));
+      if (open) save.focus();
+    }
+    // Escape closes the menu only; the dialog's own Escape would fold or close the whole draft.
+    list.addEventListener("keydown", (event) => {
+      // Tab closes it too, and the dialog's Tab trap then moves on from the caret.
+      if (event.key === "Tab") {
+        menu(false);
+        more.focus();
+      }
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      menu(false);
+      more.focus();
+    });
+    // WebKit does not focus a clicked button: a press would blur the menu and close it first.
+    list.addEventListener("mousedown", (event) => event.preventDefault());
+    const split = element("div", "split");
+    split.addEventListener("focusout", (event) => {
+      if (!split.contains(event.relatedTarget as Node | null)) menu(false);
+    });
+    split.append(send, more, list);
+    locked.push(more);
+    footer.append(split);
     panel.classList.toggle("wide", Boolean(image));
     panel.replaceChildren(header, ...(image ? [body] : []), label, box, footer);
     ink(send);
+    ink(more);
     field.focus();
   }
 
   function sending(): void {
     if (!primary) return;
-    // From here Esc closes, so the hint that it keeps a draft goes.
+    // From here Esc closes, so the hint that it keeps a draft goes, and so does a PDF failure.
     panel.querySelector(".hint")?.remove();
+    pdfError?.remove();
     for (const control of locked) control.disabled = true;
     for (const item of inert) item.inert = true;
     failure?.remove();
@@ -675,10 +775,14 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   });
 
   parent.append(backdrop);
+  // The trigger stays hidden while there is a draft, open or folded: behind the dialog it would
+  // sit under Send, and two controls would share one spot.
+  parent.classList.add("drafting");
   try {
     backdrop.showModal();
   } catch (error) {
     backdrop.remove();
+    parent.classList.remove("drafting");
     throw error;
   }
   let done: ReturnType<typeof setTimeout> | undefined;

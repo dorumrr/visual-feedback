@@ -672,12 +672,13 @@ test("with marks, Tab reaches Undo and Clear, and disabling them keeps the focus
   ]);
   await page.getByRole("textbox", { name: "Your note" }).focus();
   const seen: string[] = [];
-  for (let i = 0; i < 13; i++) {
+  for (let i = 0; i < 14; i++) {
     await page.keyboard.press("Tab");
     seen.push(await focused(page));
   }
   expect(seen).toEqual([
     "send",
+    "send-more",
     "minimise",
     "cancel",
     "tool",

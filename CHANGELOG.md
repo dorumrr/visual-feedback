@@ -21,6 +21,11 @@
   `strip`, `thumb`, `thumb-pick`, `thumb-image`, `thumb-number`, `thumb-remove`, `add`, `draft`,
   `draft-label`, `draft-thumbs`, `capture-view`, `reopen`, `discard`; host CSS aimed at
   `.toolbar + .image` needs `.toolbar + .stage > .image`.
+- Save as PDF: Send is a split button whose menu downloads `feedback-<date>.pdf`, made in the
+  browser with no library: the category and the note above the first screenshot, then one page per
+  screenshot, marks included. Nothing is sent and the draft stays; a new `saved` event tells the
+  host. New strings `moreSend`, `savePdf` and `pdfError`; new part names `split`, `send-more`, `menu`,
+  `save-pdf`.
 - A new look: a tool rail with icons beside the screenshot, the note as a composer with Send in a
   footer row under it, a close button in the header, and an Esc hint. Text follows the site's font and
   size. In a short window the screenshot gives up height, so the note and Send stay in view.

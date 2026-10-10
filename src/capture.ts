@@ -117,7 +117,10 @@ export async function capture(
   return dom(maxWidth);
 }
 
-export function encode(canvas: HTMLCanvasElement, options: CaptureOptions = {}): Promise<Blob> {
+export function encode(
+  canvas: HTMLCanvasElement,
+  options: { type?: string | undefined; quality?: number | undefined } = {},
+): Promise<Blob> {
   return new Promise((resolve, reject) =>
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("could not encode the image"))),

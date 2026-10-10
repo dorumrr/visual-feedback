@@ -11,6 +11,7 @@ export type FeedbackEvents = {
   submit: [report: FeedbackReport];
   sent: [report: FeedbackReport];
   error: [error: unknown];
+  saved: [];
 };
 
 export type FeedbackEvent = keyof FeedbackEvents;
@@ -49,7 +50,10 @@ export type FeedbackStrings = Record<
   | "draft"
   | "captureView"
   | "reopen"
-  | "discard",
+  | "discard"
+  | "moreSend"
+  | "savePdf"
+  | "pdfError",
   string
 >;
 

@@ -44,6 +44,7 @@ annotating, draft --Cancel / Discard--> idle
   given, that text is the name too. A host that sets both keeps `triggerText` inside `trigger`, so
   speech control can say what it sees. It has no badge, and it does not move or pulse.
 - It sits 16 px from the edges by default, and it respects `env(safe-area-inset-*)`.
+- It is hidden while there is a draft, whether the dialog is open or kept in the draft bar.
 - It does not watch the page. The host moves it off its own content with `position` or
   `--vf-offset`.
 
@@ -60,6 +61,13 @@ annotating, draft --Cancel / Discard--> idle
 - **Note:** a textarea of 2000 characters at most, with a visible label (`noteLabel`). It is
   required unless `requireNote: false`.
 - **Category:** shown only when `categories` is given, with a visible label (`categoryLabel`).
+- **Save as PDF:** Send is a split button; its caret ("More send options") opens a menu with "Save
+  as PDF". It downloads `feedback-<date>.pdf`, dated by the user's clock and made in the browser:
+  the category and the note,
+  then the first screenshot, on page 1, and each other screenshot on a page of its own, marks
+  included. Nothing is sent, the dialog and the draft stay as they are, and the `saved` event
+  fires. Esc and Tab close the menu only. A PDF that cannot be made shows the `pdfError` text, and
+  neither `saved` nor `error` fires, since nothing failed to send; one asked for while another is being made is ignored.
 - **Screenshots:** a report holds up to 10. Each keeps its own marks and its own Undo; the tool
   chosen stays the same across them. The strip numbers them in the order they are sent: a click
   shows one, and its remove button, there only when there are two or more, takes one out. "Add
@@ -164,3 +172,5 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | removeScreenshot | Remove screenshot (with the number, as "Remove screenshot 2") |
 | draft | Feedback draft (the bar shows the number of screenshots after it) |
 | captureView / reopen / discard | Capture this view / Open / Discard |
+| moreSend / savePdf | More send options / Save as PDF |
+| pdfError | Couldn't save the PDF. |

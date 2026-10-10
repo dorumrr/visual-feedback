@@ -35,6 +35,8 @@ const KEYS = [
   "captureView",
   "reopen",
   "discard",
+  "moreSend",
+  "savePdf",
 ] as const;
 const STRINGS = Object.fromEntries(KEYS.map((key) => [key, `X ${key}`]));
 
@@ -99,9 +101,13 @@ test("strings replace every text the widget shows", async ({ page }) => {
     "X minimise",
     "X screenshot 1",
     "X addScreenshot",
+    "X moreSend",
   ]) {
     await expect(dialog.getByRole("button", { name })).toBeVisible();
   }
+  await dialog.getByRole("button", { name: "X moreSend" }).click();
+  await expect(dialog.getByRole("menuitem", { name: "X savePdf" })).toBeVisible();
+  await page.keyboard.press("Escape");
   await dialog.getByRole("button", { name: "X addScreenshot" }).click();
   const bar = page.getByRole("region", { name: "X draft" });
   await expect(bar).toContainText("X draft · 1");

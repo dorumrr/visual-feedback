@@ -96,7 +96,11 @@ test("a prop change goes to update(): an open dialog and its note stay", async (
   await expect(dialog).toBeVisible();
   await page.getByLabel("Your note").fill("Kept");
   await page.evaluate(() => (window as unknown as { setLeft(on: boolean): void }).setLeft(true));
-  await expect(trigger(page, "Left feedback")).toBeAttached();
+  // A draft hides the trigger, so it is found by class: the prop change still renamed it.
+  await expect(page.locator("visual-feedback").locator(".trigger")).toHaveAttribute(
+    "aria-label",
+    "Left feedback",
+  );
   await expect(dialog).toBeVisible();
   await expect(page.getByLabel("Your note")).toHaveValue("Kept");
   await expect(page.locator("visual-feedback")).toHaveCount(1);

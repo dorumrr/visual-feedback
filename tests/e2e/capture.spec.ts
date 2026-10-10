@@ -364,7 +364,9 @@ test("a failure while the image is drawn also shows the capture error", async ({
   await mount(page);
   await trigger(page).click();
   await expect(page.getByRole("alert")).toHaveText("Couldn't take a screenshot.");
-  await expect(trigger(page)).toBeVisible();
+  // The widget is no longer hidden for a capture.
+  await expect(page.locator("visual-feedback .vf")).not.toHaveClass(/capturing/);
+  await expect(page.getByRole("alert")).toBeVisible();
 });
 
 test("control: with the backdrop shown by css, Try again captures the dialog", async ({ page }) => {
@@ -461,7 +463,15 @@ test.describe("when the capture fails", () => {
     await page.evaluate(() => {
       (window as unknown as { failCapture: boolean }).failCapture = false;
     });
-    const points = await triggerPoints(page);
+    // Where the trigger sits, bottom right, from the window: a draft hides the trigger itself.
+    const view = page.viewportSize() ?? { width: 0, height: 0 };
+    const points = [
+      [view.width - 60, view.height - 36],
+      [view.width - 30, view.height - 36],
+      [view.width - 90, view.height - 36],
+      [view.width - 60, view.height - 26],
+      [view.width - 60, view.height - 46],
+    ];
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(page.locator("visual-feedback").locator("canvas.image")).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
