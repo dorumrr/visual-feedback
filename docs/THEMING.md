@@ -15,8 +15,8 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 | variable | default | used for |
 |---|---|---|
 | `--vf-font` | `inherit` | font family of all text, such as `Inter, sans-serif` |
-| `--vf-radius` | `12px` | panel, inputs, buttons |
-| `--vf-surface` | `Canvas` | panel and toolbar background |
+| `--vf-radius` | `16px` | panel and composer, and a share of it for buttons and the image |
+| `--vf-surface` | `Canvas` | panel, tool rail and composer background |
 | `--vf-text` | `CanvasText` | text |
 | `--vf-muted` | text at 60% | hints, counters |
 | `--vf-border` | text at 15% | hairlines |
@@ -25,8 +25,8 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 | `--vf-focus` | `--vf-accent` | focus ring |
 | `--vf-mark` | `#e5243b` | marks on the screenshot |
 | `--vf-backdrop` | `rgb(0 0 0 / 45%)` | overlay behind the image |
-| `--vf-shadow` | `0 4px 16px rgb(0 0 0 / 12%)` | trigger and panel |
-| `--vf-trigger-size` | `36px` | trigger diameter |
+| `--vf-shadow` | `0 12px 32px -12px rgb(0 0 0 / 35%)` | trigger and panel |
+| `--vf-trigger-size` | `2.5em`, 40px on a 16px site | trigger height |
 | `--vf-offset` | `16px` | trigger distance from the edges |
 | `--vf-z` | `2147483000` | stacking |
 
@@ -39,9 +39,10 @@ visual-feedback {
 ```
 
 ## 3. `::part()`
-Every visible element has a part name: `trigger`, `trigger-icon`, `backdrop`, `dialog`, `title`,
-`image`, `toolbar`, `tool`, `tool-active`, `undo`, `clear`, `label`, `note`, `category`, `actions`, `cancel`, `send`,
-`status`, `error`, `retry`, `send-without`.
+Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`, `backdrop`,
+`dialog`, `header`, `title`, `body`, `image`, `toolbar`, `tool`, `tool-active`, `divider`, `undo`,
+`clear`, `icon`, `label`, `composer`, `note`, `composer-bar`, `category`, `actions`, `cancel`, `send`,
+`hint`, `status`, `error`, `retry`, `send-without`.
 
 ```css
 visual-feedback::part(trigger) { opacity: .6; }

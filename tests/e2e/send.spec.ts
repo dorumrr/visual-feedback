@@ -675,7 +675,7 @@ test("the host's css can set Send's text colour over the picked one", async ({ p
     const { createFeedback } = await import(entry);
     (window as unknown as Page2).vf = createFeedback({
       onSubmit: async () => {},
-      css: ".actions .send { color: rgb(1, 2, 3) }",
+      css: ".send { color: rgb(1, 2, 3) }",
     });
   });
   await page.getByRole("button", { name: "Send feedback" }).click();

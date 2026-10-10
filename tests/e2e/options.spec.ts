@@ -22,6 +22,8 @@ const KEYS = [
   "sent",
   "error",
   "retry",
+  "triggerText",
+  "escHint",
 ] as const;
 const STRINGS = Object.fromEntries(KEYS.map((key) => [key, `X ${key}`]));
 
@@ -63,9 +65,11 @@ test("strings replace every text the widget shows", async ({ page }) => {
     onSubmit: undefined,
   });
   await watchLive(page);
+  await expect(page.getByRole("button", { name: "X trigger" })).toHaveText("X triggerText");
   await page.getByRole("button", { name: "X trigger" }).click();
   const dialog = page.getByRole("dialog", { name: "X title" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("X escHint")).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { live: string[] }).live))
     .toEqual(["X capturing"]);
@@ -86,6 +90,29 @@ test("strings replace every text the widget shows", async ({ page }) => {
   await expect(dialog.getByRole("button", { name: "X retry" })).toBeVisible();
   await dialog.getByRole("button", { name: "X retry" }).click();
   await expect(page.getByRole("status")).toHaveText("X sent");
+});
+
+test("the trigger shows Feedback, or the translated trigger name when only that is given", async ({
+  page,
+}) => {
+  await mount(page);
+  await expect(page.getByRole("button", { name: "Send feedback", exact: true })).toHaveText(
+    "Feedback",
+  );
+  await vf(page, "update", { strings: { trigger: "Envoyer un avis" } });
+  await expect(page.getByRole("button", { name: "Envoyer un avis", exact: true })).toHaveText(
+    "Envoyer un avis",
+  );
+  await vf(page, "update", { strings: { trigger: "Envoyer un avis", triggerText: "Avis" } });
+  await expect(page.getByRole("button", { name: "Envoyer un avis", exact: true })).toHaveText(
+    "Avis",
+  );
+  // Only the visible text given: the name is that text, so voice control finds what it shows.
+  await vf(page, "update", { strings: { triggerText: "Help" } });
+  await expect(page.getByRole("button", { name: "Help", exact: true })).toHaveText("Help");
+  // An empty label, as an i18n lookup can return, still leaves the button its English name.
+  await vf(page, "update", { strings: { triggerText: "" } });
+  await expect(page.getByRole("button", { name: "Send feedback", exact: true })).toBeVisible();
 });
 
 test("strings show while sending, and a partial set keeps English for the rest", async ({

@@ -18,7 +18,8 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
 - **capture error:** the `captureError` text, with "Try again" (back to capturing), "Send without
   screenshot" (annotating with no image: no toolbar, `image: null`, no marks) and Cancel or Esc
   (idle).
-- **annotating:** a full-viewport overlay shows the image, a toolbar and the note field.
+- **annotating:** a full-viewport overlay shows the image with a tool rail beside it, and the note
+  field with Send inside it. A close button in the header and Esc cancel.
 - **sending:** the note, the category and the tools are disabled, and the Send button shows
   progress. Cancel and Esc still close the dialog.
 - **sent:** a short confirmation, then idle.
@@ -26,8 +27,10 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
   the marks are kept, and "Try again" sends the same report.
 
 ## 3. The trigger
-- It is a small round button, 36 px by default, in a corner (`position`), with an icon and an
-  accessible name. It has no text label and no badge, and it does not move or pulse.
+- It is a small pill, 2.5em high by default (40 px on a 16 px site), in a corner (`position`), with
+  an icon, the short `triggerText` label and the `trigger` accessible name; with only `triggerText`
+  given, that text is the name too. A host that sets both keeps `triggerText` inside `trigger`, so
+  speech control can say what it sees. It has no badge, and it does not move or pulse.
 - It sits 16 px from the edges by default, and it respects `env(safe-area-inset-*)`.
 - It does not watch the page. The host moves it off its own content with `position` or
   `--vf-offset`.
@@ -126,3 +129,5 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | sent | Thanks, it's sent. |
 | error | It didn't send. Your note is kept. |
 | retry | Try again |
+| triggerText | Feedback, or the `trigger` text when only that is replaced |
+| escHint | Esc to cancel |

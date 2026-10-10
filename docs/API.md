@@ -60,7 +60,7 @@ const feedback = createFeedback({
 | `close(): void` | Cancels and discards the draft. Before `submit` fires, nothing is sent; after it, the delivery is not stopped, and `sent` or `error` still fires when it ends. |
 | `destroy(): void` | Removes the element, its listeners and its stylesheet, but not what the capture library keeps (SPEC §9). If the dialog is open, `close` fires, and it is the last event: a delivery still under way fires neither `sent` nor `error`. |
 | `on(event, fn): () => void` | Events: `open`, `close`, `submit` (with the report, before each attempt), `sent` (with the report), `error` (with the error). The type `FeedbackEvents` maps each event to what it passes. Returns an unsubscribe function. |
-| `update(options): void` | Merges these options into the current ones, key by key: a key given as `undefined` goes back to its default, and `strings` or `capture` replaces the whole object. `tagName` and `container` are ignored. The trigger, `position`, `theme`, `css`, `unstyled`, `strings.trigger` and `shortcut` change at once. The dialog's texts, `tools`, `categories` and `requireNote` apply from the next open, and the rest at the next capture or send. |
+| `update(options): void` | Merges these options into the current ones, key by key: a key given as `undefined` goes back to its default, and `strings` or `capture` replaces the whole object. `tagName` and `container` are ignored. The trigger, `position`, `theme`, `css`, `unstyled`, `strings.trigger`, `strings.triggerText` and `shortcut` change at once. The dialog's texts, `tools`, `categories` and `requireNote` apply from the next open, and the rest at the next capture or send. |
 
 ## FeedbackReport
 ```ts

@@ -87,12 +87,13 @@ test("each variable reaches the element that uses it, and its default matches TH
   const backdrop = page.getByRole("dialog");
   const note = page.getByRole("textbox", { name: "Your note" });
   const muted = () => note.evaluate((element) => getComputedStyle(element, "::placeholder").color);
+  const composer = page.locator("visual-feedback .composer");
 
   await expect(trigger).toHaveCSS("background-color", await probe("Canvas"));
   await expect(trigger).toHaveCSS("color", await probe("CanvasText"));
-  await expect(trigger).toHaveCSS("box-shadow", "rgba(0, 0, 0, 0.12) 0px 4px 16px 0px");
+  await expect(trigger).toHaveCSS("box-shadow", "rgba(0, 0, 0, 0.35) 0px 12px 32px -12px");
   await expect(trigger).toHaveCSS("z-index", "2147483000");
-  await expect(panel).toHaveCSS("border-top-left-radius", "12px");
+  await expect(panel).toHaveCSS("border-top-left-radius", "16px");
   await expect(backdrop).toHaveCSS("background-color", "rgba(0, 0, 0, 0.45)");
   await expect(trigger).toHaveCSS(
     "border-top-color",
@@ -108,11 +109,19 @@ test("each variable reaches the element that uses it, and its default matches TH
     }`,
   });
   await expect(panel).toHaveCSS("background-color", "rgb(1, 2, 3)");
+  await expect(trigger).toHaveCSS("background-color", "rgb(1, 2, 3)");
+  await expect(trigger).toHaveCSS("color", "rgb(4, 5, 6)");
+  await expect(trigger).toHaveCSS("border-top-color", "rgb(7, 8, 9)");
+  await expect(trigger).toHaveCSS("box-shadow", "rgb(10, 11, 12) 1px 2px 3px 0px");
   await expect(panel).toHaveCSS("color", "rgb(4, 5, 6)");
-  await expect(note).toHaveCSS("border-top-color", "rgb(7, 8, 9)");
+  // The composer shows the focus colour while the note has focus, so the rail shows the border.
+  await expect(page.locator("visual-feedback .toolbar")).toHaveCSS(
+    "border-top-color",
+    "rgb(7, 8, 9)",
+  );
   await expect(panel).toHaveCSS("box-shadow", "rgb(10, 11, 12) 1px 2px 3px 0px");
   await expect(panel).toHaveCSS("border-top-left-radius", "5px");
-  await expect(note).toHaveCSS("border-top-left-radius", "2.5px");
+  await expect(composer).toHaveCSS("border-top-left-radius", "5px");
   await expect(page.getByRole("button", { name: "Cancel" })).toHaveCSS(
     "border-top-left-radius",
     "2.5px",
@@ -121,10 +130,39 @@ test("each variable reaches the element that uses it, and its default matches TH
   expect(await muted()).toBe("rgb(16, 17, 18)");
   await expect(note).toBeFocused();
   await page.keyboard.press("Tab");
-  const cancel = page.getByRole("button", { name: "Cancel" });
-  await expect(cancel).toHaveCSS("outline-color", "rgb(19, 20, 21)");
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await expect(send).toBeFocused();
+  await expect(send).toHaveCSS("outline-color", "rgb(19, 20, 21)");
   await page.addStyleTag({ content: "visual-feedback { --vf-focus: rgb(22, 23, 24) }" });
-  await expect(cancel).toHaveCSS("outline-color", "rgb(22, 23, 24)");
+  await expect(send).toHaveCSS("outline-color", "rgb(22, 23, 24)");
+});
+
+test("text, icons and buttons follow the site's font size", async ({ page }) => {
+  const measure = async () => {
+    await page.getByRole("button", { name: "Send feedback" }).click();
+    const sizes = [
+      await page.getByRole("button", { name: "Draw" }).boundingBox(),
+      await page.locator("visual-feedback .tool svg").first().boundingBox(),
+      await page.getByRole("button", { name: "Send", exact: true }).boundingBox(),
+      await page.getByText("Esc to cancel").evaluate((hint) => getComputedStyle(hint).fontSize),
+    ];
+    await page.keyboard.press("Escape");
+    return sizes as [{ height: number }, { height: number }, { height: number }, string];
+  };
+  await mount(page);
+  const [tool, icon, send, hint] = await measure();
+  // On the page, not the element: the widget must inherit the site's size.
+  await page.addStyleTag({ content: "body { font-size: 32px }" });
+  const [bigTool, bigIcon, bigSend, bigHint] = await measure();
+  // Twice the font size: every one of them about twice as big.
+  for (const [small, big] of [
+    [tool.height, bigTool.height],
+    [icon.height, bigIcon.height],
+    [send.height, bigSend.height],
+    [Number.parseFloat(hint), Number.parseFloat(bigHint)],
+  ]) {
+    expect((big ?? 0) / (small ?? 1)).toBeGreaterThan(1.8);
+  }
 });
 
 test("--vf-font sets the font, and the site's font is inherited without it", async ({ page }) => {
@@ -145,9 +183,10 @@ test("size, offset and stacking variables move the trigger", async ({ page }) =>
   await mount(page);
   const trigger = page.getByRole("button", { name: "Send feedback" });
   const box = await trigger.boundingBox();
-  const width = page.viewportSize()?.width ?? 0;
-  expect([box?.width, box?.height]).toEqual([50, 50]);
+  const { width = 0, height = 0 } = page.viewportSize() ?? {};
+  expect(box?.height).toBe(50);
   expect(Math.round(width - (box?.x ?? 0) - (box?.width ?? 0))).toBe(40);
+  expect(Math.round(height - (box?.y ?? 0) - (box?.height ?? 0))).toBe(40);
   await expect(trigger).toHaveCSS("z-index", "7");
 });
 
@@ -249,9 +288,10 @@ test("unstyled keeps the layout and drops the look", async ({ page }) => {
   await mount(page, { unstyled: true });
   const trigger = page.getByRole("button", { name: "Send feedback" });
   await expect(trigger).toHaveCSS("position", "fixed");
-  await expect(trigger).toHaveCSS("width", "36px");
+  await expect(trigger).toHaveCSS("height", "40px");
   await expect(trigger).toHaveCSS("box-shadow", "none");
-  await expect(trigger).not.toHaveCSS("border-top-left-radius", "50%");
+  await expect(trigger).not.toHaveCSS("border-top-left-radius", "999px");
+  await expect(trigger).not.toHaveCSS("font-weight", "600");
   await trigger.click();
   const backdrop = page.getByRole("dialog");
   await expect(backdrop).toHaveCSS("position", "fixed");
@@ -336,8 +376,11 @@ for (const fallback of [false, true]) {
     expect(expected).not.toBe("rgba(0, 0, 0, 0)");
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
+    // Tab from the note reaches Send, the next control in the composer.
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("button", { name: "Cancel" })).toHaveCSS("outline-color", expected);
-    await expect(page.getByRole("button", { name: "Cancel" })).toHaveCSS("outline-style", "solid");
+    const send = page.getByRole("button", { name: "Send", exact: true });
+    await expect(send).toBeFocused();
+    await expect(send).toHaveCSS("outline-color", expected);
+    await expect(send).toHaveCSS("outline-style", "solid");
   });
 }

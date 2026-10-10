@@ -1,6 +1,8 @@
 import type { CaptureOptions } from "./capture";
 import type { FeedbackReport, Mark } from "./shared/report";
 
+const SVG = "http://www.w3.org/2000/svg";
+
 /** What each event passes to its handlers. */
 export type FeedbackEvents = {
   open: [];
@@ -33,7 +35,9 @@ export type FeedbackStrings = Record<
   | "sending"
   | "sent"
   | "error"
-  | "retry",
+  | "retry"
+  | "triggerText"
+  | "escHint",
   string
 >;
 
@@ -67,8 +71,6 @@ export type FeedbackWidget = {
   on<E extends FeedbackEvent>(event: E, fn: (...args: FeedbackEvents[E]) => void): () => void;
 };
 
-const SVG = "http://www.w3.org/2000/svg";
-
 function supported(): boolean {
   return (
     typeof document !== "undefined" &&
@@ -87,13 +89,14 @@ function sheet(text: string): CSSStyleSheet {
 function variables(): string {
   // Floor browsers (SPEC §10) may lack AccentColor.
   const system = CSS.supports("color", "AccentColor");
-  return `.vf{--_r:var(--vf-radius,12px);--_s:var(--vf-surface,Canvas);--_t:var(--vf-text,CanvasText);--_m:var(--vf-muted,color-mix(in srgb,var(--_t) 60%,transparent));--_b:var(--vf-border,color-mix(in srgb,var(--_t) 15%,transparent));--_a:var(--vf-accent,${system ? "AccentColor" : "#0b57d0"});--_at:var(--vf-accent-text,#fff);--_f:var(--vf-focus,var(--_a));--_mark:var(--vf-mark,#e5243b);--_bd:var(--vf-backdrop,rgb(0 0 0/45%));--_sh:var(--vf-shadow,0 4px 16px rgb(0 0 0/12%));--_size:var(--vf-trigger-size,36px);--_off:var(--vf-offset,16px);--_z:var(--vf-z,2147483000)}`;
+  return `.vf{--_r:var(--vf-radius,16px);--_s:var(--vf-surface,Canvas);--_t:var(--vf-text,CanvasText);--_m:var(--vf-muted,color-mix(in srgb,var(--_t) 60%,transparent));--_b:var(--vf-border,color-mix(in srgb,var(--_t) 15%,transparent));--_a:var(--vf-accent,${system ? "AccentColor" : "#0b57d0"});--_at:var(--vf-accent-text,#fff);--_f:var(--vf-focus,var(--_a));--_mark:var(--vf-mark,#e5243b);--_bd:var(--vf-backdrop,rgb(0 0 0/45%));--_sh:var(--vf-shadow,0 12px 32px -12px rgb(0 0 0/35%));--_size:var(--vf-trigger-size,2.5em);--_off:var(--vf-offset,16px);--_z:var(--vf-z,2147483000)}`;
 }
 
-const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{position:fixed;z-index:var(--_z);box-sizing:border-box;width:var(--_size);height:var(--_size);margin:0;padding:0;display:grid;place-items:center}.trigger[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}.trigger[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}.trigger[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}.trigger[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:55%;height:55%}.capturing,.capturing .backdrop{visibility:hidden}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
+const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}.trigger[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}.trigger[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}.trigger[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
 
-const THEME = `.trigger{border:1px solid var(--_b);border-radius:50%;background:var(--_s);color:var(--_t);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s}.trigger:hover{background:color-mix(in srgb,var(--_s) 90%,var(--_t))}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}`;
+const THEME = `.trigger{font-weight:600;border:1px solid var(--_b);border-radius:999px;background:var(--_s);color:var(--_t);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s}.trigger:hover{background:color-mix(in srgb,var(--_s) 90%,var(--_t))}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}`;
 
+// The dialog draws its icons with ./icon; sharing it would put a chunk into the loader's budget.
 function icon(): SVGSVGElement {
   const svg = document.createElementNS(SVG, "svg");
   const path = document.createElementNS(SVG, "path");
@@ -180,6 +183,7 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
   let pending: Promise<void> | undefined;
 
   let trigger: HTMLButtonElement | undefined;
+  let label: HTMLSpanElement | undefined;
   let unlisten: (() => void) | undefined;
 
   // Alt changes event.key on macOS (Alt+F types ƒ), so the key's code is matched too.
@@ -234,14 +238,18 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
         trigger.type = "button";
         trigger.className = "trigger";
         trigger.setAttribute("part", "trigger");
-        trigger.append(icon());
+        label = document.createElement("span");
+        label.setAttribute("part", "trigger-text");
+        trigger.append(icon(), label);
         trigger.addEventListener("click", start);
         wrapper.prepend(trigger);
       }
       const [y, x] = (options.position ?? "bottom-right").split("-");
       trigger.dataset.y = y;
       trigger.dataset.x = x;
-      trigger.setAttribute("aria-label", options.strings?.trigger ?? "Send feedback");
+      const { trigger: name, triggerText } = options.strings ?? {};
+      trigger.setAttribute("aria-label", name || triggerText || "Send feedback");
+      if (label) label.textContent = triggerText ?? name ?? "Feedback";
     }
     unlisten?.();
     unlisten = options.shortcut ? listen(options.shortcut) : undefined;

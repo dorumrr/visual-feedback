@@ -361,7 +361,10 @@ test("Undo removes the last mark and Clear removes all, back to the clean captur
 test("the toolbar follows the tools option, and an empty list draws nothing", async ({ page }) => {
   await opened(page, { tools: ["arrow", "pen", "arrow", "circle"] });
   const toolbar = page.locator("visual-feedback").locator(".toolbar button");
-  await expect(toolbar).toHaveText(["Arrow", "Draw", "Undo", "Clear"]);
+  // Icon buttons: their names are their labels.
+  expect(
+    await toolbar.evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label"))),
+  ).toEqual(["Arrow", "Draw", "Undo", "Clear"]);
   await expect(tool(page, "Arrow")).toHaveAttribute("aria-pressed", "true");
   await expect(tool(page, "Arrow")).toHaveAttribute("part", "tool tool-active");
   await expect(tool(page, "Draw")).toHaveAttribute("part", "tool");
@@ -662,7 +665,7 @@ test("with marks, Tab reaches Undo and Clear, and disabling them keeps the focus
     await page.keyboard.press("Tab");
     seen.push(await focused(page));
   }
-  expect(seen).toEqual(["cancel", "send", "tool", "tool", "tool", "undo", "clear", "note"]);
+  expect(seen).toEqual(["send", "cancel", "tool", "tool", "tool", "undo", "clear", "note"]);
   for (const name of ["Undo", "Clear"]) {
     if (name === "Clear") {
       await drag(page, [
@@ -705,10 +708,10 @@ test("a move with no button pressed ends a stroke whose release was lost", async
 
 test("Undo and Clear look disabled while there are no marks", async ({ page }) => {
   await opened(page);
-  await expect(tool(page, "Undo")).toHaveCSS("opacity", "0.5");
+  for (const name of ["Undo", "Clear"]) await expect(tool(page, name)).toHaveCSS("opacity", "0.35");
   await drag(page, [
     [0.2, 0.5],
     [0.4, 0.5],
   ]);
-  await expect(tool(page, "Undo")).toHaveCSS("opacity", "1");
+  for (const name of ["Undo", "Clear"]) await expect(tool(page, name)).toHaveCSS("opacity", "1");
 });

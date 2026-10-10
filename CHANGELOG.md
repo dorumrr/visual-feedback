@@ -2,6 +2,16 @@
 
 ## 0.2.0 (not released yet)
 
+- A new look: a tool rail with icons beside the screenshot, the note as a composer with Send inside
+  it, a close button in the header, and an "Esc to cancel" hint. Text follows the site's font and
+  size.
+- The trigger is a pill with an icon and a short label: new `strings.triggerText` ("Feedback"), and
+  new `strings.escHint`; code that types a full `FeedbackStrings` object needs both keys.
+  `--vf-trigger-size` is now its height, 2.5em by default (40px on a 16px site).
+- Changed defaults: `--vf-radius` 16px and a softer `--vf-shadow`. New part names: `header`,
+  `body`, `divider`, `icon`, `composer`, `composer-bar`, `hint`, `trigger-text`. Send no longer sits
+  inside `.actions`: host CSS aimed at `.actions .send` needs `.send`. Cancel is now the header's
+  close button, still `::part(cancel)`; `actions` holds only the capture error's buttons.
 - A mark keeps what was drawn when the browser takes the pointer away (a gesture, a lost
   capture), instead of disappearing.
 

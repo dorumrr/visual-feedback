@@ -410,7 +410,10 @@ test.describe("when the capture fails", () => {
         "title",
         "trigger",
         "trigger-icon",
+        "trigger-text",
         "send-without",
+        "header",
+        "icon",
       ].sort(),
     );
     await expect(page.getByRole("textbox", { name: "Your note" })).toHaveCount(0);
@@ -533,21 +536,28 @@ test.describe("display mode", () => {
   /** Whether this browser plays a canvas stream at all; Playwright's WebKit on Linux does not. */
   function playsCanvasStream(page: Page): Promise<boolean> {
     return page.evaluate(async () => {
+      // Painted again and again, as the fake shared screen is.
       const canvas = document.createElement("canvas");
-      canvas.getContext("2d")?.fillRect(0, 0, 10, 10);
+      const paint = setInterval(() => canvas.getContext("2d")?.fillRect(0, 0, 10, 10), 30);
       const video = document.createElement("video");
       video.muted = true;
       video.srcObject = canvas.captureStream();
-      const timeout = new Promise((done) => setTimeout(done, 2000));
+      // Generous, so a busy machine does not turn a slow first frame into a skip.
+      const timeout = new Promise((done) => setTimeout(done, 5000));
       await Promise.race([video.play().catch(() => {}), timeout]);
+      clearInterval(paint);
       return video.videoWidth > 0;
     });
   }
 
   test("uses the shared surface, with the widget hidden and the stream stopped", async ({
     page,
+    browserName,
   }) => {
-    test.skip(!(await playsCanvasStream(page)), "this browser gives a canvas stream no frame");
+    const plays = await playsCanvasStream(page);
+    // Only Playwright's WebKit may lack it; elsewhere a false probe is a failure, not a skip.
+    if (browserName !== "webkit") expect(plays).toBe(true);
+    test.skip(!plays, "this browser gives a canvas stream no frame");
     await fakeDisplay(page, "stream");
     await mount(page, { capture: { mode: "display" } });
     await trigger(page).click();
@@ -562,8 +572,11 @@ test.describe("display mode", () => {
     });
   });
 
-  test("capture.maxWidth scales the shared surface down", async ({ page }) => {
-    test.skip(!(await playsCanvasStream(page)), "this browser gives a canvas stream no frame");
+  test("capture.maxWidth scales the shared surface down", async ({ page, browserName }) => {
+    const plays = await playsCanvasStream(page);
+    // Only Playwright's WebKit may lack it; elsewhere a false probe is a failure, not a skip.
+    if (browserName !== "webkit") expect(plays).toBe(true);
+    test.skip(!plays, "this browser gives a canvas stream no frame");
     await fakeDisplay(page, "stream");
     await mount(page, { capture: { mode: "display", maxWidth: 400 } });
     await trigger(page).click();

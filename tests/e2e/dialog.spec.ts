@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/widget/");
 });
 
-test("the trigger is a round named button in the chosen corner, and none draws nothing", async ({
+test("the trigger is a named pill with its text in the chosen corner, and none draws nothing", async ({
   page,
 }) => {
   await mount(page);
@@ -17,21 +17,23 @@ test("the trigger is a round named button in the chosen corner, and none draws n
   const viewport = page.viewportSize();
   expect(box && viewport).toBeTruthy();
   if (!box || !viewport) return;
-  expect([box.width, box.height]).toEqual([36, 36]);
+  expect(box.height).toBe(40);
+  expect(box.width).toBeGreaterThan(box.height);
   expect(Math.round(viewport.width - box.x - box.width)).toBe(16);
   expect(Math.round(viewport.height - box.y - box.height)).toBe(16);
-  await expect(trigger(page)).toHaveText("");
-  await expect(trigger(page)).toHaveCSS("border-top-left-radius", "50%");
+  await expect(trigger(page)).toHaveText("Feedback");
+  await expect(trigger(page)).toHaveCSS("border-top-left-radius", "999px");
 
   for (const position of ["top-left", "top-right", "bottom-left", "bottom-right"]) {
     await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
     await mount(page, { position });
     const corner = await trigger(page).boundingBox();
     const [y, x] = position.split("-");
-    const left = Math.round(corner?.x ?? -1);
-    const top = Math.round(corner?.y ?? -1);
-    expect(x === "left" ? left : viewport.width - left - 36, position).toBe(16);
-    expect(y === "top" ? top : viewport.height - top - 36, position).toBe(16);
+    const [left, top] = [corner?.x ?? -1, corner?.y ?? -1];
+    const fromX = x === "left" ? left : viewport.width - left - (corner?.width ?? 0);
+    const fromY = y === "top" ? top : viewport.height - top - (corner?.height ?? 0);
+    expect(Math.round(fromX), position).toBe(16);
+    expect(Math.round(fromY), position).toBe(16);
   }
 
   await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
@@ -50,6 +52,7 @@ test("the dialog traps focus, Escape cancels, and focus goes back to the trigger
   const dialog = page.getByRole("dialog", { name: "Send feedback" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(dialog.getByText("Esc to cancel", { exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
 
   const seen: string[] = [];
@@ -58,7 +61,7 @@ test("the dialog traps focus, Escape cancels, and focus goes back to the trigger
     seen.push(await focused(page));
   }
   // Undo and Clear are disabled while there are no marks, so Tab skips them.
-  expect(seen).toEqual(["cancel", "send", "tool", "tool", "tool", "note"]);
+  expect(seen).toEqual(["send", "cancel", "tool", "tool", "tool", "note"]);
   await page.keyboard.press("Shift+Tab");
   await expect(page.getByRole("button", { name: "Arrow" })).toBeFocused();
 
@@ -75,7 +78,10 @@ test("the keyboard alone can write the note and cancel", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
   await page.keyboard.type("Typed with keys");
   await expect(page.getByRole("textbox", { name: "Your note" })).toHaveValue("Typed with keys");
+  // Past Send, the focus wraps to the close button at the top.
   await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await events(page)).toEqual(["open", "close"]);
@@ -225,9 +231,9 @@ test("a page with * { all: unset } and button { display: none } still gets a wor
   await expect(trigger(page)).toBeVisible();
   const box = await trigger(page).boundingBox();
   const viewport = page.viewportSize();
-  expect([box?.width, box?.height]).toEqual([36, 36]);
-  expect(Math.round((viewport?.width ?? 0) - (box?.x ?? 0) - 36)).toBe(16);
-  expect(Math.round((viewport?.height ?? 0) - (box?.y ?? 0) - 36)).toBe(16);
+  expect(box?.height).toBe(40);
+  expect(Math.round((viewport?.width ?? 0) - (box?.x ?? 0) - (box?.width ?? 0))).toBe(16);
+  expect(Math.round((viewport?.height ?? 0) - (box?.y ?? 0) - 40)).toBe(16);
   await trigger(page).click();
   const note = page.getByRole("textbox", { name: "Your note" });
   await expect(note).toBeVisible();
@@ -259,7 +265,7 @@ test("under the CSP that SPEC section 11 lists, the widget opens and closes with
   });
   await page.goto("/widget/");
   await mount(page);
-  await expect(trigger(page)).toHaveCSS("border-top-left-radius", "50%");
+  await expect(trigger(page)).toHaveCSS("border-top-left-radius", "999px");
   await trigger(page).click();
   await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
   await expect(page.getByRole("dialog")).toHaveCSS("background-color", "rgba(0, 0, 0, 0.45)");
