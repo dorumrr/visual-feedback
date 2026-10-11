@@ -3,8 +3,8 @@ import { failable, type Mounted, mount } from "./widget";
 
 type Entry = { target: string; type: string; from: string; added: number; removed: number };
 
-// Every add and remove on window and document, matched by listener, type and capture, and
-// tagged with who added it: the capture library's file, or anything else.
+// Every add and remove on window, document and a media query, matched by listener, type and
+// capture, and tagged with who added it: the capture library's file, or anything else.
 function spy(): void {
   const log = new Map<string, Entry>();
   const fns: unknown[] = [];
@@ -12,7 +12,8 @@ function spy(): void {
     const capture =
       typeof options === "boolean" ? options : Boolean((options as { capture?: boolean })?.capture);
     if (!fns.includes(fn)) fns.push(fn);
-    return `${target === window ? "window" : "document"}|${type}|${capture}|${fns.indexOf(fn)}`;
+    const name = target === window ? "window" : target === document ? "document" : "media";
+    return `${name}|${type}|${capture}|${fns.indexOf(fn)}`;
   };
   // The nearest module frame is the caller: the library's file, the widget's, or none (the
   // test runner's own page scripts).
@@ -22,8 +23,10 @@ function spy(): void {
     return /snapdom/.test(frame) ? "capture library" : "widget";
   };
   const { addEventListener: add, removeEventListener: remove } = EventTarget.prototype;
+  const watched = (target: EventTarget) =>
+    target === window || target === document || target instanceof MediaQueryList;
   EventTarget.prototype.addEventListener = function (type, fn, options) {
-    if ((this === window || this === document) && fn) {
+    if (watched(this) && fn) {
       const id = key(this, type, fn, options);
       const from = caller();
       const entry = log.get(id) ?? {
@@ -39,7 +42,7 @@ function spy(): void {
     return add.call(this, type, fn, options);
   };
   EventTarget.prototype.removeEventListener = function (type, fn, options) {
-    if ((this === window || this === document) && fn) {
+    if (watched(this) && fn) {
       const entry = log.get(key(this, type, fn, options));
       if (entry) entry.removed++;
     }
@@ -93,6 +96,9 @@ async function nothingLeft(page: Page, captured = true, observing = 5): Promise<
   expect(observers).toEqual(Array(captured ? observing : 0).fill("capture library"));
 }
 
+// The widget's one listener when idle: a change of the system's light or dark (THEMING.md section 1).
+const SYSTEM = { target: "media", type: "change", from: "widget", added: 1, removed: 0 };
+
 const listeners = (page: Page) =>
   page.evaluate(() => [...(window as unknown as { log: Map<string, Entry> }).log.values()]);
 
@@ -116,6 +122,7 @@ test("after open, update and destroy with the shortcut on, nothing is left", asy
   await mount(page, { shortcut: "Alt+Shift+F" });
   expect(await listeners(page)).toEqual([
     { target: "window", type: "keydown", from: "widget", added: 1, removed: 0 },
+    SYSTEM,
   ]);
 
   await page.keyboard.press("Alt+Shift+KeyF");
@@ -164,10 +171,12 @@ test("destroy while the dialog is open leaves nothing, and later calls do nothin
   expect(await snapshot(page)).toEqual(before);
 });
 
-test("no shortcut adds no listener to window or document", async ({ page }) => {
+test("no shortcut adds no listener to window or document, only the system's light or dark", async ({
+  page,
+}) => {
   await mount(page);
   await page.evaluate(() => (window as unknown as Mounted).vf.update({ position: "top-left" }));
-  expect(await listeners(page)).toEqual([]);
+  expect(await listeners(page)).toEqual([SYSTEM]);
 });
 
 test("destroy during the capture, while drawing, and while sending leaves nothing", async ({
@@ -233,10 +242,12 @@ test("a shortcut added by update is removed by update and by destroy", async ({ 
   await mount(page);
   await page.evaluate(() => (window as unknown as Mounted).vf.update({ shortcut: "Alt+Shift+F" }));
   expect(await listeners(page)).toEqual([
+    SYSTEM,
     { target: "window", type: "keydown", from: "widget", added: 1, removed: 0 },
   ]);
   await page.evaluate(() => (window as unknown as Mounted).vf.update({ shortcut: false }));
   expect(await listeners(page)).toEqual([
+    SYSTEM,
     { target: "window", type: "keydown", from: "widget", added: 1, removed: 1 },
   ]);
   await page.evaluate(() => {
@@ -280,6 +291,8 @@ test("updating the shortcut again and again keeps one keydown listener", async (
     for (const shortcut of ["Alt+Shift+F", "Alt+Shift+G", "Control+K"]) widget.update({ shortcut });
     widget.update({ position: "top-left" });
   });
-  const live = (await listeners(page)).reduce((sum, entry) => sum + entry.added - entry.removed, 0);
+  const live = (await listeners(page))
+    .filter((entry) => entry.type === "keydown")
+    .reduce((sum, entry) => sum + entry.added - entry.removed, 0);
   expect(live).toBe(1);
 });

@@ -55,8 +55,8 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   speech control can say what it sees. It has no badge, and it does not move or pulse.
 - It sits 16 px from the edges by default, and it respects `env(safe-area-inset-*)`.
 - It is hidden while there is a draft, whether the dialog is open or kept in the draft bar.
-- It does not watch the page. The host moves it off its own content with `position` or
-  `--vf-offset`.
+- It does not move to keep clear of the page's content. The host moves it off its own content
+  with `position` or `--vf-offset`.
 
 ## 4. Annotating
 - **Tools:** Pen (freehand), Box (rectangle outline), Arrow and Text. Text places a label where the
@@ -155,7 +155,12 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - **Loader** (the trigger and the `open()` wiring): 15 KB or less, minified and gzipped.
 - **Annotator and dialog:** 135 KB or less, gzipped. This does not include the capture library.
 - **Idle cost:** no work after the first paint of the trigger, past reading one sessionStorage
-  key and the page's colours and button corners at load (THEMING.md section 1); only when this tab kept a draft does the dialog load, to bring it back. After the first screenshot, the
+  key and the page's colours and button corners at load, and reading them again when the page
+  switches its theme (THEMING.md section 1). To see a switch, it keeps one mutation observer on
+  the attributes of `<html>` and `<body>` and on the children of `<html>` (to find a new
+  `<body>`), and one `change` listener on `prefers-color-scheme`, both gone at `destroy()`. A
+  change the observer sees that leaves the page's colours alone reads the colours of `<html>` and
+  `<body>` and scans nothing else; a system switch always reads the page. Only when this tab kept a draft does the dialog load, to bring it back. After the first screenshot, the
   capture library (snapdom) keeps 12 listeners on `window` and `document` and up to 5 mutation observers
   until the page unloads, and offers no way to remove them; `destroy()` removes everything else
   but a draft it keeps (§7). The opt-in `shortcut` adds one `keydown` listener on `window`, gone at

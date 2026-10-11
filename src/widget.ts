@@ -147,8 +147,9 @@ function deepActive(): Element | null {
 
 // Symbol.for keys are shared by every copy of this package on the page (two bundles, a hot reload).
 const DISCONNECTED = Symbol.for("visual-feedback.disconnected");
+const CONNECTED = Symbol.for("visual-feedback.connected");
 
-type Hooked = HTMLElement & { [DISCONNECTED]?: () => void };
+type Hooked = HTMLElement & { [DISCONNECTED]?: () => void; [CONNECTED]?: () => void };
 
 // The widget of each tag whose element is in a page owns the draft that tag keeps; others keep
 // theirs in memory only, so two never bring back, or overwrite, one draft.
@@ -199,6 +200,9 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
     customElements.define(
       tag,
       class extends HTMLElement {
+        connectedCallback() {
+          (this as Hooked)[CONNECTED]?.();
+        }
         disconnectedCallback() {
           (this as Hooked)[DISCONNECTED]?.();
         }
@@ -324,12 +328,63 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
   apply();
   // A script in <head> runs before <body> exists.
   (options.container ?? document.body ?? document.documentElement).append(host);
-  // Reading the page styles the new trigger in the defaults: without this it would fade to the
-  // page's colours at every page load.
-  wrapper.classList.add("still");
-  match(wrapper, options.theme);
-  if (trigger) getComputedStyle(trigger).backgroundColor;
-  wrapper.classList.remove("still");
+  // A theme switch on the page reaches the widget through the attributes of <html> and <body>, or
+  // the system's light or dark: the rest of the page is never watched.
+  let seen = "";
+  const look = () =>
+    [document.documentElement, document.body]
+      .map((element) => {
+        const style = element && getComputedStyle(element);
+        return style ? `${style.backgroundColor} ${style.color} ${style.colorScheme}` : "";
+      })
+      .join();
+  // Without "still" the trigger would fade to the page's colours at each page load and switch.
+  function restyle(): void {
+    wrapper.classList.add("still");
+    match(wrapper, options.theme);
+    if (trigger) getComputedStyle(trigger).backgroundColor;
+    wrapper.classList.remove("still");
+    dialog?.reink();
+    seen = look();
+  }
+  restyle();
+  // Off the page there is nothing to read: the colours it last read stay, and a system switch
+  // missed meanwhile is read when the element is put back.
+  let missed = false;
+  function follow(always = false): void {
+    missed ||= always;
+    if (!host.isConnected) return;
+    const read = () => {
+      if (!host.isConnected || !(missed || look() !== seen)) return;
+      missed = false;
+      restyle();
+    };
+    // A site that fades its colours still shows the old ones. Only the fades running now are
+    // waited for, so a page that keeps starting new ones is still read.
+    const fading = document
+      .getAnimations()
+      .filter((animation) => animation instanceof CSSTransition)
+      .filter((animation) => /color|background/.test(animation.transitionProperty));
+    if (fading.length) void Promise.allSettled(fading.map((fade) => fade.finished)).then(read);
+    else read();
+  }
+  // The system's switch can change the widget's own defaults on a page that shows no colours.
+  const system = matchMedia("(prefers-color-scheme: dark)");
+  const switched = () => follow(true);
+  system.addEventListener("change", switched);
+  let watched: HTMLElement | null = null;
+  const observer = new MutationObserver(() => {
+    // A <body> made after the widget, or put in place of the old one, is watched too.
+    if (document.body !== watched) {
+      watched = document.body;
+      if (watched) observer.observe(watched, { attributes: true });
+    }
+    // The scroll lock's overflow, and any change that leaves the colours alone, scans nothing.
+    follow();
+  });
+  observer.observe(document.documentElement, { attributes: true, childList: true });
+  watched = document.body;
+  if (watched) observer.observe(watched, { attributes: true });
   // Asked each time: when the owner's element leaves the page, the next widget to ask takes over.
   const keeps = () => {
     if (options.draft === "memory") return false;
@@ -516,6 +571,8 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
       state = "destroyed";
       cancel();
       unlisten?.();
+      observer.disconnect();
+      system.removeEventListener("change", switched);
       // Gone with the page, as at a route change: the draft stays kept, as across a page load,
       // and close fires only when it ended.
       const ended = wasOpen && !teardown(true);
@@ -553,6 +610,8 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
   enders.set(host, () => end());
   // The host app may remove the element (a route change) while the dialog is open: it closes,
   // and the draft stays kept. A move reconnects it before the microtask runs, so it keeps all.
+  // Put back on the page: the page may have switched its theme while the element was off it.
+  (host as Hooked)[CONNECTED] = () => follow();
   (host as Hooked)[DISCONNECTED] = () =>
     queueMicrotask(() => {
       if (!host.isConnected) end(true);

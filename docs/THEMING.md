@@ -6,15 +6,22 @@ out. There are four ways to adapt it, from lightest to heaviest:
 ## 1. It matches the site
 Inside the shadow root, the widget sets `font: inherit`, so a site rule such as
 `* { all: unset }` cannot reset it. With no theming at all, it takes the site's font, and it
-reads the page when it loads, at each open (a draft opened again from its bar too) and when
-`theme` changes:
+reads the page when it loads, at each open (a draft opened again from its bar too), when
+`theme` or `css` changes, and when the page switches its theme: a change to the attributes of `<html>` or
+`<body>`, such as a `dark` class, that changes the page's background, text colour or
+`color-scheme`, or a change of the system's light or dark. The trigger, the dialog and the draft
+bar then take the new look at once, or, where the site fades its colours, when the fade ends. A
+widget whose element was off the page reads the page again when the element is put back. The rest
+of the page is not watched, so a look changed only by a new stylesheet shows at the next open.
+What it reads:
 
 - **accent:** the page's `<meta name="theme-color">` (one with a `media` attribute counts only
   where its media matches), else the most common coloured background
-  of its buttons, else the colour of its links. Greys and the browser's own unstyled buttons do
-  not count.
+  of its buttons, else the colour of its links. Greys, muted colours, near black, near white and
+  the browser's own unstyled buttons do not count.
 - **corners:** the middle radius of the page's filled buttons, so the widget's buttons get the
-  same. A site whose buttons are pills keeps the default.
+  same, up to 15px. A site where at least half of the filled buttons are pills keeps the
+  default.
 - **background and text**, with `theme: "auto"`: the page's background and text colour, and light
   or dark from that background.
 
@@ -31,12 +38,12 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 | variable | default | used for |
 |---|---|---|
 | `--vf-font` | `inherit` | font family of all text, such as `Inter, sans-serif` |
-| `--vf-radius` | from the page's button corners, so the widget's buttons match them, else `16px` | panel and composer, and a share of it for buttons and the image |
+| `--vf-radius` | from the page's button corners, so the widget's buttons match them up to 15px (this is 1.6 times theirs, up to `24px`), else `16px` | panel and composer, and a share of it for buttons and the image |
 | `--vf-surface` | with `theme: "auto"` the page's background, else `Canvas` | panel, tool rail and composer background |
 | `--vf-text` | with `theme: "auto"` the page's text colour, else `CanvasText` | text |
 | `--vf-muted` | text at 60%, more on a page whose text would make that too faint | hints, counters |
 | `--vf-border` | text at 15% | hairlines |
-| `--vf-accent` | the page's accent, else `AccentColor`, or `#0b57d0` where the browser has no `AccentColor` | Send button, active tool |
+| `--vf-accent` | the page's accent, else `AccentColor`, or `#0b57d0` where the browser has no `AccentColor` | Send button and its menu button, "Capture this view", active tool, chosen screenshot |
 | `--vf-accent-text` | black or white, whichever contrasts more with the accent | text on the accent |
 | `--vf-focus` | `--vf-accent` | focus ring |
 | `--vf-mark` | `#e5243b` | marks on the screenshot |

@@ -863,3 +863,262 @@ test("a host that sets only --vf-text keeps the default surface, not the page's"
   // The page is still read: its accent is taken.
   expect((await look(page)).accent).toBe("rgb(228, 0, 124)");
 });
+
+const NIGHT = `body { background: rgb(255, 255, 255); color: rgb(20, 20, 20) }
+  .brand { background: rgb(200, 0, 90); color: #fff; border: 0; border-radius: 6px; padding: 8px }
+  html.night body { background: rgb(16, 24, 32); color: rgb(240, 240, 240) }
+  html.night .brand { background: rgb(255, 140, 190) }`;
+
+/** The page's own buttons, in a site with a day look and a night look set by a class on <html>. */
+async function nightSite(page: Page) {
+  await page.addStyleTag({ content: NIGHT });
+  await page.evaluate(() => {
+    const button = document.createElement("button");
+    button.className = "brand";
+    button.textContent = "Buy";
+    document.querySelector("main")?.append(button);
+  });
+}
+
+/** Switches the class, then reads once in the next frame: no retry, so a fade would show. */
+function night(page: Page, on: boolean, selector: string) {
+  return page.evaluate(
+    async ([on, selector]) => {
+      document.documentElement.classList.toggle("night", on as boolean);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const element = document
+        .querySelector("visual-feedback")
+        ?.shadowRoot?.querySelector(selector as string) as HTMLElement;
+      return {
+        background: getComputedStyle(element).backgroundColor,
+        fading: element.getAnimations().length,
+        ink: element.dataset.ink ?? "",
+      };
+    },
+    [on, selector],
+  );
+}
+
+test("a theme switch on <html> reaches the trigger, the open panel and the draft bar at once", async ({
+  page,
+}) => {
+  await nightSite(page);
+  await mount(page);
+  await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
+  expect(await night(page, true, ".trigger")).toEqual({
+    background: "rgb(16, 24, 32)",
+    fading: 0,
+    ink: "",
+  });
+
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await expect(send).toHaveCSS("background-color", "rgb(255, 140, 190)");
+  await expect(send).toHaveAttribute("data-ink", "dark");
+  // Back to day while the panel is open: its surface, the accent and the text on it follow.
+  expect((await night(page, false, ".dialog")).background).toBe("rgb(255, 255, 255)");
+  expect(await night(page, false, ".send")).toEqual({
+    background: "rgb(200, 0, 90)",
+    fading: 0,
+    ink: "",
+  });
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Open" })).toBeVisible();
+  expect((await night(page, true, ".draft")).background).toBe("rgb(16, 24, 32)");
+});
+
+test("a change of the system's light or dark reaches the widget with no attribute changed", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.addStyleTag({
+    content: `body { background: rgb(255, 255, 255); color: rgb(20, 20, 20) }
+      @media (prefers-color-scheme: dark) { body { background: rgb(16, 24, 32); color: rgb(240, 240, 240) } }`,
+  });
+  await mount(page);
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  await expect(trigger).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+});
+
+test("a <body> made after the widget is watched: its theme switch reaches the trigger", async ({
+  page,
+}) => {
+  await page.evaluate(() => document.body.remove());
+  await mount(page);
+  await page.addStyleTag({ content: NIGHT });
+  await page.evaluate(() => document.documentElement.append(document.createElement("body")));
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  await expect(trigger).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await page.evaluate(() => document.documentElement.classList.add("night"));
+  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+  // A <body> put in place of the old one: its own attributes are watched.
+  await page.evaluate(() => {
+    document.documentElement.classList.remove("night");
+    const next = document.createElement("body");
+    document.body.replaceWith(next);
+  });
+  await expect(trigger).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await page.evaluate(() => {
+    document.body.style.background = "rgb(16, 24, 32)";
+    document.body.style.color = "rgb(240, 240, 240)";
+  });
+  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+});
+
+test("an attribute change that leaves the page's colours alone does not read the page", async ({
+  page,
+}) => {
+  await nightSite(page);
+  await mount(page);
+  const scans = () =>
+    page.evaluate(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      return (window as unknown as { scans: number }).scans;
+    });
+  await page.evaluate(() => {
+    const w = window as unknown as { scans: number };
+    w.scans = 0;
+    const { querySelectorAll } = Document.prototype;
+    Document.prototype.querySelectorAll = function (this: Document, selector: string) {
+      if (selector.includes('[role="button"]')) w.scans++;
+      return querySelectorAll.call(this, selector);
+    } as typeof querySelectorAll;
+  });
+  // The scroll lock's own write, and a data attribute, as a router or an analytics tag would set.
+  await page.evaluate(() => {
+    document.documentElement.style.overflow = "hidden";
+    document.body.dataset.route = "settings";
+    document.documentElement.style.overflow = "";
+  });
+  expect(await scans()).toBe(0);
+  await page.evaluate(() => document.documentElement.classList.add("night"));
+  expect(await scans()).toBe(1);
+});
+
+test("a theme switch the site fades in reaches the widget once the fade ends", async ({ page }) => {
+  await nightSite(page);
+  await page.addStyleTag({
+    content: "body, .brand { transition: background-color .3s, color .3s }",
+  });
+  await mount(page);
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  await expect(trigger).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  // The site's fade runs: what the widget would read now is the old colour.
+  const fading = await page.evaluate(() => {
+    document.documentElement.classList.add("night");
+    return document.body.getAnimations().length;
+  });
+  expect(fading).toBeGreaterThan(0);
+  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  // The buttons fade too: the accent is the one they end on.
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCSS(
+    "background-color",
+    "rgb(255, 140, 190)",
+  );
+  await page.keyboard.press("Escape");
+  await page.evaluate(() => document.documentElement.classList.remove("night"));
+  await expect(page.locator("visual-feedback").locator(".draft")).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
+});
+
+test("an element off the page keeps its colours through a switch, and reads the page when put back", async ({
+  page,
+}) => {
+  await nightSite(page);
+  await page.addStyleTag({ content: "body { background: rgb(250, 240, 230) }" });
+  await mount(page);
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  await expect(trigger).toHaveCSS("background-color", "rgb(250, 240, 230)");
+  const surface = () =>
+    page.evaluate(() => {
+      const host = (window as unknown as { host: Element }).host;
+      const wrapper = host.shadowRoot?.querySelector(".vf") as HTMLElement;
+      return wrapper.style.getPropertyValue("--_ps");
+    });
+  await page.evaluate(() => {
+    const w = window as unknown as { host: Element };
+    w.host = document.querySelector("visual-feedback") as Element;
+    w.host.remove();
+    document.documentElement.classList.add("night");
+  });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+  expect(await surface()).toBe("rgb(250 240 230)");
+  await page.evaluate(() => document.body.append((window as unknown as { host: Element }).host));
+  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+});
+
+test("a page that keeps starting colour fades elsewhere still gets read after a switch", async ({
+  page,
+}) => {
+  await nightSite(page);
+  await page.addStyleTag({ content: ".ticker { transition: color 1s }" });
+  await mount(page);
+  // A cell that changes colour every 100 ms, so some fade always runs.
+  await page.evaluate(() => {
+    const ticker = document.createElement("p");
+    ticker.className = "ticker";
+    ticker.textContent = "+0.4%";
+    document.querySelector("main")?.append(ticker);
+    let up = false;
+    setInterval(() => {
+      up = !up;
+      ticker.style.color = up ? "rgb(0, 160, 0)" : "rgb(200, 0, 0)";
+    }, 100);
+  });
+  await page.evaluate(() => document.documentElement.classList.add("night"));
+  await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
+    "background-color",
+    "rgb(16, 24, 32)",
+  );
+});
+
+test("a system switch while the element is off the page is read when it is put back", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  // No page colours: the widget's background is the system's, and this accent contrasts only
+  // with a dark one.
+  await page.addStyleTag({
+    content: `html, body { background: transparent !important; color: rgb(20, 20, 20) !important }
+      .brand { background: rgb(230, 180, 0); border: 0; border-radius: 6px; padding: 8px }`,
+  });
+  await page.evaluate(() => {
+    const button = document.createElement("button");
+    button.className = "brand";
+    button.textContent = "Buy";
+    document.querySelector("main")?.append(button);
+  });
+  await mount(page);
+  const accent = () =>
+    page.evaluate(() => {
+      const host =
+        document.querySelector("visual-feedback") ?? (window as unknown as { host: Element }).host;
+      const wrapper = host.shadowRoot?.querySelector(".vf") as HTMLElement;
+      return wrapper.style.getPropertyValue("--_pa");
+    });
+  expect(await accent()).toBe("initial");
+  await page.evaluate(() => {
+    const w = window as unknown as { host: Element; switched: boolean };
+    w.host = document.querySelector("visual-feedback") as Element;
+    w.host.remove();
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      w.switched = true;
+    });
+  });
+  await page.emulateMedia({ colorScheme: "dark" });
+  // The switch reaches the page while the element is still off it.
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { switched?: boolean }).switched))
+    .toBe(true);
+  await page.evaluate(() => document.body.append((window as unknown as { host: Element }).host));
+  await expect.poll(accent).toBe("rgb(230 180 0)");
+});

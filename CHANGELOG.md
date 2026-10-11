@@ -2,15 +2,20 @@
 
 ## 0.3.0 (not released yet)
 
-- Breaking: with no `--vf-*` variables set, the widget now matches the site by itself. It reads
-  the page at load and at each open, and takes its accent (`theme-color`, else its coloured
-  buttons, else its links), its button corners and, with `theme: "auto"`, its background and text
-  colour, light or dark following that background. It reads the page again at each open, when a
-  draft opens again from its bar, and when `theme` changes. A guess that does not contrast keeps
-  the old default: the accent needs 3:1 against the widget's background and the text 4.5:1; the
-  hints, the text at 60%, take more of it where they would fall under 4.5:1. A site that wants the system colours back sets them, such as
+- Breaking: with no `--vf-*` variables set, the widget now matches the site by itself. It takes
+  the page's accent (`theme-color`, else its coloured buttons, else its links), its button corners
+  (up to 15px) and, with `theme: "auto"`, its background and text colour, light or dark following
+  that background. A guess that does not contrast keeps the old default: the accent needs 3:1
+  against the widget's background and the text 4.5:1; the hints, the text at 60%, take more of it
+  where they would fall under 4.5:1. A site that wants the system colours back sets them, such as
   `--vf-accent: AccentColor`; any `--vf-*` it sets still wins, and setting only one of
   `--vf-surface` and `--vf-text` keeps the other at its default.
+- The widget reads the page at load, at each open (a draft opened again from its bar too), when
+  `theme` or `css` changes, and when the page switches its theme: a change to the attributes of
+  `<html>` or `<body>` that changes the page's background, text colour or `color-scheme`, or a
+  change of the system's light or dark. The trigger, the dialog and the draft bar follow a site's
+  dark mode switch at once, or when the site's own colour fade ends. To see a switch it keeps one
+  mutation observer and one media query listener, both removed by `destroy()` (SPEC §9).
 - The note shows 4 rows when the dialog opens, and the screenshot leaves room for them, so Send
   stays in the window.
 

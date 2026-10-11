@@ -123,6 +123,11 @@ for (const system of ["light", "dark"] as const) {
     expect(await theme()).toBe(other);
     const after = await background();
     expect(after).not.toBe(before);
+    // The widget follows the switch at once, with no open and no reload.
+    await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
+      "background-color",
+      after,
+    );
     // The widget reads the page again at open: its panel takes the page's new background.
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.locator("visual-feedback").locator(".dialog")).toHaveCSS(
