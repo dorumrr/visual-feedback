@@ -212,12 +212,14 @@ async function main() {
   return 1;
 }
 
+// A step's leftover server can keep this process alive, so it exits by hand, but only once the
+// summary and the block are out: process.exit() drops what a pipe has not taken yet.
+const exit = (code) =>
+  process.stdout.write("", () => process.stderr.write("", () => process.exit(code)));
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().then(
-    (code) => process.exit(code),
-    (error) => {
-      console.error(`npm run check: ${error.stack ?? error}`);
-      process.exit(1);
-    },
-  );
+  main().then(exit, (error) => {
+    console.error(`npm run check: ${error.stack ?? error}`);
+    exit(1);
+  });
 }

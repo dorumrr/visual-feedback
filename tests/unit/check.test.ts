@@ -22,6 +22,30 @@ function check(scripts: Record<string, string>, before?: (folder: string) => voi
   return { ...result, folder };
 }
 
+it("prints the whole copy block into a slow reader, past the 64 KB a pipe holds", () => {
+  const folder = mkdtempSync(join(tmpdir(), "vf-check-"));
+  folders.push(folder);
+  writeFileSync(
+    join(folder, "package.json"),
+    JSON.stringify({
+      name: "fake",
+      scripts: {
+        "check:static": "npm run big",
+        "check:browser": "npm run small",
+        big: `node -e "for (let i = 0; i < 100; i++) console.log(String(i).padEnd(1000, '.')); process.exitCode = 1"`,
+        small: 'node -e "0"',
+      },
+    }),
+  );
+  // A reader that waits before it reads, as a busy CI log does: the pipe fills meanwhile.
+  const run = spawnSync("sh", ["-c", `"${process.execPath}" "${runner}" | (sleep 1; cat)`], {
+    cwd: folder,
+    encoding: "utf8",
+  });
+  expect(run.stdout).toContain(`99${".".repeat(998)}`);
+  expect(run.stdout).toContain("----- copy to here -----");
+});
+
 it("reads the steps from check:static, then check:browser", () => {
   expect(
     steps({ "check:static": "npm run lint && npm run build", "check:browser": "npm run test:e2e" }),
@@ -34,11 +58,11 @@ it("runs every step after a failure, sums them up, and gives a block to paste wi
       "check:static": "npm run first && npm run second",
       "check:browser": "npm run third && npm run fourth",
       first: 'node -e "console.log(1)"',
-      second: `node -e "console.log('\\u001b[31mboom at line ' + 7 + '\\u001b[0m'); process.exit(3)"`,
+      second: `node -e "console.log('\\u001b[31mboom at line ' + 7 + '\\u001b[0m'); process.exitCode = 3"`,
       third: 'node -e "console.log(3)"',
       // A failure in the browser half, told on stderr only, as tsc and Playwright do. The messages
       // are built when they run: npm prints each command, and a literal would match from there.
-      fourth: `node -e "for (let i = 1; i <= 200; i++) console.error('progress ' + i + '\\\\r'); console.error('stderr ' + 'only: ' + 2 + ' failed'); process.exit(1)"`,
+      fourth: `node -e "for (let i = 1; i <= 200; i++) console.error('progress ' + i + '\\\\r'); console.error('stderr ' + 'only: ' + 2 + ' failed'); process.exitCode = 1"`,
     },
     // A log left by an earlier run must not sit beside this run's.
     (folder) => {
