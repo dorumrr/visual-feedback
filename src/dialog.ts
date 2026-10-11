@@ -1,4 +1,4 @@
-const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100% - 32px);display:grid;gap:12px}.dialog.wide{width:min(1100px,100% - 32px)}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.minimise{margin-left:auto}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.stage:only-child{grid-column:1/-1}.stage{position:relative;display:grid;gap:8px;min-width:0}.image{display:block;max-width:100%;max-height:min(60vh,100vh - 23em);margin:0 auto;color:var(--_mark)}.toolbar+.stage>.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg,.draft svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.strip{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}.thumb{position:relative;display:flex}.thumb-pick{position:relative;display:block;margin:0;padding:0;line-height:0}.thumb-image{display:block;height:3em;width:auto}.thumb-number{position:absolute;left:4px;top:4px;line-height:1.2}.thumb-remove{position:absolute;top:-.5em;right:-.5em}.add,.capture-view{display:inline-flex;align-items:center;gap:6px}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.split{position:relative;display:flex;margin-left:auto}.send-more{display:inline-flex;align-items:center}.menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:1;display:grid;min-width:max-content}.menu[hidden]{display:none}.save-pdf{display:inline-flex;align-items:center;gap:8px}.draft{position:fixed;z-index:var(--_z);box-sizing:border-box;max-width:calc(100% - 2 * var(--_off));display:flex;flex-wrap:wrap;align-items:center;gap:8px}.draft-thumbs{display:flex;gap:4px}.draft-thumbs .thumb-image{height:1.75em}.drafting>.trigger{display:none}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}`;
+const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100% - 32px);display:grid;gap:12px}.dialog.wide{width:min(1100px,100% - 32px)}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.minimise{margin-left:auto}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.stage:only-child{grid-column:1/-1}.stage{position:relative;display:grid;gap:8px;min-width:0}.image{display:block;max-width:100%;max-height:min(60vh,100vh - 24.5em);margin:0 auto;color:var(--_mark)}.toolbar+.stage>.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg,.draft svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.strip{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}.thumb{position:relative;display:flex}.thumb-pick{position:relative;display:block;margin:0;padding:0;line-height:0}.thumb-image{display:block;height:3em;width:auto}.thumb-number{position:absolute;left:4px;top:4px;line-height:1.2}.thumb-remove{position:absolute;top:-.5em;right:-.5em}.add,.capture-view{display:inline-flex;align-items:center;gap:6px}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.split{position:relative;display:flex;margin-left:auto}.send-more{display:inline-flex;align-items:center}.menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:1;display:grid;min-width:max-content}.menu[hidden]{display:none}.save-pdf{display:inline-flex;align-items:center;gap:8px}.draft{position:fixed;z-index:var(--_z);box-sizing:border-box;max-width:calc(100% - 2 * var(--_off));display:flex;flex-wrap:wrap;align-items:center;gap:8px}.draft-thumbs{display:flex;gap:4px}.draft-thumbs .thumb-image{height:1.75em}.drafting>.trigger{display:none}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}`;
 
 const THEME = `.backdrop{background:var(--_bd)}.dialog,.draft{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.draft{padding:8px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header button,.toolbar button,.thumb-remove{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header button:hover,.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.stage>.image{cursor:crosshair}.selection{border:2px dashed var(--_f);border-radius:4px}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.thumb-pick{border:2px solid transparent;border-radius:calc(var(--_r) / 2.5);background:none;overflow:hidden;cursor:pointer}.thumb-pick[aria-current=true]{border-color:var(--_a)}.thumb-image{border-radius:calc(var(--_r) / 4);box-shadow:0 0 0 1px var(--_b)}.thumb-number{font-size:.75em;font-weight:600;padding:0 4px;border-radius:4px;background:var(--_s);color:var(--_t)}.thumb-remove{width:1.5em;height:1.5em;border:1px solid var(--_b);border-radius:50%;background:var(--_s)}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button,.add,.draft button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.add{border-style:dashed;color:var(--_m)}.send,.draft .capture-view{background:var(--_a);color:var(--_at);border-color:var(--_a)}.split .send{border-radius:calc(var(--_r) / 1.6) 0 0 calc(var(--_r) / 1.6)}.send-more{font:inherit;height:2.25em;padding:0 .55em;border:1px solid var(--_a);border-left-color:color-mix(in srgb,var(--_at) 40%,var(--_a));border-radius:0 calc(var(--_r) / 1.6) calc(var(--_r) / 1.6) 0;background:var(--_a);color:var(--_at);cursor:pointer}.send-more:disabled{opacity:.6;cursor:progress}.send:where([data-ink=dark]),.send-more:where([data-ink=dark]),.draft .capture-view:where([data-ink=dark]){color:#000}.menu{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:var(--_t);box-shadow:var(--_sh)}.save-pdf{font:inherit;padding:.5em .8em;border:0;border-radius:calc(var(--_r) / 2.5);background:none;color:inherit;cursor:pointer;white-space:nowrap}.save-pdf:hover,.save-pdf:focus-visible{background:color-mix(in srgb,var(--_t) 8%,transparent)}.draft button:disabled{opacity:.5;cursor:default}.draft-label{margin:0 4px;font-size:.9em;font-weight:600}[aria-disabled=true]{opacity:.6;cursor:progress}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}`;
 
@@ -111,6 +111,8 @@ export type Handlers = {
   options(): FeedbackOptions;
   /** Whether this widget keeps its draft across page loads: on, and the one its tag's draft is. */
   keeps(): boolean;
+  /** Reads the page's look again: a draft can wait while the site changes its theme. */
+  restyle(): void;
 };
 
 export type Settings = {
@@ -173,6 +175,8 @@ function thumbnail(image: HTMLCanvasElement): HTMLCanvasElement {
 // Chromium's own pair, white on rgb(0 117 255), fails contrast, so unset text is black or white.
 function ink(button: HTMLElement): void {
   const style = getComputedStyle(button);
+  // Read again at each open: the accent can change with the page, so the old answer is cleared.
+  delete button.dataset.ink;
   if (style.getPropertyValue("--vf-accent-text").trim()) return;
   let [r = 0, g = 0, b = 0] =
     /^rgba?\(([\d.]+), ([\d.]+), ([\d.]+)/.exec(style.backgroundColor)?.slice(1).map(Number) ?? [];
@@ -242,6 +246,8 @@ export type Mounted = {
   capture(image: HTMLCanvasElement | null): void;
   /** Opens a draft kept in the draft bar again; does nothing otherwise. */
   reopen(): void;
+  /** Picks black or white text again for the accent buttons shown, after the accent changed. */
+  reink(): void;
   /** Brings back, folded in the draft bar, the draft this tab kept before a page load. */
   revive(): Promise<boolean>;
   /** Lets the page scroll, or stops it; unmount lets it scroll. */
@@ -629,13 +635,21 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   function reopen(): void {
     if (!minimised) return;
     minimised = false;
+    handlers.restyle();
     bar?.remove();
     bar = undefined;
     parent.append(backdrop);
     backdrop.showModal();
     lockPage(true);
     renderStrip();
+    reink();
     note?.focus();
+  }
+
+  function reink(): void {
+    for (const accent of parent.querySelectorAll<HTMLElement>(".send, .send-more, .capture-view")) {
+      ink(accent);
+    }
   }
 
   // What Send encodes: every screenshot, in strip order, or none.
@@ -767,6 +781,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       id: "vf-note",
       placeholder: text.notePlaceholder,
       maxlength: String(NOTE_LIMIT),
+      rows: "4",
     });
     note = field;
     const required = element("p", "error", { id: "vf-note-error", role: "alert" });
@@ -1011,6 +1026,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       lockPage(true);
     },
     reopen,
+    reink,
     async revive() {
       reviving = true;
       try {

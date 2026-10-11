@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, it } from "vitest";
+import { steps } from "../check.mjs";
 
 const workflow = readFileSync(
   new URL("../../.github/workflows/publish.yml", import.meta.url),
@@ -121,7 +122,13 @@ it("check.yml runs all of npm run check: the static half, and each browser test 
   const { scripts } = JSON.parse(
     readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
   ) as { scripts: Record<string, string> };
-  expect(scripts.check).toBe("npm run check:static && npm run check:browser");
+  // npm run check runs exactly the two halves CI runs.
+  expect(scripts.check).toBe("node tests/check.mjs");
+  expect(steps(scripts)).toEqual(
+    [scripts["check:static"], scripts["check:browser"]].flatMap((chain) =>
+      [...(chain ?? "").matchAll(/npm run ([\w:]+)/g)].map((match) => match[1]),
+    ),
+  );
   expect(ci).toContain("- run: npm run check:static\n");
   const browser = [...(scripts["check:browser"] ?? "").matchAll(/npm run ([\w:]+)/g)].map(
     (match) => match[1],

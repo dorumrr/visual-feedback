@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 (not released yet)
+
+- Breaking: with no `--vf-*` variables set, the widget now matches the site by itself. It reads
+  the page at load and at each open, and takes its accent (`theme-color`, else its coloured
+  buttons, else its links), its button corners and, with `theme: "auto"`, its background and text
+  colour, light or dark following that background. It reads the page again at each open, when a
+  draft opens again from its bar, and when `theme` changes. A guess that does not contrast keeps
+  the old default: the accent needs 3:1 against the widget's background and the text 4.5:1; the
+  hints, the text at 60%, take more of it where they would fall under 4.5:1. A site that wants the system colours back sets them, such as
+  `--vf-accent: AccentColor`; any `--vf-*` it sets still wins, and setting only one of
+  `--vf-surface` and `--vf-text` keeps the other at its default.
+- The note shows 4 rows when the dialog opens, and the screenshot leaves room for them, so Send
+  stays in the window.
+
 ## 0.2.0 (2026-10-10)
 
 - Breaking: a report holds `screenshots`, a list of up to 10, in place of `image` and `marks`.

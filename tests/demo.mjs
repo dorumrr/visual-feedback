@@ -36,8 +36,19 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
   }
-  const cell = await page.getByText("NaN views").boundingBox();
-  if (!cell) throw new Error("no NaN views on the page");
+  // Every topic but the first shows the planted bug, "Undefined": the box goes round them all.
+  const boxes = await page
+    .locator(".chip", { hasText: "Undefined" })
+    .evaluateAll((chips) => chips.map((chip) => chip.getBoundingClientRect().toJSON()));
+  if (boxes.length !== 7) throw new Error(`expected 7 Undefined topics, found ${boxes.length}`);
+  const left = Math.min(...boxes.map((b) => b.left));
+  const top = Math.min(...boxes.map((b) => b.top));
+  const cell = {
+    x: left,
+    y: top,
+    width: Math.max(...boxes.map((b) => b.right)) - left,
+    height: Math.max(...boxes.map((b) => b.bottom)) - top,
+  };
   // The playground's own status line is for developers, not for the README.
   await page.locator("#status").evaluate((status) => {
     status.hidden = true;
@@ -59,11 +70,13 @@ try {
   await page.mouse.move(...at(cell.x + cell.width + pad, cell.y + cell.height + pad), { steps: 8 });
   await page.mouse.up();
   await page.getByRole("button", { name: "Arrow" }).click();
-  await page.mouse.move(...at(cell.x - 260, cell.y + 170));
+  await page.mouse.move(...at(cell.x + cell.width / 2 - 120, cell.y + cell.height + 190));
   await page.mouse.down();
-  await page.mouse.move(...at(cell.x - pad - 4, cell.y + cell.height / 2), { steps: 8 });
+  await page.mouse.move(...at(cell.x + cell.width / 2, cell.y + cell.height + pad + 4), {
+    steps: 8,
+  });
   await page.mouse.up();
-  await page.getByLabel("Your note").fill("This video shows NaN views.");
+  await page.getByLabel("Your note").fill("The topics show Undefined instead of their names.");
   await page.screenshot({ path: fileURLToPath(new URL("../docs/demo.png", import.meta.url)) });
 } finally {
   await browser?.close();

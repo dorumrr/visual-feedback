@@ -3,11 +3,27 @@
 The widget lives in one shadow root, so the site's CSS cannot break it, and its CSS cannot leak
 out. There are four ways to adapt it, from lightest to heaviest:
 
-## 1. It inherits
-Inside the shadow root, the widget sets `font: inherit` and `color-scheme: light dark`, so a site
-rule such as `* { all: unset }` cannot reset them. The defaults use the system colours `Canvas`,
-`CanvasText` and `AccentColor`. With no theming at all, it takes the site's font and follows light
-and dark mode.
+## 1. It matches the site
+Inside the shadow root, the widget sets `font: inherit`, so a site rule such as
+`* { all: unset }` cannot reset it. With no theming at all, it takes the site's font, and it
+reads the page when it loads, at each open (a draft opened again from its bar too) and when
+`theme` changes:
+
+- **accent:** the page's `<meta name="theme-color">` (one with a `media` attribute counts only
+  where its media matches), else the most common coloured background
+  of its buttons, else the colour of its links. Greys and the browser's own unstyled buttons do
+  not count.
+- **corners:** the middle radius of the page's filled buttons, so the widget's buttons get the
+  same. A site whose buttons are pills keeps the default.
+- **background and text**, with `theme: "auto"`: the page's background and text colour, and light
+  or dark from that background.
+
+A guess is used only when it contrasts: the accent 3:1 against the widget's background, the text
+4.5:1 against it. Otherwise the default stays: the system colours `Canvas`, `CanvasText` and
+`AccentColor`, light and dark from the system, and `16px` corners. With the page's text, the
+widget's hints take more of it than 60% where 60% would fall under 4.5:1. Each `--vf-*` variable
+the site sets wins over the guess for that variable; a site that sets only one of `--vf-surface`
+and `--vf-text` gets the other from the defaults.
 
 ## 2. CSS custom properties
 Set these on `visual-feedback` (or on any ancestor). Custom properties cross the shadow boundary.
@@ -15,12 +31,12 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 | variable | default | used for |
 |---|---|---|
 | `--vf-font` | `inherit` | font family of all text, such as `Inter, sans-serif` |
-| `--vf-radius` | `16px` | panel and composer, and a share of it for buttons and the image |
-| `--vf-surface` | `Canvas` | panel, tool rail and composer background |
-| `--vf-text` | `CanvasText` | text |
-| `--vf-muted` | text at 60% | hints, counters |
+| `--vf-radius` | from the page's button corners, so the widget's buttons match them, else `16px` | panel and composer, and a share of it for buttons and the image |
+| `--vf-surface` | with `theme: "auto"` the page's background, else `Canvas` | panel, tool rail and composer background |
+| `--vf-text` | with `theme: "auto"` the page's text colour, else `CanvasText` | text |
+| `--vf-muted` | text at 60%, more on a page whose text would make that too faint | hints, counters |
 | `--vf-border` | text at 15% | hairlines |
-| `--vf-accent` | `AccentColor`, or `#0b57d0` where the browser has no `AccentColor` | Send button, active tool |
+| `--vf-accent` | the page's accent, else `AccentColor`, or `#0b57d0` where the browser has no `AccentColor` | Send button, active tool |
 | `--vf-accent-text` | black or white, whichever contrasts more with the accent | text on the accent |
 | `--vf-focus` | `--vf-accent` | focus ring |
 | `--vf-mark` | `#e5243b` | marks on the screenshot |
@@ -68,5 +84,6 @@ Class names used inside the shadow root are part of the public API from 1.0. Bef
 change.
 
 ## Theme
-`theme: "light" | "dark"` sets `color-scheme` inside the shadow root, which forces that scheme.
-`"auto"` follows the system.
+`theme: "light" | "dark"` sets `color-scheme` inside the shadow root, which forces that scheme
+with the system colours. `"auto"` follows the page's background (section 1), and the system
+where the page shows none.

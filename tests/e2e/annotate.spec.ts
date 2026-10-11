@@ -137,7 +137,7 @@ test("the shown image keeps its shape when the window's height limits it", async
       canvas.clientHeight,
       Math.min(
         innerHeight * 0.6,
-        innerHeight - 23 * Number.parseFloat(getComputedStyle(canvas).fontSize),
+        innerHeight - 24.5 * Number.parseFloat(getComputedStyle(canvas).fontSize),
       ),
     ],
   );
@@ -1548,4 +1548,19 @@ test("a circle that closes on its start looks the same after release as while dr
   const [ax = 0, ay = 0] = points[0] ?? [];
   const [bx = 0, by = 0] = points.at(-1) ?? [];
   expect(Math.hypot(ax - bx, ay - by)).toBeLessThan(4);
+});
+
+test("the note shows 4 rows, and Send stays inside a 1280x720 window", async ({ page }) => {
+  expect(page.viewportSize()).toEqual({ width: 1280, height: 720 });
+  await opened(page);
+  const note = page.getByRole("textbox", { name: "Your note" });
+  await expect(note).toHaveAttribute("rows", "4");
+  // 4 lines fit without scrolling; a 5th does not.
+  const fits = () => note.evaluate((field) => field.scrollHeight <= field.clientHeight);
+  await note.fill("one\ntwo\nthree\nfour");
+  expect(await fits()).toBe(true);
+  await note.fill("one\ntwo\nthree\nfour\nfive");
+  expect(await fits()).toBe(false);
+  const send = await page.getByRole("button", { name: "Send", exact: true }).boundingBox();
+  expect((send?.y ?? Infinity) + (send?.height ?? 0)).toBeLessThanOrEqual(720);
 });

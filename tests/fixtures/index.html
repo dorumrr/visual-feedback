@@ -13,8 +13,8 @@
     <svg viewBox="0 0 32 32" aria-hidden="true">
       <defs>
         <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#7c5cff" />
-          <stop offset="1" stop-color="#22d3ee" />
+          <stop offset="0" stop-color="#fa5a8c" />
+          <stop offset="1" stop-color="#13a7ec" />
         </linearGradient>
       </defs>
       <circle cx="16" cy="16" r="15" fill="url(#brand)" />
@@ -28,39 +28,42 @@
     <kbd>/</kbd>
   </form>
   <nav class="actions" aria-label="Account">
-    <button type="button" class="icon" aria-label="Upload">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-5 5m5-5 5 5M5 20h14" /></svg>
-    </button>
+    <span class="avatar" aria-hidden="true">DM</span>
     <button type="button" class="icon" aria-label="Notifications">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" /></svg>
     </button>
-    <button type="button" id="reports-toggle" class="reports-toggle" aria-controls="reports-panel" aria-expanded="false">
+    <button type="button" id="reports-toggle" class="btn btn-grey reports-toggle" aria-controls="reports-panel" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h4l2 3h4l2-3h4M6 4h12l2 9v7H4v-7z" /></svg>
       Reports <span id="reports-count">0</span>
     </button>
-    <span class="avatar" aria-hidden="true">DM</span>
+    <button type="button" class="btn btn-pink upload">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-5 5m5-5 5 5M5 20h14" /></svg>
+      Upload
+    </button>
   </nav>
 </header>
 
-<aside class="rail" aria-label="Sections">
-  <a class="on" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z" /></svg>Home</a>
-  <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="m15 9-2 4-4 2 2-4z" /></svg>Explore</a>
-  <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="3" /><path d="M8 3h8" /></svg>Following</a>
-  <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z" /><path d="M9 12h6M9 16h4" /></svg>Library</a>
-  <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></svg>History</a>
-  <p id="status" role="status">Loading the built package...</p>
-</aside>
-
 <main>
-  <ul class="chips" aria-label="Topics">
-    <li class="chip on">For you</li>
-    <li class="chip">Design</li>
-    <li class="chip">Live coding</li>
-    <li class="chip">Synthwave</li>
-    <li class="chip">Travel</li>
-    <li class="chip">Cooking</li>
-    <li class="chip">Space</li>
-    <li class="chip">Woodwork</li>
-  </ul>
+  <div class="channels">
+    <aside class="rail" aria-label="Sections">
+      <a class="on" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z" /></svg>Home</a>
+      <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="m15 9-2 4-4 2 2-4z" /></svg>Explore</a>
+      <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="3" /><path d="M8 3h8" /></svg>Following</a>
+      <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h10l4 4v12H5z" /><path d="M9 12h6M9 16h4" /></svg>Library</a>
+      <a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></svg>History</a>
+      <p id="status" role="status">Loading the built package...</p>
+    </aside>
+    <ul class="chips" aria-label="Topics">
+      <li class="chip on">For you</li>
+      <li class="chip">Undefined</li>
+      <li class="chip">Undefined</li>
+      <li class="chip">Undefined</li>
+      <li class="chip">Undefined</li>
+      <li class="chip">Undefined</li>
+      <li class="chip">Undefined</li>
+      <li class="chip">Undefined</li>
+    </ul>
+  </div>
 
   <section class="grid" aria-label="Videos">
     <article class="video" style="--a: #7c5cff; --b: #22d3ee">
@@ -69,14 +72,14 @@
     </article>
     <article class="video" style="--a: #f97316; --b: #facc15">
       <div class="thumb dunes"><span class="time">8:05</span></div>
-      <div class="meta"><span class="face" style="--c: #f97316">TK</span><div><h3>A week across the salt flats with one camera</h3><p>Tomas Keel</p><p>NaN views · 3 days ago</p></div></div>
+      <div class="meta"><span class="face" style="--c: #f97316">TK</span><div><h3>A week across the salt flats with one camera</h3><p>Tomas Keel</p><p>128K views · 3 days ago</p></div></div>
     </article>
     <article class="video" style="--a: #10b981; --b: #0ea5e9">
       <div class="thumb waves"><span class="time">24:11</span></div>
       <div class="meta"><span class="face" style="--c: #10b981">LO</span><div><h3>Building a synth in the browser, live</h3><p>Lo-fi Labs</p><p>1.2M views · 1 week ago</p></div></div>
     </article>
     <article class="video" style="--a: #ec4899; --b: #8b5cf6">
-      <div class="thumb orbit"><span class="time">LIVE</span></div>
+      <div class="thumb orbit"><span class="time live">LIVE</span></div>
       <div class="meta"><span class="face" style="--c: #ec4899">MS</span><div><h3>Night sky over the desert, all night</h3><p>Mira Sol</p><p>3.4K watching</p></div></div>
     </article>
     <article class="video" style="--a: #0ea5e9; --b: #6366f1">

@@ -60,7 +60,8 @@ test("the site's own page is the playground: a video site at / with its styles a
   // Its stylesheet loaded at /: the cards form a grid.
   await expect(page.getByRole("region", { name: "Videos" })).toHaveCSS("display", "grid");
   await expect(page.locator(".video")).toHaveCount(12);
-  await expect(page.getByText("NaN views")).toBeVisible();
+  const chips = page.getByRole("list", { name: "Topics" }).getByRole("listitem");
+  await expect(chips).toHaveText(["For you", ...Array(7).fill("Undefined")]);
   // The reports stay out of the way until asked for.
   const panel = page.getByRole("complementary", { name: "Reports" });
   await expect(panel).toBeHidden();
@@ -98,7 +99,7 @@ test("the playground has a dark theme, and carries no other company's name", asy
   const channels = (dark.match(/\d+/g) ?? []).slice(0, 3).map(Number);
   expect(channels.every((channel) => channel < 64)).toBe(true);
   const text = `${await page.title()} ${await page.locator("body").innerText()}`;
-  expect(text).not.toMatch(/youtube|google/i);
+  expect(text).not.toMatch(/youtube|google|bilibili/i);
 });
 
 test("with the reports panel open, the feedback trigger stays visible and clickable", async ({

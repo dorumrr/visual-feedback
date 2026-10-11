@@ -1,5 +1,6 @@
 import type { Tool } from "./annotate";
 import type { CaptureOptions } from "./capture";
+import { match } from "./match";
 import type { FeedbackReport, Mark } from "./shared/report";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -108,10 +109,10 @@ function sheet(text: string): CSSStyleSheet {
 function variables(): string {
   // Floor browsers (SPEC §10) may lack AccentColor.
   const system = CSS.supports("color", "AccentColor");
-  return `.vf{--_r:var(--vf-radius,16px);--_s:var(--vf-surface,Canvas);--_t:var(--vf-text,CanvasText);--_m:var(--vf-muted,color-mix(in srgb,var(--_t) 60%,transparent));--_b:var(--vf-border,color-mix(in srgb,var(--_t) 15%,transparent));--_a:var(--vf-accent,${system ? "AccentColor" : "#0b57d0"});--_at:var(--vf-accent-text,#fff);--_f:var(--vf-focus,var(--_a));--_mark:var(--vf-mark,#e5243b);--_bd:var(--vf-backdrop,rgb(0 0 0/45%));--_sh:var(--vf-shadow,0 12px 32px -12px rgb(0 0 0/35%));--_size:var(--vf-trigger-size,2.5em);--_off:var(--vf-offset,16px);--_z:var(--vf-z,2147483000)}`;
+  return `.vf{--_r:var(--vf-radius,var(--_pr,16px));--_s:var(--vf-surface,var(--_ps,Canvas));--_t:var(--vf-text,var(--_pt,CanvasText));--_m:var(--vf-muted,var(--_pm,color-mix(in srgb,var(--_t) 60%,transparent)));--_b:var(--vf-border,color-mix(in srgb,var(--_t) 15%,transparent));--_a:var(--vf-accent,var(--_pa,${system ? "AccentColor" : "#0b57d0"}));--_at:var(--vf-accent-text,#fff);--_f:var(--vf-focus,var(--_a));--_mark:var(--vf-mark,#e5243b);--_bd:var(--vf-backdrop,rgb(0 0 0/45%));--_sh:var(--vf-shadow,0 12px 32px -12px rgb(0 0 0/35%));--_size:var(--vf-trigger-size,2.5em);--_off:var(--vf-offset,16px);--_z:var(--vf-z,2147483000)}`;
 }
 
-const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-icon]{width:var(--_size);padding:0;justify-content:center}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
+const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-icon]{width:var(--_size);padding:0;justify-content:center}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}.still .trigger{transition:none!important}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
 
 const THEME = `.trigger{font-weight:600;border:1px solid var(--_b);border-radius:999px;background:var(--_s);color:var(--_t);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s}.trigger:hover{background:color-mix(in srgb,var(--_s) 90%,var(--_t))}`;
 
@@ -277,11 +278,18 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
     root.adoptedStyleSheets = [...base, ...dialogCss, ...extra];
   }
 
+  // Only a new theme or css reads the page again here: React calls update() at most renders.
+  let matched: string | undefined;
   function apply(): void {
-    wrapper.style.colorScheme = options.theme?.replace("auto", "") ?? "";
     base = [sheet(variables() + LAYOUT), ...(options.unstyled ? [] : [sheet(THEME)])];
     extra = options.css ? [sheet(options.css)] : [];
     sheets();
+    // After the sheets: a --vf-* set through the css option counts as the host's own.
+    if (`${options.theme} ${options.css}` !== matched) {
+      matched = `${options.theme} ${options.css}`;
+      match(wrapper, options.theme);
+      dialog?.reink();
+    }
     if (options.trigger === "none") {
       trigger?.remove();
       trigger = undefined;
@@ -316,6 +324,12 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
   apply();
   // A script in <head> runs before <body> exists.
   (options.container ?? document.body ?? document.documentElement).append(host);
+  // Reading the page styles the new trigger in the defaults: without this it would fade to the
+  // page's colours at every page load.
+  wrapper.classList.add("still");
+  match(wrapper, options.theme);
+  if (trigger) getComputedStyle(trigger).backgroundColor;
+  wrapper.classList.remove("still");
   // Asked each time: when the owner's element leaves the page, the next widget to ask takes over.
   const keeps = () => {
     if (options.draft === "memory") return false;
@@ -416,6 +430,9 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
         state = "idle";
         return;
       }
+      // The page may have changed its look since load, as a theme toggle or a late stylesheet does,
+      // and a draft kept across a page load builds its bar here.
+      match(wrapper, options.theme);
       dialog = view.mount(
         wrapper,
         {
@@ -429,6 +446,7 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
           emit,
           options: () => options,
           keeps,
+          restyle: () => match(wrapper, options.theme),
         },
         options,
       );
@@ -481,7 +499,7 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
         // Once it is back, or found gone, the click still opens something, unless closed meanwhile.
         return pending.then(() => (mine === session ? widget.open() : undefined));
       }
-      // Open, or kept as a draft: a draft bar's dialog opens again.
+      // Open, or kept as a draft: a draft bar's dialog opens again, and reads the page itself.
       if (state !== "idle") return dialog?.reopen(), Promise.resolve();
       // A draft this tab still keeps opens, not a new capture: it comes back, then opens.
       if (restore()) return widget.open();

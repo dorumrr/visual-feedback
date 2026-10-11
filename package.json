@@ -60,7 +60,7 @@
     "test:pack": "playwright test -c tests/pack-smoke/playwright.config.ts",
     "size": "size-limit",
     "publint": "publint --strict",
-    "check": "npm run check:static && npm run check:browser",
+    "check": "node tests/check.mjs",
     "check:static": "npm run lint && npm run typecheck && npm run build && npm run test && npm run test:edge && npm run size && npm run publint",
     "check:browser": "npm run test:e2e && npm run test:react && npm run test:pack",
     "prepack": "npm run --silent build -- --logLevel warn",

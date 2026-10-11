@@ -419,7 +419,9 @@ test("unstyled with css: the css option styles the bare widget", async ({ page }
   await expect(page.locator("visual-feedback .dialog")).toHaveCSS("padding-top", "6px");
 });
 
-test("theme forces the colour scheme, and auto follows the system", async ({ page }) => {
+test("theme forces the colour scheme, and auto follows the system on a page with no background", async ({
+  page,
+}) => {
   const background = async (theme: string) => {
     await mount(page, { theme });
     const result = await page.evaluate(() => {
@@ -487,3 +489,377 @@ for (const fallback of [false, true]) {
     await expect(send).toHaveCSS("outline-style", "solid");
   });
 }
+
+/** A page styled like a site with a brand: two filled buttons, a dark background. */
+async function brand(page: Page, css = "") {
+  await page.addStyleTag({
+    content: `body { background: rgb(16, 24, 32); color: rgb(240, 240, 240) }
+      .brand { background: rgb(228, 0, 124); color: #fff; border: 0; border-radius: 6px; padding: 8px }
+      ${css}`,
+  });
+  await page.evaluate(() => {
+    for (const name of ["Buy", "Join"]) {
+      const button = document.createElement("button");
+      button.className = "brand";
+      button.textContent = name;
+      document.querySelector("main")?.append(button);
+    }
+  });
+}
+
+/** Send's fill and corner, and the trigger's surface and the scheme inside, once the dialog shows. */
+async function look(page: Page) {
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  const surface = await trigger.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await trigger.click();
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await expect(send).toBeVisible();
+  return {
+    surface,
+    accent: await send.evaluate((element) => getComputedStyle(element).backgroundColor),
+    corner: await send.evaluate((element) => getComputedStyle(element).borderTopLeftRadius),
+    scheme: await page.evaluate(
+      () =>
+        getComputedStyle(
+          document.querySelector("visual-feedback")?.shadowRoot?.querySelector(".vf") as Element,
+        ).colorScheme,
+    ),
+  };
+}
+
+test("with no --vf-* set, the widget takes the page's accent, corners and background", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await brand(page);
+  await mount(page);
+  expect(await look(page)).toEqual({
+    surface: "rgb(16, 24, 32)",
+    accent: "rgb(228, 0, 124)",
+    corner: "6px",
+    scheme: "dark",
+  });
+});
+
+test("the page's theme-color comes before its buttons", async ({ page }) => {
+  await brand(page);
+  await page.evaluate(() => {
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = "#1fa463";
+    document.head.append(meta);
+  });
+  await mount(page);
+  expect((await look(page)).accent).toBe("rgb(31, 164, 99)");
+});
+
+test("a guess that fails contrast keeps the default", async ({ page }) => {
+  const probe = (color: string) =>
+    page.evaluate((color) => {
+      const element = document.createElement("div");
+      element.style.color = color;
+      document.body.append(element);
+      const value = getComputedStyle(element).color;
+      element.remove();
+      return value;
+    }, color);
+  await page.emulateMedia({ colorScheme: "light" });
+  // Yellow on white is 1.3:1, and grey text on grey is under 4.5:1.
+  await brand(
+    page,
+    `body { background: rgb(200, 200, 200); color: rgb(150, 150, 150) }
+    .brand { background: rgb(255, 225, 0) }`,
+  );
+  await mount(page);
+  const found = await look(page);
+  expect(found.surface).toBe(await probe("Canvas"));
+  const fallback = await page.evaluate(() =>
+    CSS.supports("color", "AccentColor") ? "AccentColor" : "#0b57d0",
+  );
+  expect(found.accent).toBe(await probe(fallback));
+  expect(found.scheme).toBe("light dark");
+});
+
+test("each --vf-* the host sets wins over what the page shows", async ({ page }) => {
+  await brand(page, "visual-feedback { --vf-accent: rgb(1, 2, 3); --vf-radius: 32px }");
+  await mount(page);
+  const found = await look(page);
+  expect(found.accent).toBe("rgb(1, 2, 3)");
+  expect(found.corner).toBe("20px");
+  // The background was not set by the host, so it still comes from the page.
+  expect(found.surface).toBe("rgb(16, 24, 32)");
+});
+
+test("the browser's own buttons are not the site's look", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await mount(page);
+  // The fixture's only button is unstyled: the corners stay 16px, Send's share of it is 10px.
+  expect((await look(page)).corner).toBe("10px");
+});
+
+test("a forced theme keeps the system colours, and the accent still comes from the page", async ({
+  page,
+}) => {
+  await brand(page);
+  await mount(page, { theme: "light" });
+  const found = await look(page);
+  expect(found.scheme).toBe("light");
+  expect(found.surface).not.toBe("rgb(16, 24, 32)");
+  expect(found.accent).toBe("rgb(228, 0, 124)");
+});
+
+test("the trigger shows the page's colours from the first frame, with no fade", async ({
+  page,
+}) => {
+  await brand(page);
+  await mount(page);
+  // Read once, at once: a retrying assertion would also pass after a fade.
+  const first = await page.evaluate(() => {
+    const trigger = document
+      .querySelector("visual-feedback")
+      ?.shadowRoot?.querySelector(".trigger") as Element;
+    return [getComputedStyle(trigger).backgroundColor, trigger.getAnimations().length];
+  });
+  expect(first).toEqual(["rgb(16, 24, 32)", 0]);
+});
+
+test("a page that changes its look after load is read again at the next open", async ({ page }) => {
+  await mount(page);
+  await brand(page);
+  expect((await look(page)).accent).toBe("rgb(228, 0, 124)");
+});
+
+test("a draft opened again reads the page again, and Send's text follows the new accent", async ({
+  page,
+}) => {
+  // A dark page with a yellow accent: Send needs black text.
+  await page.addStyleTag({
+    content: `body { background: rgb(16, 24, 32); color: rgb(240, 240, 240) }
+      .brand { background: rgb(255, 212, 0); border: 0; border-radius: 6px; padding: 8px }`,
+  });
+  await page.evaluate(() => {
+    const button = document.createElement("button");
+    button.className = "brand";
+    button.textContent = "Buy";
+    document.querySelector("main")?.append(button);
+  });
+  await mount(page);
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await expect(send).toHaveAttribute("data-ink", "dark");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Open" })).toBeVisible();
+  // The site switches to its light look while the draft waits.
+  await page.addStyleTag({
+    content: `body { background: rgb(255, 255, 255); color: rgb(20, 20, 20) }
+      .brand { background: rgb(37, 99, 235) }`,
+  });
+  await page.getByRole("button", { name: "Open" }).click();
+  await expect(send).toHaveCSS("background-color", "rgb(37, 99, 235)");
+  await expect(send).not.toHaveAttribute("data-ink");
+});
+
+test("update() reads the page again only when the theme changes", async ({ page }) => {
+  await mount(page);
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  const before = await trigger.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await brand(page);
+  await page.evaluate(() =>
+    (window as unknown as Mounted).vf.update({ strings: { triggerText: "Feedback" } }),
+  );
+  // Past the trigger's 0.15 s fade, read once: a retry would catch the start of a fade.
+  await page.waitForTimeout(300);
+  expect(await trigger.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
+    before,
+  );
+  // "light" is a new theme: the page is read again, here its accent, though light keeps the surface.
+  await page.evaluate(() => (window as unknown as Mounted).vf.update({ theme: "light" }));
+  const accent = await page.evaluate(() =>
+    getComputedStyle(
+      document.querySelector("visual-feedback")?.shadowRoot?.querySelector(".vf") as Element,
+    )
+      .getPropertyValue("--_pa")
+      .trim(),
+  );
+  expect(accent).toBe("rgb(228 0 124)");
+});
+
+test("the accent is the commonest coloured button, the corners the middle ones, greys aside", async ({
+  page,
+}) => {
+  await page.addStyleTag({
+    content: `.a, .b, .grey { border: 0; padding: 8px; color: #fff }
+      .a { background: rgb(37, 99, 235); border-radius: 2px }
+      .b { background: rgb(220, 38, 38); border-radius: 12px }
+      .grey { background: rgb(120, 120, 120); border-radius: 8px }`,
+  });
+  await page.evaluate(() => {
+    for (const name of ["a", "a", "b", "grey", "grey"]) {
+      const button = document.createElement("button");
+      button.className = name;
+      button.textContent = name;
+      document.querySelector("main")?.append(button);
+    }
+  });
+  await mount(page);
+  const found = await look(page);
+  expect(found.accent).toBe("rgb(37, 99, 235)");
+  // Radii 2, 2, 8, 8, 12: the middle one is 8.
+  expect(found.corner).toBe("8px");
+});
+
+test("pills keep the default corners, and links give the accent when no button has one", async ({
+  page,
+}) => {
+  await page.addStyleTag({
+    content: `.pill { background: rgb(200, 200, 200); border: 0; border-radius: 999px; padding: 8px 16px }
+      a { color: rgb(0, 128, 96) }`,
+  });
+  await page.evaluate(() => {
+    const main = document.querySelector("main");
+    for (const name of ["One", "Two"]) {
+      const button = document.createElement("button");
+      button.className = "pill";
+      button.textContent = name;
+      main?.append(button);
+    }
+    const link = document.createElement("a");
+    link.href = "#docs";
+    link.textContent = "Docs";
+    main?.append(link);
+  });
+  await mount(page);
+  const found = await look(page);
+  expect(found.corner).toBe("10px");
+  expect(found.accent).toBe("rgb(0, 128, 96)");
+});
+
+test("a light page under a dark system makes the widget light", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.addStyleTag({
+    content: "body { background: rgb(250, 250, 250); color: rgb(17, 17, 17) }",
+  });
+  await mount(page);
+  const found = await look(page);
+  expect(found.scheme).toBe("light");
+  expect(found.surface).toBe("rgb(250, 250, 250)");
+});
+
+test("page text under 4.5:1 keeps the default surface, and mid-grey text gets stronger hints", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  // rgb(130, 130, 130) on white is 3.9:1.
+  await page.addStyleTag({
+    content: "body { background: rgb(255, 255, 255); color: rgb(130, 130, 130) }",
+  });
+  await mount(page);
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  await expect(trigger).not.toHaveCSS("color", "rgb(130, 130, 130)");
+  // rgb(118, 118, 118) is 4.5:1: it is taken, and its hints at 60% would fall under, so they take all of it.
+  await page.addStyleTag({ content: "body { color: rgb(118, 118, 118) }" });
+  await page.evaluate(() => (window as unknown as Mounted).vf.update({ theme: "light" }));
+  await page.evaluate(() => (window as unknown as Mounted).vf.update({ theme: "auto" }));
+  await expect(trigger).toHaveCSS("color", "rgb(118, 118, 118)");
+  await trigger.click();
+  const note = page.getByRole("textbox", { name: "Your note" });
+  expect(await note.evaluate((element) => getComputedStyle(element, "::placeholder").color)).toBe(
+    "rgb(118, 118, 118)",
+  );
+});
+
+test("a --vf-surface set through the css option keeps the page's text out", async ({ page }) => {
+  await brand(page);
+  await mount(page, { css: ".vf { --vf-surface: rgb(250, 250, 250) }" });
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  await expect(trigger).toHaveCSS("background-color", "rgb(250, 250, 250)");
+  await expect(trigger).not.toHaveCSS("color", "rgb(240, 240, 240)");
+  // The page is still read: its accent is taken.
+  expect((await look(page)).accent).toBe("rgb(228, 0, 124)");
+});
+
+test("with a forced theme the accent must contrast with the system background, not the page's", async ({
+  page,
+}) => {
+  // Yellow passes 3:1 on this dark page, but not on the light system background theme forces.
+  await brand(page, ".brand { background: rgb(255, 225, 0) }");
+  await mount(page, { theme: "light" });
+  expect((await look(page)).accent).not.toBe("rgb(255, 225, 0)");
+});
+
+test("a theme-color for the page's light or dark is taken only in that scheme", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.evaluate(() => {
+    for (const [media, color] of [
+      ["(prefers-color-scheme: light)", "#1fa463"],
+      ["(prefers-color-scheme: dark)", "#a78bfa"],
+    ]) {
+      const meta = document.createElement("meta");
+      meta.name = "theme-color";
+      meta.setAttribute("media", media ?? "");
+      meta.content = color ?? "";
+      document.head.append(meta);
+    }
+  });
+  await mount(page);
+  expect((await look(page)).accent).toBe("rgb(167, 139, 250)");
+});
+
+test("a new theme while the dialog is open picks Send's text again", async ({ page }) => {
+  // Yellow passes 3:1 on this dark page, so Send is yellow with black text.
+  await brand(page, ".brand { background: rgb(255, 225, 0) }");
+  await mount(page);
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  await expect(send).toHaveAttribute("data-ink", "dark");
+  // Forced light, yellow fails against the light background: the default accent takes white text.
+  await page.evaluate(() => (window as unknown as Mounted).vf.update({ theme: "light" }));
+  await expect(send).not.toHaveCSS("background-color", "rgb(255, 225, 0)");
+  const ink = await send.evaluate((element) => element.dataset.ink);
+  const fill = await send.evaluate((element) => getComputedStyle(element).backgroundColor);
+  // Black text only where it contrasts more than white on the new accent (WCAG luminance).
+  const [r = 0, g = 0, b = 0] = (fill.match(/\d+/g) ?? []).map(Number);
+  const linear = (c: number) =>
+    c / 255 <= 0.04045 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4;
+  const luminance = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  expect(ink === "dark").toBe((luminance + 0.05) / 0.05 > 1.05 / (luminance + 0.05));
+});
+
+test("a site that lets the browser pick light or dark keeps the default corners", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.addStyleTag({ content: ":root { color-scheme: light dark }" });
+  await mount(page);
+  expect((await look(page)).corner).toBe("10px");
+});
+
+test("css given later through update() that sets --vf-surface drops the page's text", async ({
+  page,
+}) => {
+  await brand(page);
+  await mount(page);
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  await expect(trigger).toHaveCSS("color", "rgb(240, 240, 240)");
+  await page.evaluate(() =>
+    (window as unknown as Mounted).vf.update({ css: ".vf { --vf-surface: rgb(250, 250, 250) }" }),
+  );
+  // Light page text on the host's light surface would be unreadable.
+  await expect(trigger).toHaveCSS("background-color", "rgb(250, 250, 250)");
+  await expect(trigger).not.toHaveCSS("color", "rgb(240, 240, 240)");
+});
+
+test("a host that sets only --vf-text keeps the default surface, not the page's", async ({
+  page,
+}) => {
+  await brand(page, "visual-feedback { --vf-text: rgb(10, 10, 10) }");
+  await mount(page);
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  await expect(trigger).toHaveCSS("color", "rgb(10, 10, 10)");
+  // The page's dark background under the host's near-black text would be unreadable.
+  await expect(trigger).not.toHaveCSS("background-color", "rgb(16, 24, 32)");
+  // The page is still read: its accent is taken.
+  expect((await look(page)).accent).toBe("rgb(228, 0, 124)");
+});

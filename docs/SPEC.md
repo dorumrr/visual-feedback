@@ -148,13 +148,14 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - With the keyboard alone, the user can still write the note, choose a category and send without
   marks.
 - `prefers-reduced-motion` turns off every transition.
-- `prefers-color-scheme` sets the default theme (`theme: "auto"`).
+- With `theme: "auto"`, the page's own background sets light or dark, and `prefers-color-scheme`
+  where the page shows none (THEMING.md).
 
 ## 9. Budgets
 - **Loader** (the trigger and the `open()` wiring): 15 KB or less, minified and gzipped.
 - **Annotator and dialog:** 135 KB or less, gzipped. This does not include the capture library.
 - **Idle cost:** no work after the first paint of the trigger, past reading one sessionStorage
-  key at load; only when this tab kept a draft does the dialog load, to bring it back. After the first screenshot, the
+  key and the page's colours and button corners at load (THEMING.md section 1); only when this tab kept a draft does the dialog load, to bring it back. After the first screenshot, the
   capture library (snapdom) keeps 12 listeners on `window` and `document` and up to 5 mutation observers
   until the page unloads, and offers no way to remove them; `destroy()` removes everything else
   but a draft it keeps (§7). The opt-in `shortcut` adds one `keydown` listener on `window`, gone at
@@ -168,7 +169,7 @@ Chrome 111+, Firefox 113+ and Safari 16.4+. Older browsers get no trigger and no
 ## 11. Content Security Policy
 - The widget's own CSS goes in through constructable stylesheets. It uses no `<style>` tags, and
   sets the few inline styles it needs (the selection frame, a label being typed, the theme's
-  `color-scheme`) through the CSSOM, so a strict `style-src` does not block it. While the dialog is
+  `color-scheme` and the colours and corners it found on the page) through the CSSOM, so a strict `style-src` does not block it. While the dialog is
   open, the scroll lock sets `overflow` on `<html>` through the CSSOM, which a CSP allows, and
   puts back what was there on close.
 - Capture (`@zumer/snapdom`) renders through `data:` image URLs, so a site with a CSP needs
