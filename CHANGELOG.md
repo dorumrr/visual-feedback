@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.1 (not released yet)
+## 0.3.1 (2026-10-12)
 
 - The trigger shows its name as a tooltip. With a `shortcut` set, the tooltip names it too, the way
   the platform's keyboards do, such as `Send feedback (Option + Shift + F)` on a Mac and
