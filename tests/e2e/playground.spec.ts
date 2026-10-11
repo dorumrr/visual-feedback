@@ -93,14 +93,60 @@ test("the playground has a dark theme, and carries no other company's name", asy
   await page.goto("/");
   const light = await background();
   await page.emulateMedia({ colorScheme: "dark" });
+  // The page follows a change of the system as it happens, through a listener.
+  await expect.poll(background).not.toBe(light);
   const dark = await background();
-  expect(light).not.toBe(dark);
   // Dark means dark: each channel under a quarter.
   const channels = (dark.match(/\d+/g) ?? []).slice(0, 3).map(Number);
   expect(channels.every((channel) => channel < 64)).toBe(true);
   const text = `${await page.title()} ${await page.locator("body").innerText()}`;
   expect(text).not.toMatch(/youtube|google|bilibili/i);
 });
+
+for (const system of ["light", "dark"] as const) {
+  test(`on a ${system} system, the Dark theme button switches the playground, a reload keeps it, and the widget takes it at open`, async ({
+    page,
+  }) => {
+    const other = system === "light" ? "dark" : "light";
+    const theme = () => page.evaluate(() => document.documentElement.dataset.theme);
+    const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    await page.emulateMedia({ colorScheme: system });
+    await page.goto("/");
+    await expect(page.getByRole("status")).toHaveText("Widget loaded. Use the feedback button.");
+    const button = page.getByRole("button", { name: "Dark theme" });
+    await expect(button).toHaveAttribute("aria-pressed", String(system === "dark"));
+    expect(await theme()).toBe(system);
+    const before = await background();
+
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", String(other === "dark"));
+    expect(await theme()).toBe(other);
+    const after = await background();
+    expect(after).not.toBe(before);
+    // The widget reads the page again at open: its panel takes the page's new background.
+    await page.getByRole("button", { name: "Send feedback" }).click();
+    await expect(page.locator("visual-feedback").locator(".dialog")).toHaveCSS(
+      "background-color",
+      after,
+    );
+    await page.getByRole("button", { name: "Cancel" }).click();
+
+    await page.reload();
+    await expect(page.getByRole("status")).toHaveText("Widget loaded. Use the feedback button.");
+    expect(await theme()).toBe(other);
+    await expect(button).toHaveAttribute("aria-pressed", String(other === "dark"));
+    await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
+      "background-color",
+      after,
+    );
+
+    // Back to what the system shows: the page follows the system again.
+    await button.click();
+    expect(await theme()).toBe(system);
+    await page.emulateMedia({ colorScheme: other });
+    await expect.poll(theme).toBe(other);
+  });
+}
 
 test("with the reports panel open, the feedback trigger stays visible and clickable", async ({
   page,
