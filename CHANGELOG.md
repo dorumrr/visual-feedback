@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (not released yet)
+## 0.3.0 (2026-10-11)
 
 - Breaking: with no `--vf-*` variables set, the widget now matches the site by itself. It takes
   the page's accent (`theme-color`, else its coloured buttons, else its links), its button corners
