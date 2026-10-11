@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 (not released yet)
+
+- The trigger shows its name as a tooltip. With a `shortcut` set, the tooltip names it too, the way
+  the platform's keyboards do, such as `Send feedback (Option + Shift + F)` on a Mac and
+  `(Alt + Shift + F)` elsewhere (SPEC §3).
+- A `shortcut` with no key, such as `"Alt+"`, now matches nothing: before, a key press whose code
+  was empty, as some virtual keyboards send, could open the widget.
+
 ## 0.3.0 (2026-10-11)
 
 - Breaking: with no `--vf-*` variables set, the widget now matches the site by itself. It takes

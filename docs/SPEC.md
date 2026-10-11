@@ -53,6 +53,12 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   gets that short label beside the icon, as a pill; with only `triggerText` given, that text is
   the name too. A host that sets both keeps `triggerText` inside `trigger`, so
   speech control can say what it sees. It has no badge, and it does not move or pulse.
+- Its tooltip (`title`) is its name, as for the dialog's icon buttons. With a `shortcut` that can
+  match, it is the name and the keys, each modifier once, joined by ` + `, as the platform's
+  keyboards name them: Option, Command, Control and Shift on a Mac, iPhone or iPad
+  (`navigator.platform`), as in `Send feedback (Option + Shift + F)`; Alt, Win, Ctrl and Shift on
+  Windows; Alt, Super, Ctrl and Shift elsewhere. A screen reader then reads the keys as the
+  description.
 - It sits 16 px from the edges by default, and it respects `env(safe-area-inset-*)`.
 - It is hidden while there is a draft, whether the dialog is open or kept in the draft bar.
 - It does not move to keep clear of the page's content. The host moves it off its own content

@@ -1,7 +1,7 @@
 import type { Tool } from "./annotate";
 import type { CaptureOptions } from "./capture";
 import { match } from "./match";
-import type { FeedbackReport, Mark } from "./shared/report";
+import type { FeedbackReport } from "./shared/report";
 
 const SVG = "http://www.w3.org/2000/svg";
 
@@ -193,6 +193,36 @@ const noop: FeedbackWidget = {
   on: () => () => {},
 };
 
+const MODIFIERS = ["alt", "shift", "control", "meta"];
+
+/** A shortcut's modifiers in lower case and its key as written; undefined when it can match nothing. */
+function parse(shortcut: string): { mods: string[]; key: string } | undefined {
+  const parts = shortcut.split("+");
+  const key = parts.pop() ?? "";
+  const mods = parts.map((part) => part.toLowerCase());
+  return key && mods.every((mod) => MODIFIERS.includes(mod)) ? { mods, key } : undefined;
+}
+
+/** The shortcut as this platform's keyboards name it, such as "Option + Shift + F" on a Mac. */
+function spoken(shortcut: string): string | undefined {
+  const parsed = parse(shortcut);
+  if (!parsed) return undefined;
+  const platform = navigator.platform;
+  const names: Record<string, string> = /mac|iphone|ipad|ipod/i.test(platform)
+    ? { alt: "Option", shift: "Shift", control: "Control", meta: "Command" }
+    : {
+        alt: "Alt",
+        shift: "Shift",
+        control: "Ctrl",
+        meta: /^win/i.test(platform) ? "Win" : "Super",
+      };
+  const key = parsed.key.charAt(0).toUpperCase() + parsed.key.slice(1);
+  return [...new Set(parsed.mods)]
+    .map((mod) => names[mod])
+    .concat(key)
+    .join(" + ");
+}
+
 export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
   if (!supported()) return noop;
   const tag = options.tagName ?? "visual-feedback";
@@ -246,12 +276,11 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
 
   // Alt changes event.key on macOS (Alt+F types ƒ), so the key's code is matched too.
   function listen(shortcut: string): () => void {
-    const parts = shortcut.toLowerCase().split("+");
-    const key = parts.pop();
-    const names = ["alt", "shift", "control", "meta"];
-    const mods = names.map((name) => parts.includes(name)).join();
+    const parsed = parse(shortcut);
+    const key = parsed?.key.toLowerCase();
+    const mods = MODIFIERS.map((name) => parsed?.mods.includes(name)).join();
     // Without Control or Meta, keys typed into a field stay with the field.
-    const typing = !/control|meta/.test(shortcut.toLowerCase());
+    const typing = !parsed?.mods.some((mod) => mod === "control" || mod === "meta");
     const on = (event: KeyboardEvent) => {
       if (
         // Autofill dispatches plain keydown Events, with no key or modifier state.
@@ -260,7 +289,7 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
         !event.repeat &&
         !event.isComposing &&
         !event.getModifierState("AltGraph") &&
-        parts.every((part) => names.includes(part)) &&
+        parsed &&
         [event.altKey, event.shiftKey, event.ctrlKey, event.metaKey].join() === mods &&
         [event.code.replace(/^(Key|Digit)/, ""), event.key].some(
           (name) => name.toLowerCase() === key,
@@ -313,7 +342,10 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
       trigger.dataset.y = y;
       trigger.dataset.x = x;
       const { trigger: name, triggerText } = options.strings ?? {};
-      trigger.setAttribute("aria-label", name || triggerText || "Send feedback");
+      const accessible = name || triggerText || "Send feedback";
+      trigger.setAttribute("aria-label", accessible);
+      const keys = options.shortcut ? spoken(options.shortcut) : undefined;
+      trigger.title = keys ? `${accessible} (${keys})` : accessible;
       // Icon only unless the host gives a visible text.
       trigger.toggleAttribute("data-icon", !triggerText);
       if (label) {
@@ -555,7 +587,10 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
         return pending.then(() => (mine === session ? widget.open() : undefined));
       }
       // Open, or kept as a draft: a draft bar's dialog opens again, and reads the page itself.
-      if (state !== "idle") return dialog?.reopen(), Promise.resolve();
+      if (state !== "idle") {
+        dialog?.reopen();
+        return Promise.resolve();
+      }
       // A draft this tab still keeps opens, not a new capture: it comes back, then opens.
       if (restore()) return widget.open();
       state = "opening";

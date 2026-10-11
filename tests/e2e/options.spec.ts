@@ -230,6 +230,72 @@ test("a shortcut on a digit or a named key also opens it", async ({ page }) => {
   await expect(page.getByRole("dialog")).toBeVisible();
 });
 
+test("the trigger's tooltip names a working shortcut as the platform's keyboards do", async ({
+  page,
+}) => {
+  const title = () =>
+    page.locator("visual-feedback").locator(".trigger").getAttribute("title", { timeout: 1000 });
+  const platform = (name: string) =>
+    page.evaluate((name) => {
+      Object.defineProperty(Navigator.prototype, "platform", {
+        get: () => name,
+        configurable: true,
+      });
+    }, name);
+  await platform("Linux x86_64");
+  await mount(page);
+  // Without a shortcut it names the icon, as the widget's other icon buttons do.
+  expect(await title()).toBe("Send feedback");
+  await vf(page, "update", { shortcut: "alt+shift+f" });
+  expect(await title()).toBe("Send feedback (Alt + Shift + F)");
+  // The listener takes it in any case, so the keys the tooltip names open the widget.
+  await page.keyboard.press("Alt+Shift+KeyF");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await vf(page, "update", { shortcut: "Control+Meta+F2", strings: { trigger: "Report" } });
+  expect(await title()).toBe("Report (Ctrl + Super + F2)");
+  // A new name alone, here a visible text that is the name too, changes the tooltip.
+  await vf(page, "update", { strings: { triggerText: "Feedback" } });
+  expect(await title()).toBe("Feedback (Ctrl + Super + F2)");
+  await platform("Win32");
+  await vf(page, "update", { shortcut: "Control+Alt+Meta+Shift+K", strings: undefined });
+  expect(await title()).toBe("Send feedback (Ctrl + Alt + Win + Shift + K)");
+  for (const name of ["iPhone", "iPad"]) {
+    await platform(name);
+    await vf(page, "update", { shortcut: "Control+Alt+Meta+Shift+K" });
+    expect(await title(), name).toBe("Send feedback (Control + Option + Command + Shift + K)");
+  }
+  await platform("MacIntel");
+  await vf(page, "update", { shortcut: "Alt+Shift+F" });
+  expect(await title()).toBe("Send feedback (Option + Shift + F)");
+  // A screen reader gets the shortcut too, and the name stays as it was.
+  await expect(
+    page.getByRole("button", { name: "Send feedback", exact: true }),
+  ).toHaveAccessibleDescription("Send feedback (Option + Shift + F)");
+  await vf(page, "update", { shortcut: "Control+Meta+K" });
+  expect(await title()).toBe("Send feedback (Control + Command + K)");
+  // The listener takes a repeated modifier as one key press.
+  await vf(page, "update", { shortcut: "Shift+shift+F" });
+  expect(await title()).toBe("Send feedback (Shift + F)");
+  // A shortcut the listener can never match is not shown.
+  for (const shortcut of ["Cmd+K", "Alt+", false]) {
+    await vf(page, "update", { shortcut: "Alt+Shift+F" });
+    expect(await title()).toBe("Send feedback (Option + Shift + F)");
+    await vf(page, "update", { shortcut });
+    expect(await title(), String(shortcut)).toBe("Send feedback");
+  }
+  await vf(page, "update", { shortcut: "Shift+Cmd+K" });
+  expect(await title()).toBe("Send feedback");
+  // Given at creation, in the host's order, and kept when the trigger is drawn again.
+  await vf(page, "destroy");
+  await mount(page, { shortcut: "Shift+Alt+K" });
+  expect(await title()).toBe("Send feedback (Shift + Option + K)");
+  await vf(page, "update", { trigger: "none" });
+  await vf(page, "update", { trigger: "button" });
+  expect(await title()).toBe("Send feedback (Shift + Option + K)");
+});
+
 test("update changes the trigger, theme, css and texts at once", async ({ page }) => {
   await mount(page);
   const trigger = () => page.locator("visual-feedback").locator(".trigger");
@@ -365,6 +431,11 @@ test("the shortcut leaves fields, IME input, AltGr, held keys and unknown names 
   expect(await taken(page, { key: "k", code: "KeyK", metaKey: true })).toBe(false);
   await vf(page, "update", { shortcut: "Meta+K" });
   expect(await taken(page, { key: "k", code: "KeyK", metaKey: true })).toBe(true);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // With no key it matches nothing, not even a key press whose code is empty.
+  await vf(page, "update", { shortcut: "Alt+" });
+  expect(await taken(page, { key: "", code: "", altKey: true })).toBe(false);
 });
 
 test("a string given as undefined keeps English, and update replaces strings whole", async ({
