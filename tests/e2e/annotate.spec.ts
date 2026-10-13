@@ -137,25 +137,19 @@ const SLACK = 4;
 /** A point on the page background, away from every mark these tests draw. */
 const AWAY: Point = [5, 5];
 
-test("the shown image keeps its shape when the window's height limits it", async ({ page }) => {
+test("the shown image keeps its shape at the height the dialog gives it", async ({ page }) => {
   await opened(page);
   const measure = () =>
     image(page).evaluate((canvas: HTMLCanvasElement) => [
       canvas.clientWidth / canvas.clientHeight,
       canvas.width / canvas.height,
       canvas.clientHeight,
-      // The window less its two 16px margins and the rest of the dialog, measured a frame later.
-      innerHeight -
-        32 -
-        Number.parseFloat(
-          (canvas.closest(".dialog") as HTMLElement).style.getPropertyValue("--_chrome"),
-        ),
+      Number.parseFloat((canvas.closest(".dialog") as HTMLElement).style.getPropertyValue("--_ih")),
     ]);
-  // The height limit is the one that applies here.
   await expect
     .poll(async () => {
-      const [, , height = 0, limit = 0] = await measure();
-      return Math.abs(height - limit);
+      const [, , height = 0, given = 0] = await measure();
+      return Math.abs(height - given);
     })
     .toBeLessThan(1);
   const [shown = 0, natural = 0] = await measure();
@@ -1622,6 +1616,7 @@ test("the note shows 4 rows, and Send stays inside a 1280x720 window", async ({ 
 });
 
 for (const [width, height] of [
+  [3200, 2000],
   [2200, 1300],
   [1280, 720],
   [667, 375],
@@ -1655,6 +1650,12 @@ for (const [width, height] of [
           };
         });
     await expect.poll(fit).toEqual({ overflow: 0, inside: true });
+    // Never squeezed: the shown shape is the screenshot's own.
+    const [drawn, own] = await image(page).evaluate((canvas: HTMLCanvasElement) => [
+      canvas.clientWidth / canvas.clientHeight,
+      canvas.width / canvas.height,
+    ]);
+    expect(Math.abs((drawn ?? 0) - (own ?? 0))).toBeLessThan(0.02);
     const shown = await image(page).boundingBox();
     // A large window gives the image most of its height, not a fixed share.
     if (height >= 1000) expect(shown?.height ?? 0).toBeGreaterThan(height * 0.6);
@@ -1674,6 +1675,30 @@ for (const [width, height] of [
     expect(errors).toEqual([]);
   });
 }
+
+test("a window that changes height refits the dialog: no scroll when it shrinks, the room used when it grows", async ({
+  page,
+}) => {
+  // All above 760px, so no layout rule switches and only the window itself has changed.
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await opened(page);
+  const fit = () =>
+    page
+      .locator("visual-feedback")
+      .locator(".dialog")
+      .evaluate((panel) => {
+        const backdrop = panel.parentElement as HTMLElement;
+        return [
+          backdrop.scrollHeight - backdrop.clientHeight,
+          // Within the pixel the height is rounded down to.
+          innerHeight - 32 - panel.getBoundingClientRect().height < 1.5,
+        ];
+      });
+  for (const height of [1100, 800]) {
+    await page.setViewportSize({ width: 1600, height });
+    await expect.poll(fit).toEqual([0, true]);
+  }
+});
 
 test("on a short landscape screen the note sits beside the image", async ({ page }) => {
   await page.setViewportSize({ width: 667, height: 375 });

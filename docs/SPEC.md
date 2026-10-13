@@ -25,7 +25,8 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
 - **annotating:** a full-viewport overlay shows the image with a tool rail beside it, a strip of
   the report's screenshots under it, and the note field, with Send in a footer row under that.
   The dialog fits the window, 16 px from its edges (or the safe area's), with nothing to scroll:
-  the image takes the height the rest leaves, and the dialog is as wide as the image needs. Below
+  the image takes the height the rest leaves, growing past the screenshot's own size on a large
+  screen, and the dialog is as wide as the image needs. Below
   760 px of height the tool rail has two columns, and below 700 px a question lies over the
   header in place of adding a row; on a landscape screen under 500 px high, the note and Send go
   beside the image.
