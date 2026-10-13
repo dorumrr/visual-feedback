@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.0 (not released yet)
+## 0.4.0 (2026-10-13)
 
 - Breaking: the trigger is a tab by default, in the corner `position` names, with a flag icon. It
   has no border: the text colour fills it, and on hover the colours swap. `--vf-offset` lifts the
