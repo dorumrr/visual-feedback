@@ -46,18 +46,22 @@ const stored = (page: Page) =>
       }),
   );
 
-/** The note of the one draft the device holds. */
-const storedNote = (page: Page) =>
+/** The one draft the device holds: its note, and how many screenshots it keeps. */
+const storedDraft = (page: Page) =>
   page.evaluate(
     () =>
-      new Promise<string | undefined>((resolve) => {
+      new Promise<{ note: string; shots: number } | undefined>((resolve) => {
         const request = indexedDB.open("visual-feedback", 1);
         request.onsuccess = () => {
           const cursors = request.result.transaction("drafts").objectStore("drafts").openCursor();
-          cursors.onsuccess = () => resolve(cursors.result?.value.note);
+          cursors.onsuccess = () => {
+            const value = cursors.result?.value;
+            resolve(value && { note: value.note, shots: value.shots.length });
+          };
         };
       }),
   );
+const storedNote = async (page: Page) => (await storedDraft(page))?.note;
 
 /** Loads the page again, as a link to another page of the site would, and mounts the widget. */
 async function load(page: Page, options: Record<string, unknown> = {}): Promise<void> {
@@ -105,6 +109,8 @@ test("a folded draft comes back after a page load, whole: screenshots, marks, pa
   await page.keyboard.press("Escape");
   await expect(bar(page)).toBeVisible();
   await expect.poll(() => stored(page)).toBe(1);
+  // Adding the screenshot folded and kept the draft once already: wait for this fold's write.
+  await expect.poll(async () => (await storedDraft(page))?.shots).toBe(2);
 
   await load(page, { categories, capture });
   await expect(bar(page)).toContainText("Feedback draft · 2");
