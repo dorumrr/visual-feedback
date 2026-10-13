@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 (not released yet)
+
+- The README links a live demo: the playground on GitHub Pages, at
+  https://dorumrr.github.io/visual-feedback/. The widget itself is unchanged.
+
 ## 0.3.1 (2026-10-12)
 
 - The trigger shows its name as a tooltip. With a `shortcut` set, the tooltip names it too, the way
