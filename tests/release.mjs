@@ -122,6 +122,15 @@ async function ask(question, offered = "") {
   try {
     input = new ReadStream(openSync("/dev/tty", "r"));
   } catch {}
+  // Keys pressed before the question, such as Enter during the check, must not answer it.
+  input.setRawMode?.(true);
+  const drop = () => {};
+  input.on("data", drop);
+  await sleep(100);
+  input.off("data", drop);
+  input.pause();
+  // Readline sets raw mode again only when stdout is a terminal.
+  input.setRawMode?.(false);
   const reader = createInterface({ input, output: process.stdout });
   try {
     const answer = reader.question(question);
@@ -212,9 +221,9 @@ export async function release({ ask, run, sleep, read, write }) {
   if (changed) must("git", ["--no-pager", "diff", "--stat"]);
 
   const go = await ask(
-    `${changed ? `Commit "Release ${version}", push` : "Push"} and publish ${version}? [y/N] `,
+    `${changed ? `Commit "Release ${version}", push` : "Push"} and publish ${version}? [Y/n] `,
   );
-  if (go.toLowerCase() !== "y") {
+  if (go && go.toLowerCase() !== "y") {
     if (changed)
       must("git", ["checkout", "--", "CHANGELOG.md", "package.json", "package-lock.json"]);
     console.log("Stopped: nothing was committed, pushed or published.");

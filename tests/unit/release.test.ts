@@ -206,7 +206,7 @@ describe("npm run release", () => {
 
   it("asks first whether to run the full check, and Enter skips it", async () => {
     // The last answer, no to publishing, ends the rehearsal.
-    const { result, log } = await rehearse(["", "0.3.3", ""]);
+    const { result, log } = await rehearse(["", "0.3.3", "n"]);
     expect(result).toBe("done");
     expect(log[0]).toBe(QUESTION);
     expect(log).toContain("write CHANGELOG.md");
@@ -214,7 +214,7 @@ describe("npm run release", () => {
   });
 
   it("y runs npm run check once the version passed every refusal, before the first write", async () => {
-    const { result, at, log } = await rehearse(["y", "0.3.3", ""]);
+    const { result, at, log } = await rehearse(["y", "0.3.3", "n"]);
     expect(result).toBe("done");
     expect(at("ask Version to publish: ")).toBeGreaterThan(-1);
     expect(at(CHECK)).toBeGreaterThan(at("ask Version to publish: "));
@@ -248,7 +248,7 @@ describe("npm run release", () => {
 
   it("after the check, main is compared with origin again: it may have moved meanwhile", async () => {
     const fetch = "run git fetch --quiet origin main";
-    const skipped = await rehearse(["", "0.3.3", ""]);
+    const skipped = await rehearse(["", "0.3.3", "n"]);
     expect(skipped.log.filter((entry) => entry === fetch)).toHaveLength(1);
     let behind = 0;
     const moved = await rehearse(["y", "0.3.3"], {
@@ -300,8 +300,45 @@ describe("npm run release", () => {
       ["N", false],
       ["yes", false],
     ] as const) {
-      const { log } = await rehearse([answer, "0.3.3", ""]);
+      const { log } = await rehearse([answer, "0.3.3", "n"]);
       expect(log.includes(CHECK), answer).toBe(runs);
+    }
+  });
+
+  it("the publish question shows Y/n: Enter, y or Y go ahead, anything else stops and restores the files", async () => {
+    const push = "run git push origin main";
+    const restore = "run git checkout -- CHANGELOG.md package.json package-lock.json";
+    const commit = "run git commit --quiet -m Release 0.3.3";
+    for (const wrote of [true, false]) {
+      const question = wrote
+        ? 'ask Commit "Release 0.3.3", push and publish 0.3.3? [Y/n] '
+        : "ask Push and publish 0.3.3? [Y/n] ";
+      for (const [answer, goes] of [
+        ["", true],
+        ["y", true],
+        ["Y", true],
+        ["n", false],
+        ["N", false],
+        ["yes", false],
+      ] as const) {
+        let status = 0;
+        const { result, log } = await rehearse(["", "0.3.3", answer], {
+          // Clean before the release, then the three files it wrote, unless they held that version.
+          get "git status --porcelain"() {
+            return { ok: true, out: status++ === 0 || !wrote ? "" : " M CHANGELOG.md" };
+          },
+        });
+        const label = `${wrote} ${answer}`;
+        expect(log, label).toContain(question);
+        expect(log.includes(push), label).toBe(goes);
+        expect(log.includes(restore), label).toBe(wrote && !goes);
+        expect(log.includes(commit), label).toBe(wrote && goes);
+        expect(
+          log.some((entry) => entry.startsWith("run gh ")),
+          label,
+        ).toBe(goes);
+        if (!goes) expect(result, label).toBe("done");
+      }
     }
   });
 
