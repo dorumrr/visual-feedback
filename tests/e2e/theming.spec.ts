@@ -83,13 +83,12 @@ test("each variable reaches the element that uses it, and its default matches TH
   await mount(page);
   // By class, not role: a draft hides the trigger, and its colours still resolve while hidden.
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  await expect(trigger).toHaveCSS("background-color", await probe("Canvas"));
-  await expect(trigger).toHaveCSS("color", await probe("CanvasText"));
+  await expect(trigger).toHaveCSS("color", await probe("Canvas"));
+  await expect(trigger).toHaveCSS("background-color", await probe("CanvasText"));
   await expect(trigger).toHaveCSS("box-shadow", "rgba(0, 0, 0, 0.35) 0px 12px 32px -12px");
   await expect(trigger).toHaveCSS("z-index", "2147483000");
-  // Ringed in the text colour, the same as its icon, so it stands out on any page.
-  await expect(trigger).toHaveCSS("border-top-width", "1px");
-  await expect(trigger).toHaveCSS("border-top-color", await probe("CanvasText"));
+  // Filled in the text colour, so it stands out on any page with no border.
+  await expect(trigger).toHaveCSS("border-top-width", "0px");
   await trigger.click();
   const panel = page.locator("visual-feedback .dialog");
   const backdrop = page.getByRole("dialog");
@@ -113,9 +112,8 @@ test("each variable reaches the element that uses it, and its default matches TH
     }`,
   });
   await expect(panel).toHaveCSS("background-color", "rgb(1, 2, 3)");
-  await expect(trigger).toHaveCSS("background-color", "rgb(1, 2, 3)");
-  await expect(trigger).toHaveCSS("color", "rgb(4, 5, 6)");
-  await expect(trigger).toHaveCSS("border-top-color", "rgb(4, 5, 6)");
+  await expect(trigger).toHaveCSS("color", "rgb(1, 2, 3)");
+  await expect(trigger).toHaveCSS("background-color", "rgb(4, 5, 6)");
   await expect(trigger).toHaveCSS("box-shadow", "rgb(10, 11, 12) 1px 2px 3px 0px");
   await expect(panel).toHaveCSS("color", "rgb(4, 5, 6)");
   // The composer shows the focus colour while the note has focus, so the rail shows the border.
@@ -188,11 +186,31 @@ test("size, offset and stacking variables move the trigger", async ({ page }) =>
   });
   await mount(page);
   const trigger = page.getByRole("button", { name: "Send feedback" });
-  const box = await trigger.boundingBox();
   const { width = 0, height = 0 } = page.viewportSize() ?? {};
-  expect(box?.height).toBe(50);
-  expect(Math.round(width - (box?.x ?? 0) - (box?.width ?? 0))).toBe(40);
-  expect(Math.round(height - (box?.y ?? 0) - (box?.height ?? 0))).toBe(40);
+  const gaps = async () => {
+    const box = await trigger.boundingBox();
+    expect(box?.height).toBe(50);
+    return [width - (box?.x ?? 0) - (box?.width ?? 0), height - (box?.y ?? 0) - (box?.height ?? 0)];
+  };
+  // The tab stays on the edge: the offset lifts it along it, and rounds its end side.
+  expect((await gaps()).map(Math.round)).toEqual([0, 40]);
+  // Ends where it began, for the button below.
+  for (const position of ["top-left", "top-right", "bottom-left", "bottom-right"]) {
+    await page.evaluate(
+      (position) => (window as unknown as Mounted).vf.update({ position: position as never }),
+      position,
+    );
+    const [y, x] = position.split("-") as ["top" | "bottom", "left" | "right"];
+    const inner = x === "right" ? "left" : "right";
+    const box = await trigger.boundingBox();
+    const fromX = x === "left" ? (box?.x ?? -1) : width - (box?.x ?? 0) - (box?.width ?? 0);
+    const fromY = y === "top" ? (box?.y ?? -1) : height - (box?.y ?? 0) - (box?.height ?? 0);
+    expect([fromX, fromY].map(Math.round), position).toEqual([0, 40]);
+    await expect(trigger, position).not.toHaveCSS(`border-${y}-${inner}-radius`, "0px");
+    await expect(trigger, position).toHaveCSS(`border-${y}-${x}-radius`, "0px");
+  }
+  await page.evaluate(() => (window as unknown as Mounted).vf.update({ trigger: "button" }));
+  expect((await gaps()).map(Math.round)).toEqual([40, 40]);
   await expect(trigger).toHaveCSS("z-index", "7");
 });
 
@@ -331,22 +349,33 @@ test("unstyled keeps the layout and drops the look", async ({ page }) => {
   await expect(trigger).toHaveCSS("position", "fixed");
   await expect(trigger).toHaveCSS("height", "40px");
   await expect(trigger).toHaveCSS("box-shadow", "none");
-  await expect(trigger).not.toHaveCSS("border-top-left-radius", "999px");
   await expect(trigger).not.toHaveCSS("font-weight", "600");
-  // No ring of its own: the border a plain button has on this page.
-  const plain = await page.evaluate(() => {
+  // The tooltip's hiding is layout too: hidden at rest, shown on hover.
+  const tip = page.locator("visual-feedback").locator(".tip");
+  await expect(tip).toBeHidden();
+  await trigger.hover();
+  await expect(tip).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(tip).toBeHidden();
+  // Still on the edge, the tab's place being layout.
+  const box = await trigger.boundingBox();
+  expect(Math.round((page.viewportSize()?.width ?? 0) - (box?.x ?? 0) - (box?.width ?? 0))).toBe(0);
+  // No border or corners of its own: those a plain button has on this page, on every side.
+  const [own, plain] = await trigger.evaluate((element) => {
+    const border = (target: Element) => {
+      const style = getComputedStyle(target);
+      const sides = ["top", "right", "left"].flatMap((side) =>
+        ["width", "style", "color"].map((what) => style.getPropertyValue(`border-${side}-${what}`)),
+      );
+      return [...sides, style.borderTopLeftRadius, style.borderTopRightRadius];
+    };
     const button = document.createElement("button");
     document.body.append(button);
-    const { borderTopWidth, borderTopStyle, borderTopColor } = getComputedStyle(button);
+    const result = [border(element), border(button)];
     button.remove();
-    return [borderTopWidth, borderTopStyle, borderTopColor];
+    return result;
   });
-  expect(
-    await trigger.evaluate((element) => {
-      const { borderTopWidth, borderTopStyle, borderTopColor } = getComputedStyle(element);
-      return [borderTopWidth, borderTopStyle, borderTopColor];
-    }),
-  ).toEqual(plain);
+  expect(own).toEqual(plain);
   await trigger.click();
   const backdrop = page.getByRole("dialog");
   await expect(backdrop).toHaveCSS("position", "fixed");
@@ -446,7 +475,7 @@ test("theme forces the colour scheme, and auto follows the system on a page with
       const wrapper = root?.querySelector(".vf");
       const trigger = root?.querySelector(".trigger");
       return wrapper && trigger
-        ? [getComputedStyle(wrapper).colorScheme, getComputedStyle(trigger).backgroundColor]
+        ? [getComputedStyle(wrapper).colorScheme, getComputedStyle(trigger).color]
         : [];
     });
     await page.evaluate(() => (window as unknown as { vf: { destroy(): void } }).vf.destroy());
@@ -466,10 +495,13 @@ test("theme forces the colour scheme, and auto follows the system on a page with
 test("reduced motion turns transitions off", async ({ page }) => {
   await mount(page);
   const trigger = page.getByRole("button", { name: "Send feedback" });
+  const tip = page.locator("visual-feedback").locator(".tip");
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await expect(trigger).toHaveCSS("transition-duration", "0.15s");
+  await expect(trigger).toHaveCSS("transition-duration", "0.15s, 0.15s");
+  await expect(tip).toHaveCSS("transition-duration", "0.15s, 0.15s");
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(trigger).toHaveCSS("transition-duration", "0s");
+  await expect(tip).toHaveCSS("transition-duration", "0s");
 });
 
 for (const fallback of [false, true]) {
@@ -527,7 +559,7 @@ async function brand(page: Page, css = "") {
 /** Send's fill and corner, and the trigger's surface and the scheme inside, once the dialog shows. */
 async function look(page: Page) {
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  const surface = await trigger.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const surface = await trigger.evaluate((element) => getComputedStyle(element).color);
   await trigger.click();
   const send = page.getByRole("button", { name: "Send", exact: true });
   await expect(send).toBeVisible();
@@ -550,9 +582,9 @@ test("with no --vf-* set, the widget takes the page's accent, corners and backgr
   await page.emulateMedia({ colorScheme: "light" });
   await brand(page);
   await mount(page);
-  // The trigger's ring takes the page's text colour, not its accent.
+  // The trigger's fill takes the page's text colour, not its accent.
   await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
-    "border-top-color",
+    "background-color",
     "rgb(240, 240, 240)",
   );
   expect(await look(page)).toEqual({
@@ -563,35 +595,64 @@ test("with no --vf-* set, the widget takes the page's accent, corners and backgr
   });
 });
 
-test("the trigger's icon is a swirl filled in the text colour, with no outline", async ({
+test("the trigger is filled with the text colour, its flag in the surface colour, and swaps them on hover", async ({
   page,
 }) => {
+  await page.addStyleTag({
+    content: "visual-feedback { --vf-surface: rgb(250, 240, 230); --vf-text: rgb(20, 30, 40) }",
+  });
   await mount(page);
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  const icon = trigger.locator("svg");
+  const icon = trigger.locator(":scope > svg");
   await expect(icon).toHaveAttribute("part", "trigger-icon");
   const color = await trigger.evaluate((element) => getComputedStyle(element).color);
   await expect(icon).toHaveCSS("fill", color);
   await expect(icon).toHaveCSS("stroke", "none");
-  // Six blades: one path, drawn by its fill alone.
-  expect(await icon.locator("path").getAttribute("d")).toMatch(/^(?:[^M]*M){6}[^M]*$/);
-  // It fills the button inside its border, so the blades meet the border, its ring.
+  // A pole and its cloth: one path, drawn by its fill alone.
+  expect(await icon.locator("path").getAttribute("d")).toMatch(/^(?:[^M]*M){2}[^M]*$/);
+  // Centred, at 62.5% of its width.
   const [box, inner] = await Promise.all([
     icon.boundingBox(),
     trigger.evaluate((element) => {
       const rect = element.getBoundingClientRect();
-      const border = Number.parseFloat(getComputedStyle(element).borderTopWidth);
-      return { x: rect.x + border, y: rect.y + border, width: rect.width - 2 * border };
+      const style = getComputedStyle(element);
+      const [top, right, bottom, left] = ["top", "right", "bottom", "left"].map((side) =>
+        Number.parseFloat(style.getPropertyValue(`border-${side}-width`)),
+      ) as [number, number, number, number];
+      const width = rect.width - left - right;
+      return {
+        x: rect.x + left + width / 2,
+        y: rect.y + top + (rect.height - top - bottom) / 2,
+        size: width * 0.625,
+      };
     }),
   ]);
-  expect(box && [box.x, box.y, box.width, box.height].map(Math.round)).toEqual(
-    [inner.x, inner.y, inner.width, inner.width].map(Math.round),
+  if (!box) throw new Error("no icon");
+  expect(Math.abs(box.x + box.width / 2 - inner.x)).toBeLessThan(1);
+  expect(Math.abs(box.y + box.height / 2 - inner.y)).toBeLessThan(1);
+  expect(Math.abs(box.width - inner.size)).toBeLessThan(1);
+  expect(color).toBe("rgb(250, 240, 230)");
+  await expect(trigger).toHaveCSS("background-color", "rgb(20, 30, 40)");
+  await expect(trigger).toHaveCSS("border-top-width", "0px");
+  await trigger.hover();
+  await expect(trigger).toHaveCSS("background-color", "rgb(250, 240, 230)");
+  await expect(icon).toHaveCSS("fill", "rgb(20, 30, 40)");
+  await page.mouse.move(0, 0);
+  await expect(icon).toHaveCSS("fill", color);
+  await expect(trigger).toHaveCSS("background-color", "rgb(20, 30, 40)");
+  // A label swaps with the icon.
+  await page.evaluate(() =>
+    (window as unknown as Mounted).vf.update({ strings: { triggerText: "Feedback" } }),
   );
+  const label = trigger.locator('[part="trigger-text"]');
+  await expect(label).toHaveCSS("color", "rgb(250, 240, 230)");
+  await trigger.hover();
+  await expect(label).toHaveCSS("color", "rgb(20, 30, 40)");
 });
 
 test("with a label, the trigger keeps a small icon beside it", async ({ page }) => {
   await mount(page, { strings: { triggerText: "Feedback" } });
-  const icon = page.locator("visual-feedback").locator(".trigger svg");
+  const icon = page.locator("visual-feedback").locator(".trigger > svg");
   const [width, size] = await icon.evaluate((element) =>
     [getComputedStyle(element).width, getComputedStyle(element).fontSize].map(Number.parseFloat),
   );
@@ -675,7 +736,7 @@ test("the trigger shows the page's colours from the first frame, with no fade", 
     const trigger = document
       .querySelector("visual-feedback")
       ?.shadowRoot?.querySelector(".trigger") as Element;
-    return [getComputedStyle(trigger).backgroundColor, trigger.getAnimations().length];
+    return [getComputedStyle(trigger).color, trigger.getAnimations().length];
   });
   expect(first).toEqual(["rgb(16, 24, 32)", 0]);
 });
@@ -719,16 +780,14 @@ test("a draft opened again reads the page again, and Send's text follows the new
 test("update() reads the page again only when the theme changes", async ({ page }) => {
   await mount(page);
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  const before = await trigger.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const before = await trigger.evaluate((element) => getComputedStyle(element).color);
   await brand(page);
   await page.evaluate(() =>
     (window as unknown as Mounted).vf.update({ strings: { triggerText: "Feedback" } }),
   );
   // Past the trigger's 0.15 s fade, read once: a retry would catch the start of a fade.
   await page.waitForTimeout(300);
-  expect(await trigger.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
-    before,
-  );
+  expect(await trigger.evaluate((element) => getComputedStyle(element).color)).toBe(before);
   // "light" is a new theme: the page is read again, here its accent, though light keeps the surface.
   await page.evaluate(() => (window as unknown as Mounted).vf.update({ theme: "light" }));
   const accent = await page.evaluate(() =>
@@ -812,12 +871,12 @@ test("page text under 4.5:1 keeps the default surface, and mid-grey text gets st
   });
   await mount(page);
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  await expect(trigger).not.toHaveCSS("color", "rgb(130, 130, 130)");
+  await expect(trigger).not.toHaveCSS("background-color", "rgb(130, 130, 130)");
   // rgb(118, 118, 118) is 4.5:1: it is taken, and its hints at 60% would fall under, so they take all of it.
   await page.addStyleTag({ content: "body { color: rgb(118, 118, 118) }" });
   await page.evaluate(() => (window as unknown as Mounted).vf.update({ theme: "light" }));
   await page.evaluate(() => (window as unknown as Mounted).vf.update({ theme: "auto" }));
-  await expect(trigger).toHaveCSS("color", "rgb(118, 118, 118)");
+  await expect(trigger).toHaveCSS("background-color", "rgb(118, 118, 118)");
   await trigger.click();
   const note = page.getByRole("textbox", { name: "Your note" });
   expect(await note.evaluate((element) => getComputedStyle(element, "::placeholder").color)).toBe(
@@ -829,8 +888,8 @@ test("a --vf-surface set through the css option keeps the page's text out", asyn
   await brand(page);
   await mount(page, { css: ".vf { --vf-surface: rgb(250, 250, 250) }" });
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  await expect(trigger).toHaveCSS("background-color", "rgb(250, 250, 250)");
-  await expect(trigger).not.toHaveCSS("color", "rgb(240, 240, 240)");
+  await expect(trigger).toHaveCSS("color", "rgb(250, 250, 250)");
+  await expect(trigger).not.toHaveCSS("background-color", "rgb(240, 240, 240)");
   // The page is still read: its accent is taken.
   expect((await look(page)).accent).toBe("rgb(228, 0, 124)");
 });
@@ -899,13 +958,13 @@ test("css given later through update() that sets --vf-surface drops the page's t
   await brand(page);
   await mount(page);
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  await expect(trigger).toHaveCSS("color", "rgb(240, 240, 240)");
+  await expect(trigger).toHaveCSS("background-color", "rgb(240, 240, 240)");
   await page.evaluate(() =>
     (window as unknown as Mounted).vf.update({ css: ".vf { --vf-surface: rgb(250, 250, 250) }" }),
   );
   // Light page text on the host's light surface would be unreadable.
-  await expect(trigger).toHaveCSS("background-color", "rgb(250, 250, 250)");
-  await expect(trigger).not.toHaveCSS("color", "rgb(240, 240, 240)");
+  await expect(trigger).toHaveCSS("color", "rgb(250, 250, 250)");
+  await expect(trigger).not.toHaveCSS("background-color", "rgb(240, 240, 240)");
 });
 
 test("a host that sets only --vf-text keeps the default surface, not the page's", async ({
@@ -914,9 +973,9 @@ test("a host that sets only --vf-text keeps the default surface, not the page's"
   await brand(page, "visual-feedback { --vf-text: rgb(10, 10, 10) }");
   await mount(page);
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  await expect(trigger).toHaveCSS("color", "rgb(10, 10, 10)");
+  await expect(trigger).toHaveCSS("background-color", "rgb(10, 10, 10)");
   // The page's dark background under the host's near-black text would be unreadable.
-  await expect(trigger).not.toHaveCSS("background-color", "rgb(16, 24, 32)");
+  await expect(trigger).not.toHaveCSS("color", "rgb(16, 24, 32)");
   // The page is still read: its accent is taken.
   expect((await look(page)).accent).toBe("rgb(228, 0, 124)");
 });
@@ -962,11 +1021,12 @@ test("a theme switch on <html> reaches the trigger, the open panel and the draft
   await nightSite(page);
   await mount(page);
   await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
-    "background-color",
+    "color",
     "rgb(255, 255, 255)",
   );
+  // Its fill is the night text colour.
   expect(await night(page, true, ".trigger")).toEqual({
-    background: "rgb(16, 24, 32)",
+    background: "rgb(240, 240, 240)",
     fading: 0,
     ink: "",
   });
@@ -998,9 +1058,9 @@ test("a change of the system's light or dark reaches the widget with no attribut
   });
   await mount(page);
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  await expect(trigger).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(trigger).toHaveCSS("color", "rgb(255, 255, 255)");
   await page.emulateMedia({ colorScheme: "dark" });
-  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+  await expect(trigger).toHaveCSS("color", "rgb(16, 24, 32)");
 });
 
 test("a <body> made after the widget is watched: its theme switch reaches the trigger", async ({
@@ -1011,21 +1071,21 @@ test("a <body> made after the widget is watched: its theme switch reaches the tr
   await page.addStyleTag({ content: NIGHT });
   await page.evaluate(() => document.documentElement.append(document.createElement("body")));
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  await expect(trigger).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(trigger).toHaveCSS("color", "rgb(255, 255, 255)");
   await page.evaluate(() => document.documentElement.classList.add("night"));
-  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+  await expect(trigger).toHaveCSS("color", "rgb(16, 24, 32)");
   // A <body> put in place of the old one: its own attributes are watched.
   await page.evaluate(() => {
     document.documentElement.classList.remove("night");
     const next = document.createElement("body");
     document.body.replaceWith(next);
   });
-  await expect(trigger).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(trigger).toHaveCSS("color", "rgb(255, 255, 255)");
   await page.evaluate(() => {
     document.body.style.background = "rgb(16, 24, 32)";
     document.body.style.color = "rgb(240, 240, 240)";
   });
-  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+  await expect(trigger).toHaveCSS("color", "rgb(16, 24, 32)");
 });
 
 test("an attribute change that leaves the page's colours alone does not read the page", async ({
@@ -1065,14 +1125,14 @@ test("a theme switch the site fades in reaches the widget once the fade ends", a
   });
   await mount(page);
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  await expect(trigger).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(trigger).toHaveCSS("color", "rgb(255, 255, 255)");
   // The site's fade runs: what the widget would read now is the old colour.
   const fading = await page.evaluate(() => {
     document.documentElement.classList.add("night");
     return document.body.getAnimations().length;
   });
   expect(fading).toBeGreaterThan(0);
-  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+  await expect(trigger).toHaveCSS("color", "rgb(16, 24, 32)");
   await page.getByRole("button", { name: "Send feedback" }).click();
   // The buttons fade too: the accent is the one they end on.
   await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCSS(
@@ -1094,7 +1154,7 @@ test("an element off the page keeps its colours through a switch, and reads the 
   await page.addStyleTag({ content: "body { background: rgb(250, 240, 230) }" });
   await mount(page);
   const trigger = page.locator("visual-feedback").locator(".trigger");
-  await expect(trigger).toHaveCSS("background-color", "rgb(250, 240, 230)");
+  await expect(trigger).toHaveCSS("color", "rgb(250, 240, 230)");
   const surface = () =>
     page.evaluate(() => {
       const host = (window as unknown as { host: Element }).host;
@@ -1110,7 +1170,7 @@ test("an element off the page keeps its colours through a switch, and reads the 
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
   expect(await surface()).toBe("rgb(250 240 230)");
   await page.evaluate(() => document.body.append((window as unknown as { host: Element }).host));
-  await expect(trigger).toHaveCSS("background-color", "rgb(16, 24, 32)");
+  await expect(trigger).toHaveCSS("color", "rgb(16, 24, 32)");
 });
 
 test("a page that keeps starting colour fades elsewhere still gets read after a switch", async ({
@@ -1133,7 +1193,7 @@ test("a page that keeps starting colour fades elsewhere still gets read after a 
   });
   await page.evaluate(() => document.documentElement.classList.add("night"));
   await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
-    "background-color",
+    "color",
     "rgb(16, 24, 32)",
   );
 });

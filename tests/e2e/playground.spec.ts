@@ -120,6 +120,8 @@ test("in the playground, a looping Click here hint with an arrow points at the t
   const trigger = page.getByRole("button", { name: "Send feedback" });
   const [h, t] = [await hint.boundingBox(), await trigger.boundingBox()];
   if (!h || !t) throw new Error("no box");
+  // The tab sits in the corner.
+  expect(Math.round((page.viewportSize()?.height ?? 0) - (t.y + t.height))).toBe(0);
   expect(t.x - (h.x + h.width)).toBeGreaterThanOrEqual(0);
   expect(t.x - (h.x + h.width)).toBeLessThan(24);
   expect(Math.abs(h.y + h.height / 2 - (t.y + t.height / 2))).toBeLessThan(4);
@@ -129,6 +131,47 @@ test("in the playground, a looping Click here hint with an arrow points at the t
     [h.x + h.width / 2, h.y + h.height / 2],
   );
   expect(under).toBe(true);
+});
+
+test("in the playground, hovering the trigger swaps the Click here hint for its tooltip, in the same style", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const hint = page.locator("#hint");
+  const tip = page.locator("visual-feedback").locator(".tip");
+  await expect(hint).toHaveCSS("opacity", "1");
+  await page.getByRole("button", { name: "Send feedback" }).hover();
+  await expect(tip).toHaveCSS("opacity", "1");
+  await expect(hint).toHaveCSS("opacity", "0");
+  const look = (element: Element) => {
+    const style = getComputedStyle(element);
+    const arrow = Math.round(
+      (element.querySelector("svg")?.getBoundingClientRect().width ?? 0) * 10,
+    );
+    const box = element.getBoundingClientRect().height;
+    const { backgroundImage, color, borderRadius, padding, fontWeight, fontSize, boxShadow } =
+      style;
+    return [
+      backgroundImage,
+      color,
+      borderRadius,
+      padding,
+      fontWeight,
+      fontSize,
+      boxShadow,
+      box,
+      arrow,
+    ];
+  };
+  expect(await tip.evaluate(look)).toEqual(await hint.evaluate(look));
+  await page.mouse.move(0, 0);
+  await expect(hint).toHaveCSS("opacity", "1");
+  await expect(tip).toHaveCSS("opacity", "0");
+  // Reached by the keyboard, the tooltip shows and the hint goes the same way.
+  await page.keyboard.press("Shift");
+  await page.getByRole("button", { name: "Send feedback" }).focus();
+  await expect(tip).toHaveCSS("opacity", "1");
+  await expect(hint).toHaveCSS("opacity", "0");
 });
 
 for (const [how, open] of [
@@ -178,7 +221,9 @@ test("in the playground on a phone, the hint sits above the trigger, clear of th
   // Its arrow, at its right end, is over the trigger.
   expect(h.x + h.width).toBeGreaterThan(t.x + t.width / 2);
   expect(h.x + h.width).toBeLessThanOrEqual(t.x + t.width + 1);
-  expect(h.y + h.height).toBeLessThan(s.y);
+  expect(h.x >= s.x + s.width || h.y + h.height <= s.y, "the hint overlaps the status line").toBe(
+    true,
+  );
 });
 
 test("in the playground, the hint goes when a kept draft comes back after a page load", async ({
@@ -257,10 +302,7 @@ for (const system of ["light", "dark"] as const) {
     const after = await background();
     expect(after).not.toBe(before);
     // The widget follows the switch at once, with no open and no reload.
-    await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
-      "background-color",
-      after,
-    );
+    await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS("color", after);
     // The widget reads the page again at open: its panel takes the page's new background.
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.locator("visual-feedback").locator(".dialog")).toHaveCSS(
@@ -273,10 +315,7 @@ for (const system of ["light", "dark"] as const) {
     await expect(page.getByRole("status")).toHaveText("Widget loaded. Use the feedback button.");
     expect(await theme()).toBe(other);
     await expect(button).toHaveAttribute("aria-pressed", String(other === "dark"));
-    await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
-      "background-color",
-      after,
-    );
+    await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS("color", after);
 
     // Back to what the system shows: the page follows the system again.
     await button.click();

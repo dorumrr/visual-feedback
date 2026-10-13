@@ -8,6 +8,14 @@ any design.
 
 ![The feedback dialog over a video site, with a box and an arrow drawn around the topic buttons, seven of which read Undefined](docs/demo.png)
 
+Ask your coding agent:
+
+```text
+Install the visual-feedback npm package (https://www.npmjs.com/package/visual-feedback) and add it to this app by following its AGENTS.md. Place its button where it covers nothing, and match its position, colours and corners to our design.
+```
+
+Or the old-school way, by hand:
+
 ```sh
 npm install visual-feedback
 ```

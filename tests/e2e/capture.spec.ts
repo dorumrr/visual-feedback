@@ -197,6 +197,22 @@ test.describe("on a page with a known colour under the trigger", () => {
     expect(await page.evaluate(() => (window as unknown as Mounted).reports.length)).toBe(2);
   });
 
+  test("a tooltip already showing when the capture starts is not in the image", async ({
+    page,
+  }) => {
+    await mount(page);
+    await trigger(page).hover();
+    const tip = page.locator("visual-feedback").locator(".tip");
+    await expect(tip).toHaveCSS("opacity", "1");
+    const box = await tip.boundingBox();
+    if (!box) throw new Error("no tooltip");
+    // Still hovered: open() starts the capture without moving the pointer.
+    await page.evaluate(() => (window as unknown as Mounted).vf.open());
+    await send(page);
+    const shot = await read(page, [[box.x + box.width / 2, box.y + box.height / 2]]);
+    expect(shot?.counted).toBe(0);
+  });
+
   test("control: with the hiding undone by css, the trigger is in the image", async ({ page }) => {
     await mount(page, { css: ".trigger{visibility:visible}" });
     const points = await triggerPoints(page);
@@ -420,8 +436,11 @@ test.describe("when the capture fails", () => {
         "trigger",
         "trigger-icon",
         "trigger-text",
+        "trigger-tooltip",
+        "trigger-tooltip-text",
         "send-without",
         "header",
+        "icon",
         "icon",
       ].sort(),
     );

@@ -36,7 +36,10 @@ comes before the first report in step 6.
    recipe adds. In a React or Next.js app, render `<Feedback endpoint="/api/feedback" />` from
    `visual-feedback/react` instead, once, in the root layout; its props are the same options, and
    a function prop such as `onSubmit` needs a `"use client"` file (`docs/API.md`). Every option is in `docs/API.md`; the look is in
-   `docs/THEMING.md`.
+   `docs/THEMING.md`. Fit the button to the app's own design: read its layout and pick
+   `trigger` and `position`, and `--vf-offset` where the default spot would cover something the app shows, and the
+   `--vf-*` colours and corners where the widget does not take them from the page already. Tell the
+   developer where it sits and why.
 3. On the server: copy the recipe's route as it is written. Its test runs that code, with only the
    marked parts below filled in, so do not change how it stores a report. If the app is not a Next.js App Router app, keep the logic and
    change only how the route is mounted.

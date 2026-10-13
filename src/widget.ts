@@ -70,7 +70,7 @@ export type FeedbackOptions = {
   requireNote?: boolean;
   redactUrl?: boolean;
   context?: () => Record<string, unknown> | Promise<Record<string, unknown>>;
-  trigger?: "button" | "none";
+  trigger?: "tab" | "button" | "none";
   position?: "bottom-right" | "bottom-left" | "top-right" | "top-left";
   shortcut?: string | false;
   strings?: Partial<FeedbackStrings>;
@@ -109,32 +109,33 @@ function sheet(text: string): CSSStyleSheet {
 function variables(): string {
   // Floor browsers (SPEC §10) may lack AccentColor.
   const system = CSS.supports("color", "AccentColor");
-  return `.vf{--_r:var(--vf-radius,var(--_pr,16px));--_s:var(--vf-surface,var(--_ps,Canvas));--_t:var(--vf-text,var(--_pt,CanvasText));--_m:var(--vf-muted,var(--_pm,color-mix(in srgb,var(--_t) 60%,transparent)));--_b:var(--vf-border,color-mix(in srgb,var(--_t) 15%,transparent));--_a:var(--vf-accent,var(--_pa,${system ? "AccentColor" : "#0b57d0"}));--_at:var(--vf-accent-text,#fff);--_f:var(--vf-focus,var(--_a));--_mark:var(--vf-mark,#e5243b);--_bd:var(--vf-backdrop,rgb(0 0 0/45%));--_sh:var(--vf-shadow,0 12px 32px -12px rgb(0 0 0/35%));--_size:var(--vf-trigger-size,2.5em);--_off:var(--vf-offset,16px);--_z:var(--vf-z,2147483000)}`;
+  return `.vf{--_r:var(--vf-radius,var(--_pr,16px));--_s:var(--vf-surface,var(--_ps,Canvas));--_t:var(--vf-text,var(--_pt,CanvasText));--_m:var(--vf-muted,var(--_pm,color-mix(in srgb,var(--_t) 60%,transparent)));--_b:var(--vf-border,color-mix(in srgb,var(--_t) 15%,transparent));--_a:var(--vf-accent,var(--_pa,${system ? "AccentColor" : "#0b57d0"}));--_at:var(--vf-accent-text,#fff);--_f:var(--vf-focus,var(--_a));--_mark:var(--vf-mark,#e5243b);--_bd:var(--vf-backdrop,rgb(0 0 0/45%));--_sh:var(--vf-shadow,0 12px 32px -12px rgb(0 0 0/35%));--_size:var(--vf-trigger-size,2.5em);--_off:var(--vf-offset,16px);--_toff:var(--vf-offset,0px);--_z:var(--vf-z,2147483000)}`;
 }
 
-const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-icon]{width:var(--_size);padding:0;justify-content:center}.trigger[data-icon] svg{width:100%;height:100%}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}.still .trigger{transition:none!important}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
+const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-icon]{width:var(--_size);padding:0;justify-content:center}.trigger[data-icon]>svg{width:62.5%;height:62.5%}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger:where([data-tab][data-y=bottom]){bottom:calc(var(--_toff) + env(safe-area-inset-bottom,0px))}.trigger:where([data-tab][data-y=top]){top:calc(var(--_toff) + env(safe-area-inset-top,0px))}.trigger:where([data-tab][data-x=right]){right:env(safe-area-inset-right,0px)}.trigger:where([data-tab][data-x=left]){left:env(safe-area-inset-left,0px)}.trigger>svg{width:1.15em;height:1.15em}.tip{position:absolute;top:50%;translate:0 -50%;direction:ltr;box-sizing:border-box;width:max-content;max-width:calc(100vw - 100% - 2 * var(--_off) - 10px);white-space:normal;display:flex;align-items:center;gap:4px;visibility:hidden;opacity:0;pointer-events:none;transition:opacity .15s,visibility .15s}[data-x=right]>.tip{right:calc(100% + 10px)}[data-x=left]>.tip{left:calc(100% + 10px);flex-direction:row-reverse}[data-x=left]>.tip svg{rotate:180deg}.tip svg{width:1.15em;height:1.15em;flex:none}.trigger:focus-visible>.tip{visibility:inherit;opacity:1}@media (hover:hover){.trigger:hover>.tip{visibility:inherit;opacity:1}}.capturing,.capturing .backdrop{visibility:hidden}.capturing .tip{transition:none}.still .trigger{transition:none!important}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
 
-const THEME = `.trigger{font-weight:600;border:1px solid var(--_t);border-radius:999px;background:var(--_s);color:var(--_t);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s}.trigger:hover{background:color-mix(in srgb,var(--_s) 90%,var(--_t))}`;
+// In the corner the tab is square on both edges; --vf-offset lifts it, and clamp() rounds its end side.
+const THEME = `.trigger{font-weight:600;border:0;border-radius:999px;background:var(--_t);color:var(--_s);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s,color .15s}@media (hover:hover){.trigger:hover{background:var(--_s);color:var(--_t)}}.tip{padding:6px 8px 6px 14px;border-radius:999px;background:var(--_t);color:var(--_s);font-weight:700;box-shadow:var(--_sh)}[data-x=left]>.tip{padding:6px 14px 6px 8px}.trigger:where([data-tab]){--_tr:clamp(0px,var(--_toff) * 1000,var(--_r));border-radius:var(--_r)}.trigger:where([data-tab][data-y=bottom]){border-bottom-left-radius:var(--_tr);border-bottom-right-radius:var(--_tr)}.trigger:where([data-tab][data-y=top]){border-top-left-radius:var(--_tr);border-top-right-radius:var(--_tr)}.trigger:where([data-tab][data-x=right]){border-top-right-radius:0;border-bottom-right-radius:0}.trigger:where([data-tab][data-x=left]){border-top-left-radius:0;border-bottom-left-radius:0}`;
 
 // The dialog draws its icons with ./icon; sharing it would put a chunk into the loader's budget.
-function icon(): SVGSVGElement {
+function icon(d: string, attributes: Record<string, string>): SVGSVGElement {
   const svg = document.createElementNS(SVG, "svg");
   const path = document.createElementNS(SVG, "path");
-  const attributes = {
+  for (const [name, value] of Object.entries({
     viewBox: "0 0 24 24",
     "aria-hidden": "true",
-    fill: "currentColor",
-    part: "trigger-icon",
-  };
-  for (const [name, value] of Object.entries(attributes)) svg.setAttribute(name, value);
-  // Six blades out to the edge: the trigger's border, in the same colour, is their ring.
-  path.setAttribute(
-    "d",
-    "M12 12Q17.2 7.9 24 12L22.6 17.6Q16.2 11.6 12 12zM12 12Q18.1 14.5 18 22.4L12.4 24Q14.5 15.4 12 12zM12 12Q12.9 18.5 6 22.4L1.8 18.4Q10.3 15.8 12 12zM12 12Q6.8 16.1 0 12L1.4 6.4Q7.8 12.4 12 12zM12 12Q5.9 9.5 6 1.6L11.6 0Q9.5 8.6 12 12zM12 12Q11.1 5.5 18 1.6L22.2 5.6Q13.7 8.2 12 12z",
-  );
+    ...attributes,
+  })) {
+    svg.setAttribute(name, value);
+  }
+  path.setAttribute("d", d);
   svg.append(path);
   return svg;
 }
+
+const FLAG =
+  "M4 3a1 1 0 0 1 2 0v18a1 1 0 0 1-2 0zM7 4c2.5-1.5 5-1.5 7 0s4 1.5 6 0v10c-2 1.5-4 1.5-6 0s-4.5-1.5-7 0z";
+const ARROW = "M5 12h14m-6-6 6 6-6 6";
 
 function field(element: HTMLElement): boolean {
   return element.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName);
@@ -273,6 +274,10 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
 
   let trigger: HTMLButtonElement | undefined;
   let label: HTMLSpanElement | undefined;
+  const tip = document.createElement("span");
+  // The pill lays out left to right on any page; the name inside keeps its own direction.
+  tip.dir = "auto";
+  tip.setAttribute("part", "trigger-tooltip-text");
   let unlisten: (() => void) | undefined;
 
   // Alt changes event.key on macOS (Alt+F types ƒ), so the key's code is matched too.
@@ -335,18 +340,27 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
         trigger.setAttribute("part", "trigger");
         label = document.createElement("span");
         label.setAttribute("part", "trigger-text");
-        trigger.append(icon(), label);
+        const tooltip = document.createElement("span");
+        tooltip.className = "tip";
+        tooltip.id = "vf-tip";
+        tooltip.setAttribute("part", "trigger-tooltip");
+        tooltip.setAttribute("aria-hidden", "true");
+        const stroke = { stroke: "currentColor", "stroke-width": "2.4", "stroke-linecap": "round" };
+        tooltip.append(tip, icon(ARROW, { fill: "none", ...stroke, part: "icon" }));
+        trigger.setAttribute("aria-describedby", tooltip.id);
+        trigger.append(icon(FLAG, { fill: "currentColor", part: "trigger-icon" }), label, tooltip);
         trigger.addEventListener("click", start);
         wrapper.prepend(trigger);
       }
       const [y, x] = (options.position ?? "bottom-right").split("-");
       trigger.dataset.y = y;
       trigger.dataset.x = x;
+      trigger.toggleAttribute("data-tab", options.trigger !== "button");
       const { trigger: name, triggerText } = options.strings ?? {};
       const accessible = name || triggerText || "Send feedback";
       trigger.setAttribute("aria-label", accessible);
       const keys = options.shortcut ? spoken(options.shortcut) : undefined;
-      trigger.title = keys ? `${accessible} (${keys})` : accessible;
+      tip.textContent = keys ? `${accessible} (${keys})` : accessible;
       // Icon only unless the host gives a visible text.
       trigger.toggleAttribute("data-icon", !triggerText);
       if (label) {

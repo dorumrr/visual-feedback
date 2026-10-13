@@ -41,8 +41,29 @@ it("the README's demo image is in the repo and under 1 MB", () => {
 it("every code block in the README is one a test runs", () => {
   // Every fence line, indented or with ~~~ or extra words too; every second one opens a block.
   const fences = [...doc.matchAll(/^[ \t]*(?:```|~~~)(.*)$/gm)].map((match) => match[1]?.trim());
-  expect(fences).toHaveLength(8);
-  expect(fences.filter((_, index) => index % 2 === 0).sort()).toEqual(["js", "sh", "ts", "tsx"]);
+  expect(fences).toHaveLength(10);
+  expect(fences.filter((_, index) => index % 2 === 0).sort()).toEqual([
+    "js",
+    "sh",
+    "text",
+    "ts",
+    "tsx",
+  ]);
+});
+
+it("the README's prompt for a coding agent names the package and the guide it ships", () => {
+  const prompt = block("text");
+  // One line, so a copy pastes as one paragraph.
+  expect(prompt.trim().split("\n")).toHaveLength(1);
+  expect(prompt).toContain("visual-feedback npm package");
+  // The package page by its full address, so no agent takes a package with a similar name.
+  expect(prompt).toContain("(https://www.npmjs.com/package/visual-feedback)");
+  expect(prompt).toContain("AGENTS.md");
+  expect(prompt.replace(/\s+/g, " ")).toContain(
+    "match its position, colours and corners to our design",
+  );
+  const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+  expect(pkg.files).toContain("AGENTS.md");
 });
 
 it("the CHANGELOG has an entry for the version the package will publish", () => {

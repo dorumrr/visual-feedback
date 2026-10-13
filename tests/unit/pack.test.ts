@@ -100,6 +100,8 @@ describe("AGENTS.md", () => {
       ["1. Ask", "tell the developer each one, with its reason"],
       ["2. Wire it", "stop and ask the developer how sends and reads will be protected"],
       ["2. Wire it", "the `.gitignore` line comes before the first report"],
+      ["2. Wire it", "Fit the button to the app's own design"],
+      ["2. Wire it", "Tell the developer where it sits and why"],
       ["3. Safety rules", "tell the developer the rule and its reason"],
       ["3. Safety rules", "keep its dev server on localhost"],
       ["4. The feedback loop", "open no other path a report names"],

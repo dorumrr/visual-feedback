@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 (not released yet)
+
+- Breaking: the trigger is a tab by default, in the corner `position` names, with a flag icon. It
+  has no border: the text colour fills it, and on hover the colours swap. `--vf-offset` lifts the
+  tab along its side edge, and no longer moves it off that edge. `trigger: "button"` keeps the
+  round button, 16px from both edges, filled the same way (SPEC §3).
+- Breaking: the trigger has no `title`. Its tooltip is the widget's own: it shows at once on hover
+  or keyboard focus, beside the trigger with an arrow pointing at it, and has its own part,
+  `trigger-tooltip`. Screen readers still hear it as the description.
+- The README starts with a prompt to give a coding agent, naming the package by its npm page, and AGENTS.md asks the agent to fit the
+  button to the app's design.
+- The demo styles the tooltip as its "Click here" hint, and fades that hint while the tooltip
+  shows.
+
 ## 0.3.3 (2026-10-13)
 
 - The trigger stands out more: a swirl icon that fills it, in place of the speech bubble, ringed

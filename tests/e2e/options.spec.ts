@@ -78,7 +78,9 @@ test("strings replace every text the widget shows", async ({ page }) => {
     onSubmit: undefined,
   });
   await watchLive(page);
-  await expect(page.getByRole("button", { name: "X trigger" })).toHaveText("X triggerText");
+  await expect(
+    page.getByRole("button", { name: "X trigger" }).locator('[part="trigger-text"]'),
+  ).toHaveText("X triggerText");
   await page.getByRole("button", { name: "X trigger" }).click();
   const dialog = page.getByRole("dialog", { name: "X title" });
   await expect(dialog).toBeVisible();
@@ -133,7 +135,7 @@ test("strings replace every text the widget shows", async ({ page }) => {
 test("an empty triggerText at creation leaves the icon alone, 40 px square", async ({ page }) => {
   await mount(page, { strings: { triggerText: "" } });
   const named = page.getByRole("button", { name: "Send feedback", exact: true });
-  await expect(named).toHaveText("");
+  await expect(named.locator('[part="trigger-text"]')).toBeHidden();
   const box = await named.boundingBox();
   expect([box?.width, box?.height]).toEqual([40, 40]);
 });
@@ -142,21 +144,21 @@ test("the trigger is an icon alone, and shows text only when triggerText is give
   page,
 }) => {
   await mount(page);
-  await expect(page.getByRole("button", { name: "Send feedback", exact: true })).toHaveText("");
+  const shown = (name: string) =>
+    page.getByRole("button", { name, exact: true }).locator('[part="trigger-text"]');
+  await expect(shown("Send feedback")).toHaveText("");
   await vf(page, "update", { strings: { trigger: "Envoyer un avis" } });
-  await expect(page.getByRole("button", { name: "Envoyer un avis", exact: true })).toHaveText("");
+  await expect(shown("Envoyer un avis")).toHaveText("");
   await vf(page, "update", { strings: { trigger: "Envoyer un avis", triggerText: "Avis" } });
-  await expect(page.getByRole("button", { name: "Envoyer un avis", exact: true })).toHaveText(
-    "Avis",
-  );
+  await expect(shown("Envoyer un avis")).toHaveText("Avis");
   // Only the visible text given: the name is that text, so voice control finds what it shows.
   await vf(page, "update", { strings: { triggerText: "Help" } });
-  await expect(page.getByRole("button", { name: "Help", exact: true })).toHaveText("Help");
+  await expect(shown("Help")).toHaveText("Help");
   // An empty label, as an i18n lookup can return, still leaves the button its English name.
   await vf(page, "update", { strings: { triggerText: "" } });
   const named = page.getByRole("button", { name: "Send feedback", exact: true });
-  await expect(named).toHaveText("");
-  // Without text it is round again.
+  await expect(shown("Send feedback")).toHaveText("");
+  // Without text it is square again.
   const box = await named.boundingBox();
   expect(Math.round(box?.width ?? 0)).toBe(Math.round(box?.height ?? -1));
 });
@@ -230,11 +232,185 @@ test("a shortcut on a digit or a named key also opens it", async ({ page }) => {
   await expect(page.getByRole("dialog")).toBeVisible();
 });
 
+test("by default the trigger is a tab in the corner, square on both edges, with no border", async ({
+  page,
+}) => {
+  await mount(page);
+  // By class: a label given alone renames it.
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  const { width = 0, height = 0 } = page.viewportSize() ?? {};
+  const edges = async () => {
+    const box = await trigger.boundingBox();
+    if (!box) throw new Error("no trigger");
+    const [left, top] = [box.x, box.y].map(Math.round);
+    const right = Math.round(width - box.x - box.width);
+    const bottom = Math.round(height - box.y - box.height);
+    return { size: [box.width, box.height], left, top, right, bottom };
+  };
+  /** Each side's border width, and each corner's radius as "0px" or "rounded". */
+  const shape = () =>
+    trigger.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const sides = ["top", "right", "bottom", "left"].map((side) =>
+        style.getPropertyValue(`border-${side}-width`),
+      );
+      const corners = ["top-left", "top-right", "bottom-right", "bottom-left"].map((corner) =>
+        style.getPropertyValue(`border-${corner}-radius`) === "0px" ? "0px" : "rounded",
+      );
+      return { sides, corners };
+    });
+  expect(await edges()).toMatchObject({ size: [40, 40], right: 0, bottom: 0 });
+  expect(await shape()).toEqual({
+    sides: ["0px", "0px", "0px", "0px"],
+    corners: ["rounded", "0px", "0px", "0px"],
+  });
+  // A label makes it wider, still in the corner.
+  await vf(page, "update", { strings: { triggerText: "Feedback" } });
+  const wide = await edges();
+  expect(wide.size[0]).toBeGreaterThan(40);
+  expect(wide).toMatchObject({ right: 0, bottom: 0 });
+  expect((await shape()).sides).toEqual(["0px", "0px", "0px", "0px"]);
+  await vf(page, "update", { strings: undefined });
+  for (const [position, corners] of [
+    ["top-left", ["0px", "0px", "rounded", "0px"]],
+    ["top-right", ["0px", "0px", "0px", "rounded"]],
+    ["bottom-left", ["0px", "rounded", "0px", "0px"]],
+  ] as const) {
+    await vf(page, "update", { position });
+    const [y, x] = position.split("-") as ["top" | "bottom", "left" | "right"];
+    expect(await edges(), position).toMatchObject({ [x]: 0, [y]: 0 });
+    expect((await shape()).corners, position).toEqual(corners);
+  }
+  await vf(page, "update", { position: "top-left" });
+  // The round button stays one option away, in its corner.
+  await vf(page, "update", { trigger: "button" });
+  expect(await edges()).toMatchObject({ size: [40, 40], left: 16, top: 16 });
+  await expect(trigger).toHaveCSS("border-left-width", "0px");
+  await expect(trigger).toHaveCSS("border-top-left-radius", "999px");
+});
+
+test("the trigger's tooltip shows at once on hover or keyboard focus, and points at it", async ({
+  page,
+}) => {
+  await mount(page);
+  const trigger = page.getByRole("button", { name: "Send feedback" });
+  const tip = page.locator("visual-feedback").locator(".tip");
+  await expect(tip).toHaveText("Send feedback");
+  await expect(tip).toHaveAttribute("part", "trigger-tooltip");
+  // The trigger's own colours at rest: readable on any theme.
+  const [text, surface] = await trigger.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return [style.backgroundColor, style.color];
+  });
+  await expect(tip).toHaveCSS("background-color", text);
+  await expect(tip).toHaveCSS("color", surface);
+  // No title too: the browser's own tooltip would show late, over this one.
+  expect(await trigger.getAttribute("title")).toBeNull();
+  await expect(tip).toHaveCSS("opacity", "0");
+  await expect(tip).toHaveCSS("transition-delay", /^0s(, 0s)*$/);
+  // One transition, on the tooltip itself: the fade in and the fade out take the same time.
+  const fade = await tip.evaluate((element) => getComputedStyle(element).transitionDuration);
+  expect(fade).toMatch(/^0\.15s(, 0\.15s)*$/);
+  await expect(tip).toBeHidden();
+  await trigger.hover();
+  await expect(tip).toHaveCSS("opacity", "1");
+  await expect(tip).toBeVisible();
+  expect(await tip.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe(fade);
+  // Left of the tab, centred on it, with a click passing through to the page.
+  const [t, b] = [await tip.boundingBox(), await trigger.boundingBox()];
+  if (!t || !b) throw new Error("no box");
+  expect(Math.round(b.x - (t.x + t.width))).toBe(10);
+  expect(Math.abs(t.y + t.height / 2 - (b.y + b.height / 2))).toBeLessThan(1);
+  await expect(tip).toHaveCSS("pointer-events", "none");
+  await page.mouse.move(0, 0);
+  await expect(tip).toHaveCSS("opacity", "0");
+  // After a key press, so the focus counts as the keyboard's and matches :focus-visible.
+  await page.keyboard.press("Shift");
+  await trigger.focus();
+  expect(await trigger.evaluate((element) => element.matches(":focus-visible"))).toBe(true);
+  await expect(tip).toHaveCSS("opacity", "1");
+  // On the left edge it sits right of the trigger.
+  await vf(page, "update", { position: "bottom-left" });
+  const [left, button] = [await tip.boundingBox(), await trigger.boundingBox()];
+  if (!left || !button) throw new Error("no box");
+  expect(Math.round(left.x - (button.x + button.width))).toBe(10);
+});
+
+test("on a touch screen, which cannot hover, the trigger keeps its colours and shows no tooltip", async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName === "firefox", "Playwright has no mobile emulation in Firefox");
+  const context = await browser.newContext({
+    isMobile: true,
+    hasTouch: true,
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await context.newPage();
+  await page.goto("/widget/");
+  expect(await page.evaluate(() => matchMedia("(hover: hover)").matches)).toBe(false);
+  await mount(page);
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  const tip = trigger.locator(".tip");
+  const before = await trigger.evaluate((element) => getComputedStyle(element).backgroundColor);
+  // A tap leaves :hover behind on a touch screen, until the next tap elsewhere.
+  await trigger.hover();
+  // Read once the 0.15s fade would be over: a poll could pass on its first frame.
+  await page.waitForTimeout(300);
+  expect(await trigger.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(
+    before,
+  );
+  await expect(tip).toBeHidden();
+  await context.close();
+});
+
+test("on a right-to-left page the tooltip's arrow still points at the trigger, and a long name wraps on screen", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    document.documentElement.dir = "rtl";
+  });
+  await mount(page, { strings: { trigger: "إرسال ملاحظات" } });
+  const trigger = page.getByRole("button", { name: "إرسال ملاحظات" });
+  const tip = page.locator("visual-feedback").locator(".tip");
+  await trigger.hover();
+  await expect(tip).toHaveCSS("opacity", "1");
+  const [arrow, name] = [
+    await tip.locator("svg").boundingBox(),
+    await tip.locator("span").boundingBox(),
+  ];
+  if (!arrow || !name) throw new Error("no box");
+  // The tab is on the right edge, so the arrow is the tooltip's right end.
+  expect(arrow.x).toBeGreaterThanOrEqual(name.x + name.width);
+  await expect(tip.locator("span")).toHaveAttribute("dir", "auto");
+
+  await page.setViewportSize({ width: 320, height: 640 });
+  const long = "A long name a site might give its feedback button, longer than the screen";
+  await vf(page, "update", { strings: { trigger: long } });
+  await page.getByRole("button", { name: long }).hover();
+  await expect(tip).toHaveCSS("opacity", "1");
+  const box = await tip.boundingBox();
+  if (!box) throw new Error("no tooltip");
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.height).toBeGreaterThan(40);
+  // A label widens the trigger, and the tooltip's room shrinks with it.
+  await vf(page, "update", { strings: { trigger: long, triggerText: "Feedback" } });
+  await page.getByRole("button", { name: long }).hover();
+  await expect(tip).toHaveCSS("opacity", "1");
+  expect((await tip.boundingBox())?.x).toBeGreaterThanOrEqual(0);
+  // The round button keeps 16 px from the edge, and the tooltip's padding stays inside its room.
+  await vf(page, "update", { trigger: "button", strings: { trigger: long } });
+  await page.mouse.move(0, 0);
+  await page.getByRole("button", { name: long }).hover();
+  await expect(tip).toHaveCSS("opacity", "1");
+  expect((await tip.boundingBox())?.x).toBeGreaterThanOrEqual(0);
+});
+
 test("the trigger's tooltip names a working shortcut as the platform's keyboards do", async ({
   page,
 }) => {
   const title = () =>
-    page.locator("visual-feedback").locator(".trigger").getAttribute("title", { timeout: 1000 });
+    page.locator("visual-feedback").locator(".tip").textContent({ timeout: 1000 });
   const platform = (name: string) =>
     page.evaluate((name) => {
       Object.defineProperty(Navigator.prototype, "platform", {
@@ -301,7 +477,7 @@ test("update changes the trigger, theme, css and texts at once", async ({ page }
   const trigger = () => page.locator("visual-feedback").locator(".trigger");
   await vf(page, "update", { position: "top-left", strings: { trigger: "Feedback" } });
   const box = await page.getByRole("button", { name: "Feedback", exact: true }).boundingBox();
-  expect([Math.round(box?.x ?? -1), Math.round(box?.y ?? -1)]).toEqual([16, 16]);
+  expect([Math.round(box?.x ?? -1), Math.round(box?.y ?? -1)]).toEqual([0, 0]);
 
   await page.emulateMedia({ colorScheme: "light" });
   await vf(page, "update", { theme: "dark" });
@@ -482,7 +658,7 @@ test("update: undefined puts a key back to its default, and capture is replaced 
   );
   const box = await page.getByRole("button", { name: "Send feedback" }).boundingBox();
   const viewport = page.viewportSize();
-  expect(Math.round((viewport?.width ?? 0) - (box?.x ?? 0) - (box?.width ?? 0))).toBe(16);
+  expect(Math.round((viewport?.width ?? 0) - (box?.x ?? 0) - (box?.width ?? 0))).toBe(0);
   await page.getByRole("button", { name: "Send feedback" }).click();
   await page.getByLabel("Your note").fill("A note");
   await page.getByRole("button", { name: "Send", exact: true }).click();

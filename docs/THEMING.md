@@ -39,8 +39,8 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 |---|---|---|
 | `--vf-font` | `inherit` | font family of all text, such as `Inter, sans-serif` |
 | `--vf-radius` | from the page's button corners, so the widget's buttons match them up to 15px (this is 1.6 times theirs, up to `24px`), else `16px` | panel and composer, and a share of it for buttons and the image |
-| `--vf-surface` | with `theme: "auto"` the page's background, else `Canvas` | panel, tool rail and composer background |
-| `--vf-text` | with `theme: "auto"` the page's text colour, else `CanvasText` | text, and the trigger's icon and border |
+| `--vf-surface` | with `theme: "auto"` the page's background, else `Canvas` | panel, tool rail and composer background, the trigger's icon and label, its fill on hover, and the text of its tooltip |
+| `--vf-text` | with `theme: "auto"` the page's text colour, else `CanvasText` | text, the trigger's fill, its icon and label on hover, and its tooltip's background |
 | `--vf-muted` | text at 60%, more on a page whose text would make that too faint | hints, counters |
 | `--vf-border` | text at 15% | hairlines |
 | `--vf-accent` | the page's accent, else `AccentColor`, or `#0b57d0` where the browser has no `AccentColor` | Send button and its menu button, "Capture this view", active tool, chosen screenshot |
@@ -48,9 +48,9 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 | `--vf-focus` | `--vf-accent` | focus ring |
 | `--vf-mark` | `#e5243b` | marks on the screenshot |
 | `--vf-backdrop` | `rgb(0 0 0 / 45%)` | overlay behind the image |
-| `--vf-shadow` | `0 12px 32px -12px rgb(0 0 0 / 35%)` | trigger, panel and draft bar |
+| `--vf-shadow` | `0 12px 32px -12px rgb(0 0 0 / 35%)` | trigger, its tooltip, panel and draft bar |
 | `--vf-trigger-size` | `2.5em`, 40px on a 16px site | trigger height, and its width when it shows the icon alone |
-| `--vf-offset` | `16px` | trigger and draft bar distance from the edges |
+| `--vf-offset` | `16px`, and `0px` for the tab; a length, not a percentage | draft bar and round trigger distance from the edges; the tab keeps to its side edge, and this lifts it along it |
 | `--vf-z` | `2147483000` | stacking |
 
 ```css
@@ -62,8 +62,8 @@ visual-feedback {
 ```
 
 ## 3. `::part()`
-Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`, `backdrop`,
-`dialog`, `header`, `title`, `minimise`, `body`, `stage`, `image`, `toolbar`, `tool`, `tool-active`,
+Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`, `trigger-tooltip`,
+`trigger-tooltip-text`, `backdrop`, `dialog`, `header`, `title`, `minimise`, `body`, `stage`, `image`, `toolbar`, `tool`, `tool-active`,
 `divider`, `undo`, `clear`, `remove`, `icon`, `text-input`, `selection`, `strip`, `thumb`,
 `thumb-pick`, `thumb-image`, `thumb-number`, `thumb-remove`, `add`, `label`, `composer`, `note`,
 `composer-bar`, `category`, `footer`, `split`, `send-more`, `menu`, `save-pdf`, `actions`, `cancel`,

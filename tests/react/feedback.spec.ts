@@ -65,13 +65,13 @@ test("props follow the component, a removed prop goes back to its default, unmou
   await expect(trigger(page)).toBeVisible();
   await page.getByRole("button", { name: "Toggle side" }).click();
   const left = await trigger(page, "Left feedback").boundingBox();
-  expect(Math.round(left?.x ?? -1)).toBe(16);
+  expect(Math.round(left?.x ?? -1)).toBe(0);
   // The left side passes no shortcut: removed, it no longer takes the key.
   expect(await shortcutTaken(page)).toBe(false);
   await page.getByRole("button", { name: "Toggle side" }).click();
   const right = await trigger(page).boundingBox();
   const width = page.viewportSize()?.width ?? 0;
-  expect(Math.round(width - (right?.x ?? 0) - (right?.width ?? 0))).toBe(16);
+  expect(Math.round(width - (right?.x ?? 0) - (right?.width ?? 0))).toBe(0);
   await expect(page.locator("visual-feedback")).toHaveCount(1);
   // The control: mounted with the shortcut, the same key is taken (and opens it).
   expect(await shortcutTaken(page)).toBe(true);

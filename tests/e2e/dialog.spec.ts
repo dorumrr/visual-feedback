@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/widget/");
 });
 
-test("the trigger is a named round icon button in the chosen corner, and none draws nothing", async ({
+test("the trigger is a named icon tab on the chosen edge or a round button in the chosen corner, and none draws nothing", async ({
   page,
 }) => {
   await mount(page);
@@ -19,22 +19,26 @@ test("the trigger is a named round icon button in the chosen corner, and none dr
   if (!box || !viewport) return;
   expect(box.height).toBe(40);
   expect(box.width).toBe(40);
-  expect(Math.round(viewport.width - box.x - box.width)).toBe(16);
-  expect(Math.round(viewport.height - box.y - box.height)).toBe(16);
-  await expect(trigger(page)).toHaveText("");
-  await expect(trigger(page)).toHaveCSS("border-top-left-radius", "999px");
+  await expect(trigger(page).locator('[part="trigger-text"]')).toHaveText("");
 
-  for (const position of ["top-left", "top-right", "bottom-left", "bottom-right"]) {
-    await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
-    await mount(page, { position });
-    const corner = await trigger(page).boundingBox();
-    const [y, x] = position.split("-");
-    const [left, top] = [corner?.x ?? -1, corner?.y ?? -1];
-    const fromX = x === "left" ? left : viewport.width - left - (corner?.width ?? 0);
-    const fromY = y === "top" ? top : viewport.height - top - (corner?.height ?? 0);
-    expect(Math.round(fromX), position).toBe(16);
-    expect(Math.round(fromY), position).toBe(16);
+  // The tab sits in the corner; the button keeps 16 px from both edges.
+  for (const [shape, edge, end] of [
+    ["tab", 0, 0],
+    ["button", 16, 16],
+  ] as const) {
+    for (const position of ["top-left", "top-right", "bottom-left", "bottom-right"]) {
+      await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+      await mount(page, { position, trigger: shape });
+      const corner = await trigger(page).boundingBox();
+      const [y, x] = position.split("-");
+      const [left, top] = [corner?.x ?? -1, corner?.y ?? -1];
+      const fromX = x === "left" ? left : viewport.width - left - (corner?.width ?? 0);
+      const fromY = y === "top" ? top : viewport.height - top - (corner?.height ?? 0);
+      expect(Math.round(fromX), `${shape} ${position}`).toBe(edge);
+      expect(Math.round(fromY), `${shape} ${position}`).toBe(end);
+    }
   }
+  await expect(trigger(page)).toHaveCSS("border-top-left-radius", "999px");
 
   await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
   await mount(page, { trigger: "none" });
@@ -255,8 +259,8 @@ test("a page with * { all: unset } and button { display: none } still gets a wor
   const box = await trigger(page).boundingBox();
   const viewport = page.viewportSize();
   expect(box?.height).toBe(40);
-  expect(Math.round((viewport?.width ?? 0) - (box?.x ?? 0) - (box?.width ?? 0))).toBe(16);
-  expect(Math.round((viewport?.height ?? 0) - (box?.y ?? 0) - 40)).toBe(16);
+  expect(Math.round((viewport?.width ?? 0) - (box?.x ?? 0) - (box?.width ?? 0))).toBe(0);
+  expect(Math.round((viewport?.height ?? 0) - (box?.y ?? 0) - 40)).toBe(0);
   await trigger(page).click();
   const note = page.getByRole("textbox", { name: "Your note" });
   await expect(note).toBeVisible();
@@ -295,7 +299,8 @@ test("under the CSP that SPEC section 11 lists, the widget opens and closes with
   });
   await page.goto("/widget/");
   await mount(page);
-  await expect(trigger(page)).toHaveCSS("border-top-left-radius", "999px");
+  // The tab's open edge, a rule of the default sheets, applied under this CSP.
+  await expect(trigger(page)).toHaveCSS("border-right-width", "0px");
   await trigger(page).click();
   await expect(page.getByRole("textbox", { name: "Your note" })).toBeFocused();
   await expect(page.getByRole("dialog")).toHaveCSS("background-color", "rgba(0, 0, 0, 0.45)");

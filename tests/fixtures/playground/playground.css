@@ -730,12 +730,12 @@ main {
   }
 }
 
-/* Points at the widget's trigger: its default corner, offset (16px) and size (2.5em). */
+/* Points at the widget's trigger: its tab in the bottom-right corner, 2.5em square. */
 .click-hint {
   position: fixed;
   z-index: 15;
-  right: calc(16px + 2.5em + 10px + env(safe-area-inset-right, 0px));
-  bottom: calc(16px + 1.25em + env(safe-area-inset-bottom, 0px));
+  right: calc(2.5em + 10px + env(safe-area-inset-right, 0px));
+  bottom: calc(1.25em + env(safe-area-inset-bottom, 0px));
   translate: 0 50%;
   margin: 0;
   display: flex;
@@ -749,6 +749,7 @@ main {
   white-space: nowrap;
   box-shadow: var(--shadow);
   pointer-events: none;
+  transition: opacity 0.15s;
   --away: -8px, 0;
   animation:
     hint-in 0.4s ease-out both,
@@ -757,9 +758,18 @@ main {
 .click-hint[hidden] {
   display: none;
 }
+/* The widget's own tooltip takes its place while the trigger is hovered or focused. */
+body:has(visual-feedback:hover, visual-feedback:focus-within) .click-hint {
+  opacity: 0;
+}
+visual-feedback::part(trigger-tooltip) {
+  background: linear-gradient(135deg, var(--pink-fill), var(--blue));
+  color: #fff;
+  box-shadow: var(--shadow);
+}
 .click-arrow {
-  width: 18px;
-  height: 18px;
+  width: 1.15em;
+  height: 1.15em;
   stroke-width: 2.4;
 }
 @keyframes hint-in {
@@ -775,13 +785,17 @@ main {
 /* Above the trigger on a phone, clear of the status line beside it. */
 @media (max-width: 600px) {
   .click-hint {
-    right: calc(16px + env(safe-area-inset-right, 0px));
-    bottom: calc(16px + 2.5em + 10px + env(safe-area-inset-bottom, 0px));
+    right: calc(4px + env(safe-area-inset-right, 0px));
+    bottom: calc(2.5em + 10px + env(safe-area-inset-bottom, 0px));
     translate: none;
     --away: 0, -8px;
   }
   .click-arrow {
     rotate: 90deg;
+  }
+  /* Clear of the hint above the tab. */
+  #status {
+    max-width: calc(100vw - 160px);
   }
 }
 @media (prefers-reduced-motion: reduce) {

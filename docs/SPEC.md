@@ -15,8 +15,8 @@ idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> s
                                               +--Esc / Keep as draft / Add screenshot--> draft
 annotating, draft --Cancel (it may ask first, below) / Discard--> idle
 ```
-- **idle:** the trigger button shows (`trigger: "button"`), or nothing shows (`trigger: "none"`,
-  where the host calls `open()`).
+- **idle:** the trigger shows, a tab (`trigger: "tab"`) or a round button (`trigger: "button"`), or
+  nothing shows (`trigger: "none"`, where the host calls `open()`).
 - **capturing:** the trigger and any open panel are hidden, so they are not in the image. The
   screen is captured (SPEC §5), and a screen reader is told the `capturing` text.
 - **capture error:** the `captureError` text, with "Try again" (back to capturing), "Send without
@@ -48,19 +48,25 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   the same question when it would throw work away, close the dialog, and the draft goes with it.
 
 ## 3. The trigger
-- It is a small round button, 2.5em across by default (40 px on a 16 px site), in a corner
-  (`position`), filled by a swirl icon edged by a ring in the same colour, with the `trigger`
-  accessible name. A host that gives `triggerText` gets that short label beside a small icon, as a pill; with
-  only `triggerText` given, that text is the name too. A host that sets both keeps `triggerText`
-  inside `trigger`, so speech control can say what it sees. It has no badge, and it does not move
-  or pulse.
-- Its tooltip (`title`) is its name, as for the dialog's icon buttons. With a `shortcut` that can
-  match, it is the name and the keys, each modifier once, joined by ` + `, as the platform's
-  keyboards name them: Option, Command, Control and Shift on a Mac, iPhone or iPad
-  (`navigator.platform`), as in `Send feedback (Option + Shift + F)`; Alt, Win, Ctrl and Shift on
-  Windows; Alt, Super, Ctrl and Shift elsewhere. A screen reader then reads the keys as the
-  description.
-- It sits 16 px from the edges by default, and it respects `env(safe-area-inset-*)`.
+- By default it is a small tab, 2.5em square (40 px on a 16 px site), in the corner `position`
+  names, square on both edges there, with a flag icon and the `trigger` accessible name.
+  `--vf-offset` lifts it along its side edge, and then its end side is rounded too.
+  `trigger: "button"` makes it a round button in that corner instead, 16 px from both edges.
+  Either has no border: the text colour fills it, and the icon and label take the background
+  colour. On hover, on a device that can hover, the two swap back.
+  A host that gives `triggerText` gets that short label beside a small icon, in a wider tab, or a
+  pill as a button; with only `triggerText` given, that text is the name too. A host that sets
+  both keeps `triggerText` inside `trigger`, so speech control can say what it sees. It has no
+  badge, and it does not move or pulse.
+- Its tooltip is its own, not the browser's `title`: a pill beside it, on the page's side, with an
+  arrow pointing at it. It fades in at once on keyboard focus, or on hover where the device can
+  hover, and out at the same speed.
+  It reads the name. With a `shortcut` that can match, it is the name and the keys, each modifier
+  once, joined by ` + `, as the platform's keyboards name them: Option, Command, Control and Shift
+  on a Mac, iPhone or iPad (`navigator.platform`), as in `Send feedback (Option + Shift + F)`;
+  Alt, Win, Ctrl and Shift on Windows; Alt, Super, Ctrl and Shift elsewhere. A screen reader reads
+  the tooltip as the description.
+- It respects `env(safe-area-inset-*)`.
 - It is hidden while there is a draft, whether the dialog is open or kept in the draft bar.
 - It does not move to keep clear of the page's content. The host moves it off its own content
   with `position` or `--vf-offset`.
