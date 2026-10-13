@@ -1622,7 +1622,7 @@ for (const [width, height] of [
   [667, 375],
   [375, 667],
   [320, 568],
-]) {
+] as const) {
   test(`at ${width}x${height} the dialog fits 16px inside the window, with nothing to scroll`, async ({
     page,
   }) => {
