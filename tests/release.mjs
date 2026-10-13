@@ -1,8 +1,10 @@
-// npm run release: sets the version, commits, pushes, starts the publish workflow and watches it.
+// npm run release: offers npm run check first, sets the version, commits, pushes, starts the publish
+// workflow and watches it. GitHub runs only the static half of the check.
 // Not "publish": npm runs a script of that name inside `npm publish` itself.
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { openSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
+import { ReadStream } from "node:tty";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const NAME = "visual-feedback";
@@ -111,170 +113,222 @@ function run(command, args, quiet = false) {
   return { ok: result.status === 0, out: (result.stdout ?? "").trim() };
 }
 
-function must(command, args, quiet = false) {
-  const result = run(command, args, quiet);
-  if (!result.ok) throw new Error(`${command} ${args.join(" ")} failed.`);
-  return result.out;
+/**
+ * Asks on the terminal, `offered` already typed, and returns the trimmed answer. A fresh reader
+ * each time: a shared one was found closed after a publish run's watch, failing the tag question.
+ */
+async function ask(question, offered = "") {
+  let input = process.stdin;
+  try {
+    input = new ReadStream(openSync("/dev/tty", "r"));
+  } catch {}
+  const reader = createInterface({ input, output: process.stdout });
+  try {
+    const answer = reader.question(question);
+    if (offered) reader.write(offered);
+    return (await answer).trim();
+  } finally {
+    reader.close();
+    if (input !== process.stdin) input.destroy();
+  }
 }
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-async function main() {
-  // Piped answers arrive before their question and are lost: it would end with nothing said.
-  if (!process.stdin.isTTY) throw new Error("Run it in a terminal: it asks before it publishes.");
-  const ask = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    if (must("git", ["branch", "--show-current"], true) !== "main") {
-      throw new Error("Run it on main: a real publish runs from main only.");
-    }
-    if (must("git", ["status", "--porcelain"], true)) {
-      throw new Error("Commit or stash your changes first: the release commit holds only its own.");
-    }
+/** `run` that throws when the command fails, else returns its output. */
+const strict =
+  (run) =>
+  (command, args, quiet = false) => {
+    const result = run(command, args, quiet);
+    if (!result.ok) throw new Error(`${command} ${args.join(" ")} failed.`);
+    return result.out;
+  };
+
+/** The release, with the terminal, the commands and the repo's files passed in, for a test to fake. */
+export async function release({ ask, run, sleep, read, write }) {
+  const must = strict(run);
+  const checked =
+    (await ask("Run the full check first, npm run check (a few minutes)? [y/N] ")).toLowerCase() ===
+    "y";
+  if (must("git", ["branch", "--show-current"], true) !== "main") {
+    throw new Error("Run it on main: a real publish runs from main only.");
+  }
+  if (must("git", ["status", "--porcelain"], true)) {
+    throw new Error("Commit or stash your changes first: the release commit holds only its own.");
+  }
+  const level = () => {
     must("git", ["fetch", "--quiet", "origin", "main"]);
     if (must("git", ["rev-list", "--count", "HEAD..origin/main"], true) !== "0") {
       throw new Error("main is behind origin/main: pull first.");
     }
-    // `git push origin main` sends every local commit, not only the release commit.
-    const unpushed = must("git", ["log", "--oneline", "origin/main..HEAD"], true);
-    if (unpushed) {
-      console.log(
-        `These commits are not on origin/main yet; the release pushes them too:\n${unpushed}`,
-      );
-      if ((await ask.question("Release them too? [y/N] ")).trim().toLowerCase() !== "y") {
-        console.log("Stopped: nothing was changed, committed, pushed or published.");
-        return;
-      }
-    }
-    const current = JSON.parse(readFileSync(file("package.json"), "utf8")).version;
-    const view = run("npm", ["view", NAME, "version"], true);
-    const published = view.ok ? view.out : undefined;
-    const changelog = readFileSync(file("CHANGELOG.md"), "utf8");
-    const entry = top(changelog);
-    const state = entry
-      ? `${entry.version}${entry.waiting ? ", not released yet" : ", dated"}`
-      : "none";
+  };
+  level();
+  // `git push origin main` sends every local commit, not only the release commit.
+  const unpushed = must("git", ["log", "--oneline", "origin/main..HEAD"], true);
+  if (unpushed) {
     console.log(
-      `package.json: ${current}, on npm: ${published ?? "not known (offline?)"}, CHANGELOG.md newest entry: ${state}`,
+      `These commits are not on origin/main yet; the release pushes them too:\n${unpushed}`,
     );
-
-    const question = ask.question("Version to publish: ");
-    ask.write(offer(current, published, changelog));
-    const version = (await question).trim();
-    // Every check runs before the first file is written.
-    if (!SEMVER.test(version)) throw new Error(`"${version}" is not a version like 1.2.3.`);
-    if (published && !newer(version, published)) {
-      throw new Error(`${version} is not newer than ${published}, which npm already has.`);
-    }
-    const refused = refusal(changelog, version);
-    if (refused) throw new Error(refused);
-
-    const today = new Date().toLocaleDateString("en-CA");
-    writeFileSync(file("CHANGELOG.md"), dated(changelog, version, today));
-    for (const name of ["package.json", "package-lock.json"]) {
-      writeFileSync(file(name), setVersion(readFileSync(file(name), "utf8"), version));
-    }
-    const changed = must("git", ["status", "--porcelain"], true);
-    if (changed) must("git", ["--no-pager", "diff", "--stat"]);
-
-    const go = await ask.question(
-      `${changed ? `Commit "Release ${version}", push` : "Push"} and publish ${version}? [y/N] `,
-    );
-    if (go.trim().toLowerCase() !== "y") {
-      if (changed)
-        must("git", ["checkout", "--", "CHANGELOG.md", "package.json", "package-lock.json"]);
-      console.log("Stopped: nothing was committed, pushed or published.");
+    if ((await ask("Release them too? [y/N] ")).toLowerCase() !== "y") {
+      console.log("Stopped: nothing was changed, committed, pushed or published.");
       return;
     }
-    if (changed) {
-      must("git", ["add", "CHANGELOG.md", "package.json", "package-lock.json"]);
-      must("git", ["commit", "--quiet", "-m", `Release ${version}`]);
-    }
-    must("git", ["push", "origin", "main"]);
+  }
+  const current = JSON.parse(read("package.json")).version;
+  const view = run("npm", ["view", NAME, "version"], true);
+  const published = view.ok ? view.out : undefined;
+  const changelog = read("CHANGELOG.md");
+  const entry = top(changelog);
+  const state = entry
+    ? `${entry.version}${entry.waiting ? ", not released yet" : ", dated"}`
+    : "none";
+  console.log(
+    `package.json: ${current}, on npm: ${published ?? "not known (offline?)"}, CHANGELOG.md newest entry: ${state}`,
+  );
 
-    const started = Date.now();
-    must("gh", ["workflow", "run", "publish.yml", "--ref", "main", "-f", "dry_run=false"]);
-    let id;
-    for (let i = 0; i < 30 && !id; i++) {
-      await sleep(2000);
-      const runs = JSON.parse(
-        must(
-          "gh",
-          [
-            "run",
-            "list",
-            "--workflow",
-            "publish.yml",
-            "--event",
-            "workflow_dispatch",
-            "--limit",
-            "5",
-            "--json",
-            "databaseId,createdAt,url",
-          ],
-          true,
-        ),
-      );
-      // Its clock may differ from this one by a few seconds.
-      const mine = runs.find((r) => Date.parse(r.createdAt) >= started - 10_000);
-      if (mine) {
-        id = String(mine.databaseId);
-        console.log(`Watching ${mine.url}`);
-      }
+  const version = await ask("Version to publish: ", offer(current, published, changelog));
+  // Every check runs before the first file is written.
+  if (!SEMVER.test(version)) throw new Error(`"${version}" is not a version like 1.2.3.`);
+  if (published && !newer(version, published)) {
+    throw new Error(`${version} is not newer than ${published}, which npm already has.`);
+  }
+  const refused = refusal(changelog, version);
+  if (refused) throw new Error(refused);
+  // After every refusal above, so a check is never run for a release that cannot happen.
+  if (checked) {
+    if (!run("npm", ["run", "check"]).ok) {
+      throw new Error("npm run check failed: nothing was changed, committed, pushed or published.");
     }
-    if (!id) throw new Error("The publish run did not show up: see the Actions tab.");
+    // The check takes minutes: origin may have moved meanwhile, and the push would then fail.
+    level();
+  }
 
-    // GitHub gives a step's log only once the run ends, so this shows the steps as they go.
-    if (!run("gh", ["run", "watch", id, "--exit-status", "--interval", "5"]).ok) {
-      // A publish that waited on a failed check says only that: the check run has the reason.
-      const sha = must("git", ["rev-parse", "HEAD"], true);
-      const check = run(
+  const today = new Date().toLocaleDateString("en-CA");
+  write("CHANGELOG.md", dated(changelog, version, today));
+  for (const name of ["package.json", "package-lock.json"]) {
+    write(name, setVersion(read(name), version));
+  }
+  const changed = must("git", ["status", "--porcelain"], true);
+  if (changed) must("git", ["--no-pager", "diff", "--stat"]);
+
+  const go = await ask(
+    `${changed ? `Commit "Release ${version}", push` : "Push"} and publish ${version}? [y/N] `,
+  );
+  if (go.toLowerCase() !== "y") {
+    if (changed)
+      must("git", ["checkout", "--", "CHANGELOG.md", "package.json", "package-lock.json"]);
+    console.log("Stopped: nothing was committed, pushed or published.");
+    return;
+  }
+  if (changed) {
+    must("git", ["add", "CHANGELOG.md", "package.json", "package-lock.json"]);
+    must("git", ["commit", "--quiet", "-m", `Release ${version}`]);
+  }
+  must("git", ["push", "origin", "main"]);
+  const pushed = must("git", ["rev-parse", "HEAD"], true);
+
+  const started = Date.now();
+  must("gh", ["workflow", "run", "publish.yml", "--ref", "main", "-f", "dry_run=false"]);
+  let id;
+  for (let i = 0; i < 30 && !id; i++) {
+    await sleep(2000);
+    const runs = JSON.parse(
+      must(
         "gh",
         [
           "run",
           "list",
           "--workflow",
-          "check.yml",
-          "--commit",
-          sha,
+          "publish.yml",
+          "--event",
+          "workflow_dispatch",
           "--limit",
-          "1",
+          "5",
           "--json",
-          "databaseId",
-          "--jq",
-          ".[0].databaseId",
+          "databaseId,createdAt,url",
         ],
         true,
-      ).out;
-      const failed = check && check !== "null" ? check : id;
-      console.log(`\nWhat failed (gh run view ${failed} --log-failed):`);
-      console.log(
-        run("gh", ["run", "view", failed, "--log-failed"], true)
-          .out.split("\n")
-          .slice(-80)
-          .join("\n"),
-      );
-      throw new Error(`The publish run failed: gh run view ${failed} --log-failed`);
-    }
-
-    for (let i = 0; i < 30; i++) {
-      if (run("npm", ["view", `${NAME}@${version}`, "version"], true).out === version) break;
-      await sleep(4000);
-    }
-    const live = run("npm", ["view", `${NAME}@${version}`, "version"], true).out === version;
-    console.log(
-      live
-        ? `\nSUCCESS: ${NAME}@${version} is on npm.`
-        : `\nThe run passed, but npm does not show ${version} yet.`,
+      ),
     );
-    if (
-      (await ask.question(`Tag v${version} and push the tag? [y/N] `)).trim().toLowerCase() === "y"
-    ) {
-      must("git", ["tag", `v${version}`]);
-      must("git", ["push", "origin", `v${version}`]);
+    // Its clock may differ from this one by a few seconds.
+    const mine = runs.find((r) => Date.parse(r.createdAt) >= started - 10_000);
+    if (mine) {
+      id = String(mine.databaseId);
+      console.log(`Watching ${mine.url}`);
     }
-  } finally {
-    ask.close();
   }
+  if (!id) throw new Error("The publish run did not show up: see the Actions tab.");
+
+  // GitHub gives a step's log only once the run ends, so this shows the steps as they go.
+  if (!run("gh", ["run", "watch", id, "--exit-status", "--interval", "5"]).ok) {
+    // A publish that waited on a failed check says only that: the check run has the reason.
+    const sha = must("git", ["rev-parse", "HEAD"], true);
+    const check = run(
+      "gh",
+      [
+        "run",
+        "list",
+        "--workflow",
+        "check.yml",
+        "--commit",
+        sha,
+        "--limit",
+        "1",
+        "--json",
+        "databaseId",
+        "--jq",
+        ".[0].databaseId",
+      ],
+      true,
+    ).out;
+    const failed = check && check !== "null" ? check : id;
+    console.log(`\nWhat failed (gh run view ${failed} --log-failed):`);
+    console.log(
+      run("gh", ["run", "view", failed, "--log-failed"], true)
+        .out.split("\n")
+        .slice(-80)
+        .join("\n"),
+    );
+    throw new Error(`The publish run failed: gh run view ${failed} --log-failed`);
+  }
+
+  await finish({ run, sleep }, version, pushed);
+}
+
+/** After the publish run passed: tags the commit it published, then waits for npm to list it. */
+export async function finish({ run, sleep }, version, commit) {
+  const tag = `v${version}`;
+  // Tagged first: npm may take minutes to list the version, and the run already published it.
+  const tagged = run("git", ["tag", tag, commit]).ok && run("git", ["push", "origin", tag]).ok;
+  if (tagged) console.log(`Tagged ${commit.slice(0, 7)} as ${tag} and pushed the tag.`);
+  for (let i = 0; i < 75; i++) {
+    if (run("npm", ["view", `${NAME}@${version}`, "version"], true).out === version) break;
+    await sleep(4000);
+  }
+  const live = run("npm", ["view", `${NAME}@${version}`, "version"], true).out === version;
+  console.log(
+    live
+      ? `\nSUCCESS: ${NAME}@${version} is on npm.`
+      : `\nThe run passed, but npm does not show ${version} yet: check again in a few minutes.`,
+  );
+  // After the npm wait: a release that published must still say so, then what is left to do.
+  if (!tagged) {
+    throw new Error(
+      `${version} is published, but its tag is not on origin: git tag ${tag} ${commit} (unless it exists), then git push origin ${tag}`,
+    );
+  }
+}
+
+async function main() {
+  // Piped answers arrive before their question and are lost: it would end with nothing said.
+  if (!process.stdin.isTTY) throw new Error("Run it in a terminal: it asks before it publishes.");
+  await release({
+    ask,
+    run,
+    sleep,
+    read: (name) => readFileSync(file(name), "utf8"),
+    write: (name, text) => writeFileSync(file(name), text),
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

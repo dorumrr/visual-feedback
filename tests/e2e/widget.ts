@@ -163,3 +163,21 @@ export function defaultType(page: Page): Promise<string> {
       : "image/png",
   );
 }
+
+/** How many drafts the device holds. */
+export const stored = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const request = indexedDB.open("visual-feedback", 1);
+        request.onupgradeneeded = () => request.result.createObjectStore("drafts");
+        request.onsuccess = () => {
+          const db = request.result;
+          const count = db.transaction("drafts").objectStore("drafts").count();
+          count.onsuccess = () => {
+            db.close();
+            resolve(count.result);
+          };
+        };
+      }),
+  );

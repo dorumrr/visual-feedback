@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 const HEAD = 30;
 const TAIL = 90;
 
-/** The npm scripts `npm run check` runs, in order: CI runs the same two halves. */
+/** The npm scripts `npm run check` runs, in order; CI runs only check:static. */
 export function steps(scripts) {
   const parts = [scripts["check:static"], scripts["check:browser"]]
     .flatMap((chain) => (chain ?? "").split("&&"))

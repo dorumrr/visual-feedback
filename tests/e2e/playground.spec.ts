@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+import { stored, withoutSupport } from "./widget";
 
 test("the playground loads the built package and shows a report", async ({ page }) => {
   await page.goto("/");
@@ -85,6 +86,138 @@ test("in the playground, the trigger captures the page and Send shows the report
   await expect(report.getByRole("heading", { name: "From the playground" })).toBeVisible();
   await expect(report.getByRole("img", { name: "Screenshot 1" })).toBeVisible();
   await expect(report.locator("pre")).toContainText('"marks": []');
+});
+
+/** Records whether the hint was still shown each time the widget started to capture the page. */
+async function watchCapture(page: Page): Promise<() => Promise<boolean[] | undefined>> {
+  await page.evaluate(() => {
+    const wrapper = document.querySelector("visual-feedback")?.shadowRoot?.querySelector(".vf");
+    const hint = document.querySelector<HTMLElement>("#hint");
+    if (!wrapper || !hint) throw new Error("no widget or no hint");
+    const seen: boolean[] = [];
+    (window as unknown as { shownAtCapture: boolean[] }).shownAtCapture = seen;
+    new MutationObserver(() => {
+      if (wrapper.classList.contains("capturing")) seen.push(hint.checkVisibility());
+    }).observe(wrapper, { attributes: true, attributeFilter: ["class"] });
+  });
+  return () =>
+    page.evaluate(() => (window as unknown as { shownAtCapture?: boolean[] }).shownAtCapture);
+}
+
+test("in the playground, a looping Click here hint with an arrow points at the trigger", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const hint = page.locator("#hint");
+  await expect(hint).toBeVisible();
+  await expect(hint).toHaveText("Click here");
+  await expect(hint.locator("svg")).toBeVisible();
+  await expect(hint).toHaveAttribute("aria-hidden", "true");
+  await expect(hint).toHaveCSS("pointer-events", "none");
+  await expect(hint).toHaveCSS("animation-name", /hint-nudge/);
+  await expect(hint).toHaveCSS("animation-iteration-count", /infinite/);
+  // It sits just left of the trigger, centred on it.
+  const trigger = page.getByRole("button", { name: "Send feedback" });
+  const [h, t] = [await hint.boundingBox(), await trigger.boundingBox()];
+  if (!h || !t) throw new Error("no box");
+  expect(t.x - (h.x + h.width)).toBeGreaterThanOrEqual(0);
+  expect(t.x - (h.x + h.width)).toBeLessThan(24);
+  expect(Math.abs(h.y + h.height / 2 - (t.y + t.height / 2))).toBeLessThan(4);
+  // A click on it reaches the page under it.
+  const under = await page.evaluate(
+    ([x, y]) => document.elementFromPoint(x ?? 0, y ?? 0)?.closest("#hint") === null,
+    [h.x + h.width / 2, h.y + h.height / 2],
+  );
+  expect(under).toBe(true);
+});
+
+for (const [how, open] of [
+  ["a click", (page: Page) => page.getByRole("button", { name: "Send feedback" }).click()],
+  [
+    "the keyboard",
+    async (page: Page) => {
+      await page.getByRole("button", { name: "Send feedback" }).focus();
+      await page.keyboard.press("Enter");
+    },
+  ],
+] as const) {
+  test(`in the playground, opening the widget with ${how} hides the hint before the screenshot, for the rest of the page load`, async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const hint = page.locator("#hint");
+    await expect(hint).toBeVisible();
+    const shown = await watchCapture(page);
+    await open(page);
+    await expect(page.locator("visual-feedback").locator(".image")).toBeVisible();
+    expect(await shown()).toEqual([false]);
+    await expect(hint).toBeHidden();
+    await page.getByRole("button", { name: "Keep as draft" }).click();
+    await page.getByRole("button", { name: "Discard" }).click();
+    await expect(page.getByRole("button", { name: "Send feedback" })).toBeVisible();
+    await expect(hint).toBeHidden();
+  });
+}
+
+test("in the playground on a phone, the hint sits above the trigger, clear of the status line", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("Widget loaded. Use the feedback button.");
+  const [h, t, s] = await Promise.all(
+    [
+      page.locator("#hint"),
+      page.getByRole("button", { name: "Send feedback" }),
+      page.getByRole("status"),
+    ].map((locator) => locator.boundingBox()),
+  );
+  if (!h || !t || !s) throw new Error("no box");
+  expect(t.y - (h.y + h.height)).toBeGreaterThanOrEqual(0);
+  expect(t.y - (h.y + h.height)).toBeLessThan(24);
+  // Its arrow, at its right end, is over the trigger.
+  expect(h.x + h.width).toBeGreaterThan(t.x + t.width / 2);
+  expect(h.x + h.width).toBeLessThanOrEqual(t.x + t.width + 1);
+  expect(h.y + h.height).toBeLessThan(s.y);
+});
+
+test("in the playground, the hint goes when a kept draft comes back after a page load", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  await page.getByRole("button", { name: "Keep as draft" }).click();
+  // The reload must not cut off the draft's write.
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.reload();
+  // The status is set in the same task that would show the hint, so this check comes after it.
+  await expect(page.getByRole("status")).toHaveText("Widget loaded. Use the feedback button.");
+  await expect(page.getByRole("button", { name: "Discard" })).toBeVisible();
+  await expect(page.locator("#hint")).toBeHidden();
+});
+
+test("in the playground, the hint does not show where the widget is not supported", async ({
+  page,
+}) => {
+  await page.addInitScript(withoutSupport, "color-mix");
+  await page.goto("/");
+  await expect(page.getByRole("status")).toHaveText("Widget loaded. Use the feedback button.");
+  await expect(page.getByRole("button", { name: "Send feedback" })).toHaveCount(0);
+  await expect(page.locator("#hint")).toBeHidden();
+});
+
+test("in the playground, the hint keeps still under reduced motion, and does not show when the widget fails to load", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await expect(page.locator("#hint")).toBeVisible();
+  await expect(page.locator("#hint")).toHaveCSS("animation-name", "none");
+
+  await page.route("**/dist/index.mjs", (route) => route.fulfill({ status: 404 }));
+  await page.reload();
+  await expect(page.getByRole("status")).toContainText("Could not load dist/index.mjs");
+  await expect(page.locator("#hint")).toBeHidden();
 });
 
 test("the playground has a dark theme, and carries no other company's name", async ({ page }) => {

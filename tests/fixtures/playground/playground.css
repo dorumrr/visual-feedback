@@ -719,3 +719,63 @@ main {
     grid-column: 1 / -1;
   }
 }
+
+/* Points at the widget's trigger: its default corner, offset (16px) and size (2.5em). */
+.click-hint {
+  position: fixed;
+  z-index: 15;
+  right: calc(16px + 2.5em + 10px + env(safe-area-inset-right, 0px));
+  bottom: calc(16px + 1.25em + env(safe-area-inset-bottom, 0px));
+  translate: 0 50%;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 6px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--pink-fill), var(--blue));
+  color: #fff;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  --away: -8px, 0;
+  animation:
+    hint-in 0.4s ease-out both,
+    hint-nudge 1.2s ease-in-out 0.4s infinite;
+}
+.click-hint[hidden] {
+  display: none;
+}
+.click-arrow {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.4;
+}
+@keyframes hint-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes hint-nudge {
+  50% {
+    transform: translate(var(--away));
+  }
+}
+/* Above the trigger on a phone, clear of the status line beside it. */
+@media (max-width: 600px) {
+  .click-hint {
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(16px + 2.5em + 10px + env(safe-area-inset-bottom, 0px));
+    translate: none;
+    --away: 0, -8px;
+  }
+  .click-arrow {
+    rotate: 90deg;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .click-hint {
+    animation: none;
+  }
+}

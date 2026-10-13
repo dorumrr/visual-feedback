@@ -33,7 +33,7 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
       - run: npm ci
-      # check.yml already tests every pushed commit; this waits for its verdict instead of a rerun.
+      # check.yml checks every pushed commit; this waits for its verdict instead of a rerun.
       - name: This commit passed check
         env:
           GH_TOKEN: ${{ github.token }}

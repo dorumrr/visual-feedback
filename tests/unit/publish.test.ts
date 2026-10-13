@@ -107,26 +107,31 @@ it("publishing stops when check.yml failed, was cancelled, or never finished", (
   expect(late.stdout).toMatch(/did not finish/);
 });
 
-it("check.yml runs all of npm run check: the static half, and each browser test per browser", () => {
+it("check.yml runs the static half of npm run check on GitHub, and no browser test", () => {
   const ci = readFileSync(new URL("../../.github/workflows/check.yml", import.meta.url), "utf8");
   const { scripts } = JSON.parse(
     readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
   ) as { scripts: Record<string, string> };
-  // npm run check runs exactly the two halves CI runs.
+  // npm run check runs both halves, locally: npm run release offers it first.
   expect(scripts.check).toBe("node tests/check.mjs");
   expect(steps(scripts)).toEqual(
     [scripts["check:static"], scripts["check:browser"]].flatMap((chain) =>
       [...(chain ?? "").matchAll(/npm run ([\w:]+)/g)].map((match) => match[1]),
     ),
   );
-  expect(ci).toContain("- run: npm run check:static\n");
-  const browser = [...(scripts["check:browser"] ?? "").matchAll(/npm run ([\w:]+)/g)].map(
-    (match) => match[1],
+  // Every command, however its step is written, and one job only, whose failure fails the run.
+  expect(ci.match(/^\s+(?:- )?run: .*$/gm)).toEqual([
+    "      - run: npm ci",
+    "      - run: npm run check:static",
+  ]);
+  expect(ci.slice(ci.indexOf("\njobs:\n")).match(/^ {2}\S.*$/gm)).toEqual(["  static:"]);
+  const code = ci
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
+  expect(code).not.toMatch(
+    /playwright|browser|npm run check(?!:static)|test:e2e|test:react|test:pack|continue-on-error/,
   );
-  expect(browser.length).toBeGreaterThan(2);
-  for (const name of browser) {
-    expect(ci).toContain(`- run: npm run ${name} -- --project=\${{ matrix.browser }}\n`);
-  }
-  const listed = /browser: \[([^\]]*)\]/.exec(ci)?.[1]?.split(", ");
-  expect(listed).toEqual(["chromium", "firefox", "webkit"]);
+  expect(scripts["check:static"]).not.toMatch(/test:e2e|test:react|test:pack/);
+  expect(ci).toMatch(/\non:\n {2}push:\n {2}pull_request:\n/);
 });

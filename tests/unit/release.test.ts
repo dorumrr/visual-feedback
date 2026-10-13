@@ -1,5 +1,54 @@
 import { describe, expect, it } from "vitest";
-import { dated, next, offer, refusal, setVersion, top } from "../release.mjs";
+import { dated, finish, next, offer, refusal, release, setVersion, top } from "../release.mjs";
+
+type Output = { ok: boolean; out: string };
+
+/**
+ * Runs the release on a fake terminal that gives `answers` in turn, fake commands and an in-memory
+ * repo: main is clean and level with origin, npm has 0.3.2 and CHANGELOG.md waits on 0.3.3, unless
+ * `outputs` says otherwise. Returns how it ended, and every question, command and write in order.
+ */
+async function rehearse(answers: string[], outputs: Record<string, Output> = {}) {
+  const log: string[] = [];
+  const known: Record<string, Output> = {
+    "git branch --show-current": { ok: true, out: "main" },
+    "git rev-list --count HEAD..origin/main": { ok: true, out: "0" },
+    "npm view visual-feedback version": { ok: true, out: "0.3.2" },
+  };
+  const files: Record<string, string> = {
+    "package.json": '{\n  "name": "visual-feedback",\n  "version": "0.3.2"\n}\n',
+    "package-lock.json": '{\n  "name": "visual-feedback",\n  "version": "0.3.2"\n}\n',
+    "CHANGELOG.md":
+      "# Changelog\n\n## 0.3.3 (not released yet)\n\n- x\n\n## 0.3.2 (2026-10-13)\n\n- y\n",
+  };
+  let asked = 0;
+  const result = await release({
+    ask: async (question: string) => {
+      log.push(`ask ${question}`);
+      const answer = answers[asked++];
+      if (answer === undefined) throw new Error(`unexpected question: ${question}`);
+      return answer;
+    },
+    run: (command: string, args: string[]) => {
+      const call = `${command} ${args.join(" ")}`;
+      log.push(`run ${call}`);
+      // Read at each call, so an output can change between two of them.
+      return (call in outputs ? outputs[call] : known[call]) ?? { ok: true, out: "" };
+    },
+    sleep: async () => {},
+    read: (name: string) => files[name] ?? "",
+    write: (name: string) => {
+      log.push(`write ${name}`);
+    },
+  }).then(
+    () => "done",
+    (error: Error) => error.message,
+  );
+  return { result, log, at: (entry: string) => log.indexOf(entry) };
+}
+
+const CHECK = "run npm run check";
+const QUESTION = "ask Run the full check first, npm run check (a few minutes)? [y/N] ";
 
 describe("npm run release", () => {
   it("suggests the package version while npm lacks it, else the next patch", () => {
@@ -153,5 +202,150 @@ describe("npm run release", () => {
     // A dependency of the same version is not touched.
     expect(changed.packages["node_modules/x"].version).toBe("0.2.0");
     expect(setVersion(lock, "0.3.0").endsWith("}\n")).toBe(true);
+  });
+
+  it("asks first whether to run the full check, and Enter skips it", async () => {
+    // The last answer, no to publishing, ends the rehearsal.
+    const { result, log } = await rehearse(["", "0.3.3", ""]);
+    expect(result).toBe("done");
+    expect(log[0]).toBe(QUESTION);
+    expect(log).toContain("write CHANGELOG.md");
+    expect(log).not.toContain(CHECK);
+  });
+
+  it("y runs npm run check once the version passed every refusal, before the first write", async () => {
+    const { result, at, log } = await rehearse(["y", "0.3.3", ""]);
+    expect(result).toBe("done");
+    expect(at("ask Version to publish: ")).toBeGreaterThan(-1);
+    expect(at(CHECK)).toBeGreaterThan(at("ask Version to publish: "));
+    const writes = log.flatMap((entry, i) => (entry.startsWith("write") ? [i] : []));
+    expect(writes).toHaveLength(3);
+    expect(at(CHECK)).toBeLessThan(Math.min(...writes));
+  });
+
+  it("tags the pushed commit only once the publish run passed", async () => {
+    const outputs = (watched: boolean): Record<string, Output> => ({
+      "git rev-parse HEAD": { ok: true, out: "abc1234def" },
+      "gh run list --workflow publish.yml --event workflow_dispatch --limit 5 --json databaseId,createdAt,url":
+        {
+          ok: true,
+          out: JSON.stringify([{ databaseId: 7, createdAt: new Date().toISOString(), url: "u" }]),
+        },
+      "gh run watch 7 --exit-status --interval 5": { ok: watched, out: "" },
+      "npm view visual-feedback@0.3.3 version": { ok: true, out: "0.3.3" },
+    });
+    const tag = "run git tag v0.3.3 abc1234def";
+    const passed = await rehearse(["", "0.3.3", "y"], outputs(true));
+    expect(passed.result).toBe("done");
+    expect(passed.at(tag)).toBeGreaterThan(
+      passed.at("run gh run watch 7 --exit-status --interval 5"),
+    );
+    expect(passed.log).toContain("run git push origin v0.3.3");
+    const failed = await rehearse(["", "0.3.3", "y"], outputs(false));
+    expect(failed.result).toMatch(/The publish run failed/);
+    expect(failed.log.some((entry) => entry.startsWith("run git tag"))).toBe(false);
+  });
+
+  it("after the check, main is compared with origin again: it may have moved meanwhile", async () => {
+    const fetch = "run git fetch --quiet origin main";
+    const skipped = await rehearse(["", "0.3.3", ""]);
+    expect(skipped.log.filter((entry) => entry === fetch)).toHaveLength(1);
+    let behind = 0;
+    const moved = await rehearse(["y", "0.3.3"], {
+      get "git rev-list --count HEAD..origin/main"() {
+        behind++;
+        return { ok: true, out: behind === 1 ? "0" : "1" };
+      },
+    });
+    expect(moved.result).toBe("main is behind origin/main: pull first.");
+    expect(moved.at(fetch)).not.toBe(moved.log.lastIndexOf(fetch));
+    expect(moved.log.lastIndexOf(fetch)).toBeGreaterThan(moved.at(CHECK));
+    expect(moved.log.filter((entry) => entry.startsWith("write"))).toEqual([]);
+  });
+
+  it("a failed check stops the release before anything is changed", async () => {
+    const { result, log } = await rehearse(["y", "0.3.3"], {
+      "npm run check": { ok: false, out: "" },
+    });
+    expect(log.some((entry) => entry.startsWith("write"))).toBe(false);
+    expect(result).toBe(
+      "npm run check failed: nothing was changed, committed, pushed or published.",
+    );
+    expect(log.at(-1)).toBe(CHECK);
+  });
+
+  it("a release that cannot happen runs no check", async () => {
+    const refusals: [Record<string, Output>, string[], RegExp | string][] = [
+      [{ "git branch --show-current": { ok: true, out: "other" } }, ["y"], /Run it on main/],
+      [{ "git status --porcelain": { ok: true, out: " M x" } }, ["y"], /Commit or stash/],
+      [{ "git rev-list --count HEAD..origin/main": { ok: true, out: "2" } }, ["y"], /behind/],
+      [{ "git log --oneline origin/main..HEAD": { ok: true, out: "abc x" } }, ["y", ""], "done"],
+      [{}, ["y", "0.3.x"], /is not a version/],
+      [{}, ["y", "0.3.2"], /not newer than 0.3.2/],
+      [{}, ["y", "0.4.0"], /CHANGELOG.md/],
+    ];
+    for (const [outputs, answers, expected] of refusals) {
+      const { result, log } = await rehearse(answers, outputs);
+      // Declining unpushed commits ends it there, at that question.
+      if (expected === "done") expect(log.at(-1)).toBe("ask Release them too? [y/N] ");
+      expect(result, String(expected)).toMatch(expected);
+      expect(log, String(expected)).not.toContain(CHECK);
+    }
+  });
+
+  it("the check question takes y or Y as yes, and anything else as no", async () => {
+    for (const [answer, runs] of [
+      ["Y", true],
+      ["n", false],
+      ["N", false],
+      ["yes", false],
+    ] as const) {
+      const { log } = await rehearse([answer, "0.3.3", ""]);
+      expect(log.includes(CHECK), answer).toBe(runs);
+    }
+  });
+
+  it("once the publish run passed, it tags the published commit and pushes the tag, asking nothing", async () => {
+    const finished = async (failing: string | undefined, listed: boolean) => {
+      const calls: string[] = [];
+      let waits = 0;
+      const result = await finish(
+        {
+          run: (command: string, args: string[]) => {
+            const call = `${command} ${args.join(" ")}`;
+            calls.push(call);
+            if (call === failing) return { ok: false, out: "" };
+            return { ok: true, out: call.startsWith("npm view") && listed ? "0.4.0" : "" };
+          },
+          sleep: async () => {
+            waits++;
+          },
+        },
+        "0.4.0",
+        "abc1234def",
+      ).then(
+        () => "done",
+        (error: Error) => error.message,
+      );
+      return { result, calls, waits };
+    };
+    for (const listed of [true, false]) {
+      const { result, calls, waits } = await finished(undefined, listed);
+      // The tag comes first, also when npm does not list the version yet.
+      expect(result, String(listed)).toBe("done");
+      expect(calls.slice(0, 2), String(listed)).toEqual([
+        "git tag v0.4.0 abc1234def",
+        "git push origin v0.4.0",
+      ]);
+      expect(waits, String(listed)).toBe(listed ? 0 : 75);
+    }
+    // A tag that fails still lets it wait for npm, then says the version is out and what is left.
+    for (const failing of ["git tag v0.4.0 abc1234def", "git push origin v0.4.0"]) {
+      const { result, calls } = await finished(failing, true);
+      expect(calls, failing).toContain("npm view visual-feedback@0.4.0 version");
+      expect(result, failing).toBe(
+        "0.4.0 is published, but its tag is not on origin: git tag v0.4.0 abc1234def (unless it exists), then git push origin v0.4.0",
+      );
+    }
   });
 });

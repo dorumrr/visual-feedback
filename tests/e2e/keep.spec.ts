@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { events, finish, type Mounted, mount, read } from "./widget";
+import { events, finish, type Mounted, mount, read, stored } from "./widget";
 
 type Sent = {
   note: string;
@@ -27,24 +27,6 @@ async function stroke(page: Page, y = 0.5): Promise<void> {
   await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * y, { steps: 4 });
   await page.mouse.up();
 }
-
-/** How many drafts the device holds, and how old the oldest is. */
-const stored = (page: Page) =>
-  page.evaluate(
-    () =>
-      new Promise<number>((resolve) => {
-        const request = indexedDB.open("visual-feedback", 1);
-        request.onupgradeneeded = () => request.result.createObjectStore("drafts");
-        request.onsuccess = () => {
-          const db = request.result;
-          const count = db.transaction("drafts").objectStore("drafts").count();
-          count.onsuccess = () => {
-            db.close();
-            resolve(count.result);
-          };
-        };
-      }),
-  );
 
 /** The one draft the device holds: its note, and how many screenshots it keeps. */
 const storedDraft = (page: Page) =>

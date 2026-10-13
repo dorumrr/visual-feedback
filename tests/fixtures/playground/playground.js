@@ -49,8 +49,20 @@ try {
 }
 if (pkg && typeof pkg.createFeedback === "function") {
   try {
-    pkg.createFeedback({ onSubmit: async (report) => show(report) });
+    const widget = pkg.createFeedback({ onSubmit: async (report) => show(report) });
     status.textContent = "Widget loaded. Use the feedback button.";
+    const hint = document.getElementById("hint");
+    const done = () => {
+      hint.hidden = true;
+    };
+    // No element where the browser lacks what the widget needs: then it has no trigger to point at.
+    const host = document.querySelector("visual-feedback");
+    if (host) {
+      hint.hidden = false;
+      // Capture phase: the hint must be gone before the trigger's own click starts the screenshot.
+      host.addEventListener("click", done, { capture: true });
+      widget.on("open", done);
+    }
   } catch (error) {
     status.textContent = `The package loaded, but createFeedback failed: ${error}`;
   }
