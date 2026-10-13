@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.2 (not released yet)
+## 0.3.2 (2026-10-13)
 
 - The README links a live demo: the playground on GitHub Pages, at
   https://dorumrr.github.io/visual-feedback/. The widget itself is unchanged.
