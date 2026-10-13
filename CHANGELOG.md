@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.3 (not released yet)
+## 0.3.3 (2026-10-13)
 
 - The trigger stands out more: a swirl icon that fills it, in place of the speech bubble, ringed
   by a 1px border in the same colour (`--vf-text`). With `triggerText`, the icon stays small
