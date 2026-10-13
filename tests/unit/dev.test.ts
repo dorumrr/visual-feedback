@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -95,6 +95,8 @@ it("npm run dev serves the playground and a rebuilt entry after a source change"
     cwd: copy,
     env: { ...process.env, DEV_PORT: String(port) },
     stdio: ["ignore", "pipe", "pipe"],
+    // Its own process group, which its watcher and server join, so the test can see them all.
+    detached: true,
   });
   dev.stderr?.on("data", (chunk: Buffer) => {
     output += chunk.toString();
@@ -120,4 +122,19 @@ it("npm run dev serves the playground and a rebuilt entry after a source change"
   writeFileSync(source, `${original}export const devProbe = 1;\n`);
   const rebuilt = (body: string) => body.includes("devProbe");
   expect(await waitFor(entry, rebuilt)).toContain("devProbe");
+
+  // Stopping it stops its watcher and server first, so nothing of theirs writes on after it.
+  // ps, not kill(-pgid, 0): macOS answers EPERM for a group of zombies, as if someone were there.
+  const running = () =>
+    execFileSync("ps", ["-A", "-o", "pgid=,stat="], { encoding: "utf8" })
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/))
+      .filter(([group, stat]) => Number(group) === dev?.pid && !stat?.startsWith("Z"));
+  expect(dev.pid).toBeGreaterThan(0);
+  // dev, its watcher and its server, so an empty list below means they all ended.
+  expect(running().length).toBeGreaterThanOrEqual(3);
+  const exited = new Promise((resolve) => dev?.once("exit", resolve));
+  dev.kill("SIGTERM");
+  await exited;
+  expect(running()).toEqual([]);
 }, 60_000);

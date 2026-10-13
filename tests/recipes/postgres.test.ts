@@ -1,5 +1,4 @@
-import { PGlite } from "@electric-sql/pglite";
-import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
 import { PNG, valid, WEBP } from "../server/sample";
 import { recipe, SERVER } from "./doc";
@@ -14,24 +13,19 @@ type Row = {
   created_at: Date;
   report: Record<string, unknown>;
 };
-type Shot = { report_id: string; position: number; image: Uint8Array | null; image_type: string };
 
-let db: PGlite;
-let server: PGLiteSocketServer;
+// The recipe's postgres client is the fake, loaded by the same URL here, so both share its store.
+const FAKE = pathToFileURL(fileURLToPath(new URL("./fake-postgres.ts", import.meta.url))).href;
+const { store } = (await import(FAKE)) as typeof import("./fake-postgres");
+const URL_SET = "postgres://user@db.test/feedback";
 let route: Route;
 let signedIn: Route;
 const saved = process.env.DATABASE_URL;
 
-// A real Postgres engine in WASM, in this process, served on a local port as Postgres would be.
 beforeAll(async () => {
-  db = await PGlite.create();
-  await db.exec(block("sql"));
-  // Port 0: the system picks a free port, so no other process can take it first.
-  server = new PGLiteSocketServer({ db, port: 0, host: "127.0.0.1", maxConnections: 10 });
-  await server.start();
-  process.env.DATABASE_URL = `postgres://postgres@${server.getServerConn()}/postgres`;
+  process.env.DATABASE_URL = URL_SET;
   const source = block("ts");
-  const imports = { "visual-feedback/server": SERVER, postgres: import.meta.resolve("postgres") };
+  const imports = { "visual-feedback/server": SERVER, postgres: FAKE };
   route = await load<Route>(source, imports);
   // The host's session, filled in as the doc asks; the test user is a request header.
   const stub = "  return null;\n}";
@@ -40,16 +34,16 @@ beforeAll(async () => {
   signedIn = await load<Route>(filled, imports);
 });
 
-afterAll(async () => {
+afterAll(() => {
   cleanup();
-  await server?.stop();
-  await db?.close();
   if (saved === undefined) delete process.env.DATABASE_URL;
   else process.env.DATABASE_URL = saved;
 });
 
-beforeEach(async () => {
-  await db.exec("delete from feedback_reports");
+beforeEach(() => {
+  store.reports = [];
+  store.shots = [];
+  store.refuseShots = false;
 });
 
 function post(
@@ -69,12 +63,13 @@ function post(
 }
 
 async function rows(): Promise<Row[]> {
-  return (await db.query<Row>("select * from feedback_reports order by created_at")).rows;
+  return [...store.reports].sort((a, b) => +a.created_at - +b.created_at) as Row[];
 }
 
-async function shots(): Promise<Shot[]> {
-  const query = "select * from feedback_screenshots order by report_id, position";
-  return (await db.query<Shot>(query)).rows;
+async function shots() {
+  return [...store.shots].sort(
+    (a, b) => a.report_id.localeCompare(b.report_id) || a.position - b.position,
+  );
 }
 
 const none = (report: Record<string, unknown>) => ({ ...report, screenshots: [] });
@@ -125,17 +120,10 @@ it("each screenshot is its own row, by position, beside one report row", async (
 });
 
 it("when a screenshot cannot be stored, the report row is not kept either", async () => {
-  await db.exec(`
-    create function refuse() returns trigger language plpgsql as $$
-      begin raise exception 'refused'; end $$;
-    create trigger refuse before insert on feedback_screenshots
-      for each row execute function refuse();`);
-  try {
-    await expect(signedIn.POST(post(valid(), "user-7", PNG))).rejects.toThrow(/refused/);
-    expect(await rows()).toEqual([]);
-  } finally {
-    await db.exec("drop trigger refuse on feedback_screenshots; drop function refuse();");
-  }
+  store.refuseShots = true;
+  await expect(signedIn.POST(post(valid(), "user-7", PNG))).rejects.toThrow(/refused/);
+  expect(await rows()).toEqual([]);
+  store.refuseShots = false;
   // The control: without the trigger, the same request stores both.
   expect((await signedIn.POST(post(valid(), "user-7", PNG))).status).toBe(204);
   expect(await rows()).toHaveLength(1);
@@ -204,7 +192,7 @@ it("an unset DATABASE_URL is a clear error, and nothing is written", async () =>
       block("ts").replace("  return null;\n}", '  return "user-7";\n}'),
       {
         "visual-feedback/server": SERVER,
-        postgres: import.meta.resolve("postgres"),
+        postgres: FAKE,
       },
     );
     await expect(fresh.POST(post(valid(), undefined, PNG))).rejects.toThrow("Set DATABASE_URL.");
@@ -229,6 +217,17 @@ it("a note with a NUL or half an emoji is still stored, which jsonb alone would 
   expect((await signedIn.POST(post(report, "user-7", PNG))).status).toBe(204);
   const [row] = await rows();
   expect(row?.report.note).toBe("cut \ufffd here");
+  // The fake refuses both raw as jsonb does, so the note above was cleaned before it was stored.
+  const client = (await import(FAKE)).default(URL_SET);
+  for (const note of ["\u0000", "cut \ud83d here"]) {
+    const json = client.json({ note });
+    await expect(
+      client.begin(
+        (tx: (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown>) =>
+          tx`insert into feedback_reports (id, user_id, created_at, report) values (${"r"}, ${"u"}, ${"2026-01-01T00:00:00.000Z"}, ${json}) on conflict (id) do nothing returning id`,
+      ),
+    ).rejects.toThrow(/Unicode/);
+  }
 });
 
 it("context text with a NUL is still stored", async () => {
@@ -236,4 +235,86 @@ it("context text with a NUL is still stored", async () => {
   expect((await signedIn.POST(post(report, "user-7", PNG))).status).toBe(204);
   const [row] = await rows();
   expect(row?.report.context).toEqual({ plan: "pro" });
+});
+
+it("connects on the first send, not at import, with one client for every send after it", async () => {
+  const before = store.clients.length;
+  const fresh = await load<Route>(
+    block("ts").replace("  return null;\n}", '  return "user-7";\n}'),
+    {
+      "visual-feedback/server": SERVER,
+      postgres: FAKE,
+    },
+  );
+  expect(store.clients).toHaveLength(before);
+  for (let i = 0; i < 2; i++) {
+    expect((await fresh.POST(post(valid(), undefined, PNG))).status).toBe(204);
+  }
+  // idle_timeout closes a pool a hot reload left behind.
+  expect(store.clients.slice(before)).toEqual([{ url: URL_SET, options: { idle_timeout: 20 } }]);
+});
+
+it("the SQL block makes the tables and columns the route writes, a screenshot tied to its report", () => {
+  const sql = block("sql").replace(/\s+/g, " ");
+  for (const column of [
+    "id uuid primary key",
+    "user_id text not null",
+    "created_at timestamptz not null",
+    "report jsonb not null",
+    "report_id uuid not null references feedback_reports (id) on delete cascade",
+    "position integer not null",
+    "image bytea",
+    "image_type text not null",
+    "primary key (report_id, position)",
+  ]) {
+    expect(sql).toContain(column);
+  }
+});
+
+it("the fake keeps Postgres's rules the recipe relies on, so it cannot pass a route that breaks them", async () => {
+  type Tx = (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown>;
+  const client = (await import(FAKE)).default(URL_SET);
+  const insert = (tx: Tx, id: string, note: string) =>
+    tx`insert into feedback_reports (id, user_id, created_at, report) values (${id}, ${"u"}, ${"2026-01-01T00:00:00.000Z"}, ${client.json({ note })}) on conflict (id) do nothing returning id`;
+  // Text that only looks like an escape is stored as it is.
+  await client.begin((tx: Tx) => insert(tx, "a", "\\u0000 and \\ud83d"));
+  expect(store.reports.map((row) => row.id)).toEqual(["a"]);
+  // A failed statement aborts the transaction, even if the route catches it: nothing is kept.
+  store.refuseShots = true;
+  await client.begin(async (tx: Tx & ((rows: unknown[]) => unknown)) => {
+    await insert(tx, "b", "x");
+    await tx`insert into feedback_screenshots ${tx([{ report_id: "b", position: 0, image: null, image_type: "image/png" }])}`.catch(
+      () => {},
+    );
+    await expect(insert(tx, "c", "x")).rejects.toThrow(/aborted/);
+  });
+  store.refuseShots = false;
+  expect(store.reports.map((row) => row.id)).toEqual(["a"]);
+  // A route that throws inside the transaction keeps nothing either, as postgres.js rolls back.
+  await expect(
+    client.begin(async (tx: Tx) => {
+      await insert(tx, "g", "x");
+      throw new Error("the route's own error");
+    }),
+  ).rejects.toThrow("the route's own error");
+  expect(store.reports.map((row) => row.id)).toEqual(["a"]);
+  // Two transactions at once both keep their rows.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const first = client.begin(async (tx: Tx) => {
+    await insert(tx, "d", "x");
+    await held;
+  });
+  await client.begin((tx: Tx) => insert(tx, "e", "x"));
+  release();
+  await first;
+  expect(store.reports.map((row) => row.id).sort()).toEqual(["a", "d", "e"]);
+  // A statement after its transaction ended is refused, as postgres.js does.
+  let stale: Tx | undefined;
+  await client.begin(async (tx: Tx) => {
+    stale = tx;
+  });
+  await expect(insert(stale as Tx, "f", "x")).rejects.toThrow(/ended/);
 });

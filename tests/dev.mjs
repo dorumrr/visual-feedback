@@ -18,8 +18,18 @@ let stopping = false;
 function stop(code) {
   if (stopping) return;
   stopping = true;
-  for (const child of children) child.kill("SIGTERM");
-  process.exit(code);
+  // Exits once both have, so the watcher never writes on after this process is gone.
+  const running = children.filter((child) => child.exitCode === null && child.signalCode === null);
+  let left = running.length;
+  if (left === 0) process.exit(code);
+  for (const child of running) {
+    child.once("exit", () => --left === 0 && process.exit(code));
+    child.kill("SIGTERM");
+  }
+  setTimeout(() => {
+    for (const child of running) child.kill("SIGKILL");
+    process.exit(code);
+  }, 4_000);
 }
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => stop(0));
 // A parent killed with SIGKILL sends no signal; being re-parented is the only sign.
