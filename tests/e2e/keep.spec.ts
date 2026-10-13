@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { events, finish, type Mounted, mount, read, stored } from "./widget";
+import { confirmed, events, finish, type Mounted, mount, read, stored } from "./widget";
 
 type Sent = {
   note: string;
@@ -368,7 +368,7 @@ test("close() still ends the draft, and a removal after a Send keeps nothing", a
   await expect(image(page)).toBeVisible();
   await note(page).fill("Sent");
   await button(page, "Send").click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
   await page.waitForTimeout(500);
   expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
@@ -587,7 +587,7 @@ test("close() in the moment a load brings a draft back leaves it kept, as SPEC s
   await expect(bar(page)).toBeVisible();
 });
 
-test("a sent draft leaves the device at once: a load during the thank-you brings nothing back", async ({
+test("a sent draft leaves the device at once: a load right after sending brings nothing back", async ({
   page,
 }) => {
   await mount(page);
@@ -598,10 +598,9 @@ test("a sent draft leaves the device at once: a load during the thank-you brings
   await button(page, "Open").click();
   await note(page).fill("Sent from a kept draft");
   await button(page, "Send").click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
+  // Gone at sent, before the confirmation closes.
   await expect.poll(() => stored(page)).toBe(0);
-  // Still inside the 3 s the thank-you stays: the dialog has not closed yet.
-  await expect(page.getByRole("status")).toBeVisible();
   await load(page);
   expect(await dialogLoaded(page)).toBe(false);
   await expect(bar(page)).toHaveCount(0);
@@ -704,7 +703,7 @@ test("a Send while an earlier fold is still being written keeps nothing on the d
   await button(page, "Open").click();
   await note(page).fill("Sent while the fold was written");
   await button(page, "Send").click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   await page.evaluate(() => (window as unknown as { letGo: () => void }).letGo());
   await expect
     .poll(() => page.evaluate(() => (window as unknown as { written: number }).written))
@@ -1430,6 +1429,10 @@ test("a brought-back draft whose marks are all cleared closes on Cancel without 
   await button(page, "Open").click();
   await expect(button(page, "Clear")).toBeEnabled();
   await button(page, "Clear").click();
+  await page
+    .getByRole("group", { name: "Clear all marks on this screenshot?" })
+    .getByRole("button", { name: "Clear", exact: true })
+    .click();
   await expect(button(page, "Clear")).toBeDisabled();
   await button(page, "Cancel").click();
   await expect(page.getByRole("group", { name: "Discard this feedback?" })).toHaveCount(0);

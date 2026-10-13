@@ -422,7 +422,9 @@ test("while sending, the menu cannot be opened", async ({ page }) => {
   await finish(page);
 });
 
-test("Send closes an open menu, so Esc while sending closes the dialog", async ({ page }) => {
+test("Send closes an open menu, and Esc while sending leaves the dialog as it is", async ({
+  page,
+}) => {
   await mount(page);
   await page.evaluate(() => {
     const w = window as unknown as Mounted;
@@ -438,10 +440,13 @@ test("Send closes an open menu, so Esc while sending closes the dialog", async (
   await expect(more(page)).toBeDisabled();
   await expect(save(page)).toBeHidden();
   await page.keyboard.press("Escape");
-  await expect(dialog(page)).toBeHidden();
+  await page.waitForTimeout(200);
+  await expect(dialog(page)).toBeVisible();
   await expect(page.getByRole("region", { name: "Feedback draft" })).toHaveCount(0);
-  expect(await events(page)).toContain("close");
+  expect(await events(page)).not.toContain("close");
   await page.evaluate(() => (window as unknown as Mounted).release?.());
+  await expect(dialog(page)).toHaveCount(0);
+  expect(await events(page)).toContain("close");
 });
 
 test("strings.pdfError replaces the message", async ({ page }) => {

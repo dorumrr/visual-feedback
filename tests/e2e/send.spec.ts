@@ -2,9 +2,10 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import { parseFeedbackRequest } from "../../src/server/index";
 import { checkReport } from "../../src/shared/report";
+import { confirmed } from "./widget";
 
 type Setup = {
-  submit?: "ok" | "hold" | "throw-once" | "throw-empty" | "throw-string" | "none";
+  submit?: "ok" | "hold" | "throw-once" | "throw-empty" | "throw-string" | "throw-timeout" | "none";
   endpoint?: string;
   headers?: "object" | "function";
   categories?: boolean;
@@ -55,6 +56,8 @@ async function create(page: Page, setup: Setup = {}): Promise<void> {
         if (setup.submit === "hold") await new Promise<void>((done) => (w.release = done));
         if (setup.submit === "throw-empty") throw new Error("");
         if (setup.submit === "throw-string") throw "Rate limited, try in a minute";
+        if (setup.submit === "throw-timeout")
+          throw new DOMException("Gateway slow", "TimeoutError");
         if (failures-- > 0) throw new Error("Server says no");
       };
     }
@@ -150,6 +153,12 @@ async function opened(page: Page, setup: Setup, url = "/widget/capture.html"): P
   await expect(note(page)).toBeFocused();
 }
 
+/** Stops the page's clock: from here its timers run only when the test moves the clock on. */
+async function freeze(page: Page): Promise<void> {
+  await page.clock.install();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1));
+}
+
 /** Draws one pen stroke, the default tool, and returns a point in its middle. */
 async function stroke(page: Page): Promise<number[]> {
   const shown = await image(page).boundingBox();
@@ -200,7 +209,7 @@ for (const headers of ["object", "function"] as const) {
     await stroke(page);
     await note(page).fill("The total is wrong");
     await sendButton(page).click();
-    await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+    await confirmed(page);
     const received = await api.received(page);
     expect(received).toHaveLength(1);
     const [got] = received as [Received];
@@ -219,11 +228,12 @@ for (const headers of ["object", "function"] as const) {
     expect(got.headers["x-csrf"]).toBe(headers === "object" ? "token-1" : "token-2");
     expect(got.report.page.url).toMatch(/\/widget\/capture\.html$/);
     expect(await log(page)).toEqual(["open", `submit:${got.report.id}`, `sent:${got.report.id}`]);
-    // The confirmation closes on its own 3 s after sent, timed in the page so load cannot skew it.
-    await expect(dialog(page)).toHaveCount(0, { timeout: 6000 });
+    // The confirmation closes on its own half a second after sent, timed in the page so load
+    // cannot skew it.
+    await expect(dialog(page)).toHaveCount(0);
     const { sent = 0, close = 0 } = await page.evaluate(() => (window as unknown as Page2).times);
-    expect(close - sent).toBeGreaterThanOrEqual(2900);
-    expect(close - sent).toBeLessThan(3500);
+    expect(close - sent).toBeGreaterThanOrEqual(450);
+    expect(close - sent).toBeLessThan(1000);
     expect((await log(page)).at(-1)).toBe("close");
   });
 }
@@ -239,7 +249,7 @@ test("redactUrl drops the query and the hash from page.url, and without it both 
       "/widget/capture.html?account=42#bills",
     );
     await sendButton(page).click();
-    await expect(page.getByRole("status")).toBeVisible();
+    await confirmed(page);
   }
   const received = await api.received(page);
   const [redacted, kept] = received.map((got) => got.report.page.url);
@@ -271,7 +281,7 @@ test("the page facts in the report are those of the screenshot, not of the momen
   });
   await page.setViewportSize({ width: 700, height: 500 });
   await sendButton(page).click();
-  await expect(page.getByRole("status")).toBeVisible();
+  await confirmed(page);
   type Facts = {
     page: { url: string; title: string };
     viewport: { width: number; height: number };
@@ -323,7 +333,7 @@ export const snapdom = async (...args) => {
   await expect(note(page)).toBeFocused();
   expect(await page.title()).toBe("Changed while rendering");
   await sendButton(page).click();
-  await expect(page.getByRole("status")).toBeVisible();
+  await confirmed(page);
   const [report] = (await page.evaluate(() => (window as unknown as Page2).reports)) as unknown as {
     page: { url: string; title: string };
   }[];
@@ -348,7 +358,7 @@ test("a failing endpoint keeps the note and the marks, and Try again sends the s
   const retry = page.getByRole("button", { name: "Try again" });
   await expect(retry).toBeFocused();
   await retry.click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   const received = await api.received(page);
   expect(received).toHaveLength(2);
   const [first, second] = received as [Received, Received];
@@ -377,7 +387,7 @@ test("onSubmit's error message is shown, and Try again sends the same report aga
   await sendButton(page).click();
   await expect(page.getByRole("alert")).toHaveText("Server says no");
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   const ids = await page.evaluate(() => (window as unknown as Page2).reports.map((r) => r.id));
   expect(ids).toHaveLength(2);
   // Listeners get the report onSubmit got, and the Error itself.
@@ -431,7 +441,7 @@ test("the note is required: a blank note is refused, named and focused, and noth
   await expect(hint).toHaveCount(0);
   await expect(note(page)).not.toHaveAttribute("aria-invalid", "true");
   await sendButton(page).click();
-  await expect(page.getByRole("status")).toBeVisible();
+  await confirmed(page);
   const notes = await page.evaluate(() => (window as unknown as Page2).reports.map((r) => r.note));
   expect(notes).toEqual(["   ok"]);
 });
@@ -439,7 +449,7 @@ test("the note is required: a blank note is refused, named and focused, and noth
 test("with requireNote: false, an empty note is sent", async ({ page }) => {
   await opened(page, { submit: "ok", requireNote: false });
   await sendButton(page).click();
-  await expect(page.getByRole("status")).toBeVisible();
+  await confirmed(page);
   const notes = await page.evaluate(() => (window as unknown as Page2).reports.map((r) => r.note));
   expect(notes).toEqual([""]);
 });
@@ -461,7 +471,7 @@ test("categories show a labelled picker and set report.category; without them th
   await picker.selectOption("idea");
   await note(page).fill("An idea");
   await sendButton(page).click();
-  await expect(page.getByRole("status")).toBeVisible();
+  await confirmed(page);
   const categories = () =>
     page.evaluate(() =>
       (window as unknown as Page2).reports.map((r) => ("category" in r ? r.category : "absent")),
@@ -471,7 +481,7 @@ test("categories show a labelled picker and set report.category; without them th
   await expect(page.getByRole("combobox")).toHaveCount(0);
   await note(page).fill("No type");
   await sendButton(page).click();
-  await expect(page.getByRole("status")).toBeVisible();
+  await confirmed(page);
   expect(await categories()).toEqual(["absent"]);
 });
 
@@ -524,21 +534,23 @@ test("without categories, the footer still holds the hint and Send, and Tab goes
   await expect(sendButton(page)).toBeFocused();
 });
 
-test("in a short window the panel scrolls: its top is not cut off and Send can be reached", async ({
+test("in a short window the whole panel fits, a category included: nothing scrolls", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 420 });
   await opened(page, { submit: "ok", categories: true });
   const root = page.locator("visual-feedback");
-  // Scrolled to the top, the whole panel is reachable: centring never pushes it above the window.
-  const top = await root.locator(".dialog").evaluate((panel) => {
-    (panel.parentElement as HTMLElement).scrollTop = 0;
-    return panel.getBoundingClientRect().top;
+  const [top, bottom, overflow] = await root.locator(".dialog").evaluate((panel) => {
+    const box = panel.getBoundingClientRect();
+    const backdrop = panel.parentElement as HTMLElement;
+    return [box.top, box.bottom, backdrop.scrollHeight - backdrop.clientHeight];
   });
-  expect(top).toBeGreaterThanOrEqual(0);
+  expect([top, bottom, overflow]).toEqual([expect.any(Number), expect.any(Number), 0]);
+  expect(top).toBeGreaterThanOrEqual(16);
+  expect(bottom).toBeLessThanOrEqual(420 - 16);
   await note(page).fill("short window");
   await sendButton(page).click();
-  await expect(page.getByRole("status")).toBeVisible();
+  await confirmed(page);
 });
 
 test("the category picker is in the Tab order, after the note", async ({ page }) => {
@@ -554,7 +566,7 @@ for (const context of ["value", "async"] as const) {
     await opened(page, { submit: "ok", context });
     await note(page).fill("with context");
     await sendButton(page).click();
-    await expect(page.getByRole("status")).toBeVisible();
+    await confirmed(page);
     const got = await page.evaluate(() =>
       (window as unknown as Page2).reports.map(
         (r) => (r as unknown as { context: unknown }).context,
@@ -581,7 +593,7 @@ test("a context() that throws, or gives no object, is a send error and nothing i
   }
 });
 
-test("while it sends, the controls are locked, drawing does nothing, and Esc still closes", async ({
+test("while it sends, the controls are locked, drawing does nothing, and Cancel, Keep as draft and Esc wait for it", async ({
   page,
 }) => {
   await opened(page, { submit: "hold", categories: true });
@@ -598,27 +610,35 @@ test("while it sends, the controls are locked, drawing does nothing, and Esc sti
   const before = await image(page).screenshot();
   await stroke(page);
   expect(Buffer.compare(await image(page).screenshot(), before)).toBe(0);
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Keep as draft" })).toBeDisabled();
+  // A real press on each, not only their look.
+  await page.getByRole("button", { name: "Cancel" }).click({ force: true });
+  await page.getByRole("button", { name: "Keep as draft" }).click({ force: true });
   await page.keyboard.press("Escape");
-  await expect(dialog(page)).toHaveCount(0);
-  await page.evaluate(() => (window as unknown as Page2).release?.());
   await page.waitForTimeout(200);
-  await expect(dialog(page)).toHaveCount(0);
+  await expect(dialog(page)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toHaveCount(0);
+  await page.evaluate(() => (window as unknown as Page2).release?.());
+  await confirmed(page);
+  expect(await log(page)).toContainEqual(expect.stringMatching(/^sent:/));
 });
 
 test("closing the sent confirmation stops its timer, so it cannot close the next dialog", async ({
   page,
 }) => {
   await opened(page, { submit: "ok" });
+  // Held still, so the confirmation is closed by hand before its own timer runs.
+  await freeze(page);
   await note(page).fill("first");
   await sendButton(page).click();
   await expect(page.getByRole("status")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog(page)).toHaveCount(0);
+  await page.clock.resume();
   await page.getByRole("button", { name: "Send feedback" }).click();
   await expect(note(page)).toBeFocused();
-  await page.waitForTimeout(3500);
+  await page.waitForTimeout(1000);
   await expect(dialog(page)).toBeVisible();
 });
 
@@ -676,7 +696,7 @@ test("axe passes with categories, in the send error and in the sent confirmation
   await expect(page.getByRole("alert")).toBeVisible();
   await scan();
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("status")).toBeVisible();
+  await confirmed(page);
   await scan();
 });
 
@@ -686,7 +706,7 @@ test("a submit or sent listener that throws does not turn a delivered report int
   await opened(page, { submit: "ok", throwIn: ["submit", "sent"] });
   await note(page).fill("listeners break");
   await sendButton(page).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   await expect(page.getByRole("alert")).toHaveCount(0);
   const ids = await page.evaluate(() => (window as unknown as Page2).reports.map((r) => r.id));
   expect(ids).toHaveLength(1);
@@ -710,7 +730,7 @@ test("closing after submit does not stop the delivery: sent still fires", async 
   await note(page).fill("closing");
   await sendButton(page).click();
   await expect.poll(() => log(page)).toContainEqual(expect.stringMatching(/^submit:/));
-  await page.keyboard.press("Escape");
+  await page.evaluate(() => (window as unknown as Page2).vf.close());
   await expect(dialog(page)).toHaveCount(0);
   await page.evaluate(() => (window as unknown as Page2).release?.());
   await expect.poll(() => log(page)).toContainEqual(expect.stringMatching(/^sent:/));
@@ -722,7 +742,7 @@ test("closing before submit sends nothing", async ({ page }) => {
   await opened(page, { submit: "ok", context: "slow" });
   await note(page).fill("never");
   await sendButton(page).click();
-  await page.keyboard.press("Escape");
+  await page.evaluate(() => (window as unknown as Page2).vf.close());
   await expect(dialog(page)).toHaveCount(0);
   await page.waitForTimeout(800);
   expect(await page.evaluate(() => (window as unknown as Page2).contextCalls)).toBe(1);
@@ -798,14 +818,82 @@ test("after a send error, Cancel asks first, since the note would be lost", asyn
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
-test("Cancel while it sends closes without asking", async ({ page }) => {
-  await opened(page, { submit: "hold" });
-  await note(page).fill("hold on");
+for (const click of [false, true]) {
+  test(`the sent confirmation closes ${click ? "at once on a click" : "after half a second"}`, async ({
+    page,
+  }) => {
+    await opened(page, { submit: "ok" });
+    await freeze(page);
+    await note(page).fill("thanks");
+    await sendButton(page).click();
+    await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+    if (click) {
+      // Anywhere on the overlay, outside the panel as well.
+      await page.mouse.click(4, 4);
+      await expect(dialog(page)).toHaveCount(0);
+      return;
+    }
+    await page.clock.runFor(450);
+    await expect(dialog(page)).toBeVisible();
+    await page.clock.runFor(100);
+    await expect(dialog(page)).toHaveCount(0);
+  });
+}
+
+const TIMEOUT = "It didn't send in 30 seconds. Check your internet connection, then try again.";
+
+test("a host's own TimeoutError shows its own message, not the 30 second one", async ({ page }) => {
+  await opened(page, { submit: "throw-timeout" });
+  await note(page).fill("host limit");
   await sendButton(page).click();
-  await expect(page.getByRole("button", { name: "Sending…" })).toBeFocused();
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("group", { name: "Discard this feedback?" })).toHaveCount(0);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("alert")).toHaveText("Gateway slow");
+});
+
+test("an onSubmit still pending after 30 seconds is a send error that says to check the connection", async ({
+  page,
+}) => {
+  await opened(page, { submit: "hold" });
+  await freeze(page);
+  await note(page).fill("slow network");
+  await sendButton(page).click();
+  // The limit starts once the report is built and handed over.
+  await expect.poll(() => log(page)).toContainEqual(expect.stringMatching(/^submit:/));
+  await page.clock.runFor(29_000);
+  await expect(page.getByRole("button", { name: "Sending…" })).toBeVisible();
+  await page.clock.runFor(1_100);
+  await expect(page.getByRole("alert")).toHaveText(TIMEOUT);
+  await expect(page.getByRole("button", { name: "Try again" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeEnabled();
+  expect(await log(page)).toContainEqual("error:The send took over 30 seconds.");
+  // Try again sends the same report once more.
+  await page.evaluate(() => (window as unknown as Page2).release?.());
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as Page2).reports.length)).toBe(2);
+  await page.evaluate(() => (window as unknown as Page2).release?.());
+  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  const ids = await page.evaluate(() => (window as unknown as Page2).reports.map((r) => r.id));
+  expect(new Set(ids).size).toBe(1);
+});
+
+test("an endpoint request still under way after 30 seconds is aborted, with the same message", async ({
+  page,
+}) => {
+  let aborted = false;
+  // Never answered: only the widget's own limit ends the request.
+  await page.route("**/api/hang", () => {});
+  page.on("requestfailed", (request) => {
+    if (request.url().endsWith("/api/hang")) aborted = true;
+  });
+  await opened(page, { endpoint: "/api/hang" });
+  await freeze(page);
+  await note(page).fill("no answer");
+  const asked = page.waitForRequest("**/api/hang");
+  await sendButton(page).click();
+  await asked;
+  await page.clock.runFor(30_100);
+  await expect(page.getByRole("alert")).toHaveText(TIMEOUT);
+  expect(await log(page)).toContainEqual("error:The send took over 30 seconds.");
+  await expect.poll(() => aborted).toBe(true);
 });
 
 test("after a send error, Esc asks first too, and Discard ends the draft", async ({ page }) => {

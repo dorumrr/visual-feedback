@@ -51,7 +51,15 @@ test("it opens on the client and sends to the app's own route", async ({ page })
   await expect(page.getByRole("dialog", { name: "Send feedback" })).toBeVisible();
   await page.getByLabel("Your note").fill(note);
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  // The confirmation shows for half a second, so it is read at every frame.
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll("*")].some(
+        (host) => host.shadowRoot?.querySelector(".status")?.textContent === "Thanks, it's sent.",
+      ),
+    undefined,
+    { polling: "raf" },
+  );
   const received = (await (await page.request.get("/api/feedback")).json()) as string[];
   expect(received).toContain(note);
   expect(seen).toEqual([]);
@@ -109,7 +117,15 @@ test("a prop change goes to update(): an open dialog and its note stay", async (
   await expect(page.locator("visual-feedback")).toHaveCount(1);
   // The onSubmit given after the change, a new closure, is the one that sends.
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  // The confirmation shows for half a second, so it is read at every frame.
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll("*")].some(
+        (host) => host.shadowRoot?.querySelector(".status")?.textContent === "Thanks, it's sent.",
+      ),
+    undefined,
+    { polling: "raf" },
+  );
   expect(await page.evaluate(() => (window as unknown as { sent: string[] }).sent)).toEqual([
     "left Kept",
   ]);
@@ -143,7 +159,15 @@ test("the README's React example, as its root layout, renders and sends", async 
   await trigger(page).click();
   await page.getByLabel("Your note").fill(note);
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  // The confirmation shows for half a second, so it is read at every frame.
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll("*")].some(
+        (host) => host.shadowRoot?.querySelector(".status")?.textContent === "Thanks, it's sent.",
+      ),
+    undefined,
+    { polling: "raf" },
+  );
   const received = (await (await page.request.get("/api/feedback")).json()) as string[];
   expect(received).toContain(note);
   expect(seen).toEqual([]);

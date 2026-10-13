@@ -1,6 +1,6 @@
-const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100% - 32px);display:grid;gap:12px}.dialog.wide{width:min(1100px,100% - 32px)}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.minimise{margin-left:auto}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.stage:only-child{grid-column:1/-1}.stage{position:relative;display:grid;gap:8px;min-width:0}.image{display:block;max-width:100%;max-height:min(60vh,100vh - 24.5em);margin:0 auto;color:var(--_mark)}.toolbar+.stage>.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg,.draft svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.strip{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}.thumb{position:relative;display:flex}.thumb-pick{position:relative;display:block;margin:0;padding:0;line-height:0}.thumb-image{display:block;height:3em;width:auto}.thumb-number{position:absolute;left:4px;top:4px;line-height:1.2}.thumb-remove{position:absolute;top:-.5em;right:-.5em}.add,.capture-view{display:inline-flex;align-items:center;gap:6px}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.split{position:relative;display:flex;margin-left:auto}.send-more{display:inline-flex;align-items:center}.menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:1;display:grid;min-width:max-content}.menu[hidden]{display:none}.save-pdf{display:inline-flex;align-items:center;gap:8px}.draft{position:fixed;z-index:var(--_z);box-sizing:border-box;max-width:calc(100% - 2 * var(--_off));display:flex;flex-wrap:wrap;align-items:center;gap:8px}.draft-thumbs{display:flex;gap:4px}.draft-thumbs .thumb-image{height:1.75em}.drafting>.trigger{display:none}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}`;
+const LAYOUT = `.backdrop{--_my:calc(max(16px,env(safe-area-inset-top,0px)) + max(16px,env(safe-area-inset-bottom,0px)));position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100%);display:grid;gap:12px}.dialog.wide{width:fit-content;min-width:min(560px,100%);max-width:100%}.side{display:contents}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.minimise{margin-left:auto}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.stage:only-child{grid-column:1/-1}.stage{position:relative;display:grid;gap:8px;min-width:0}.image{display:block;max-width:100%;max-height:max(4em,100dvh - var(--_my) - var(--_chrome,24.5em));margin:0 auto;color:var(--_mark)}.toolbar+.stage>.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg,.draft svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.strip{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}.thumb{position:relative;display:flex}.thumb-pick{position:relative;display:block;margin:0;padding:0;line-height:0}.thumb-image{display:block;height:3em;width:auto}.thumb-number{position:absolute;left:4px;top:4px;line-height:1.2}.thumb-remove{position:absolute;top:-.5em;right:-.5em}.add,.capture-view{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.split{position:relative;display:flex;margin-left:auto}.send-more{display:inline-flex;align-items:center}.menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:1;display:grid;min-width:max-content}.menu[hidden]{display:none}.save-pdf{display:inline-flex;align-items:center;gap:8px}.draft{position:fixed;z-index:var(--_z);box-sizing:border-box;max-width:calc(100% - 2 * var(--_off));display:flex;flex-wrap:wrap;align-items:center;gap:8px}.draft-thumbs{display:flex;gap:4px}.draft-thumbs .thumb-image{height:1.75em}.drafting>.trigger{display:none}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}@media (max-height:760px){.toolbar{display:grid;grid-template-columns:repeat(2,auto);align-content:start}.divider{grid-column:1/-1}}@media (max-height:700px){.dialog{position:relative}.dialog>.confirm{position:absolute;z-index:2;top:0;left:0;right:0}}@media (orientation:landscape) and (max-height:500px){.dialog.wide{width:100%;grid-template-columns:minmax(0,auto) minmax(12em,1fr);grid-template-rows:auto minmax(0,1fr) auto;row-gap:0}.wide>.header{grid-area:1/1/2/-1;margin-bottom:8px}.wide>.body{grid-area:2/1}.wide>.error{grid-area:3/1;margin-top:8px}.wide>.side{grid-area:2/2/4/3;display:flex;flex-direction:column;gap:12px;min-height:0}.wide>.side>.composer{flex:1;grid-template-rows:minmax(0,1fr)}.wide .note{height:100%;resize:none}.wide .footer{flex-wrap:wrap}.wide .hint{flex:1 1 100%}}`;
 
-const THEME = `.backdrop{background:var(--_bd)}.dialog,.draft{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.draft{padding:8px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header button,.toolbar button,.thumb-remove{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header button:hover,.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.stage>.image{cursor:crosshair}.selection{border:2px dashed var(--_f);border-radius:4px}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.thumb-pick{border:2px solid transparent;border-radius:calc(var(--_r) / 2.5);background:none;overflow:hidden;cursor:pointer}.thumb-pick[aria-current=true]{border-color:var(--_a)}.thumb-image{border-radius:calc(var(--_r) / 4);box-shadow:0 0 0 1px var(--_b)}.thumb-number{font-size:.75em;font-weight:600;padding:0 4px;border-radius:4px;background:var(--_s);color:var(--_t)}.thumb-remove{width:1.5em;height:1.5em;border:1px solid var(--_b);border-radius:50%;background:var(--_s)}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button,.add,.draft button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.add{border-style:dashed;color:var(--_m)}.send,.draft .capture-view{background:var(--_a);color:var(--_at);border-color:var(--_a)}.split .send{border-radius:calc(var(--_r) / 1.6) 0 0 calc(var(--_r) / 1.6)}.send-more{font:inherit;height:2.25em;padding:0 .55em;border:1px solid var(--_a);border-left-color:color-mix(in srgb,var(--_at) 40%,var(--_a));border-radius:0 calc(var(--_r) / 1.6) calc(var(--_r) / 1.6) 0;background:var(--_a);color:var(--_at);cursor:pointer}.send-more:disabled{opacity:.6;cursor:progress}.send:where([data-ink=dark]),.send-more:where([data-ink=dark]),.draft .capture-view:where([data-ink=dark]){color:#000}.menu{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:var(--_t);box-shadow:var(--_sh)}.save-pdf{font:inherit;padding:.5em .8em;border:0;border-radius:calc(var(--_r) / 2.5);background:none;color:inherit;cursor:pointer;white-space:nowrap}.save-pdf:hover,.save-pdf:focus-visible{background:color-mix(in srgb,var(--_t) 8%,transparent)}.draft button:disabled{opacity:.5;cursor:default}.draft-label{margin:0 4px;font-size:.9em;font-weight:600}[aria-disabled=true]{opacity:.6;cursor:progress}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}`;
+const THEME = `.backdrop{background:var(--_bd)}.dialog,.draft{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.draft{padding:8px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header button,.toolbar button,.thumb-remove{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header button:hover,.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.stage>.image{cursor:crosshair}.selection{border:2px dashed var(--_f);border-radius:4px}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.thumb-pick{border:2px solid transparent;border-radius:calc(var(--_r) / 2.5);background:none;overflow:hidden;cursor:pointer}.thumb-pick[aria-current=true]{border-color:var(--_a)}.thumb-image{border-radius:calc(var(--_r) / 4);box-shadow:0 0 0 1px var(--_b)}.thumb-number{font-size:.75em;font-weight:600;padding:0 4px;border-radius:4px;background:var(--_s);color:var(--_t)}.thumb-remove{width:1.5em;height:1.5em;border:1px solid var(--_b);border-radius:50%;background:var(--_s)}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button,.add,.draft button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.add{border-style:dashed;color:var(--_m)}.send,.draft .capture-view{background:var(--_a);color:var(--_at);border-color:var(--_a)}.split .send{border-radius:calc(var(--_r) / 1.6) 0 0 calc(var(--_r) / 1.6)}.send-more{font:inherit;height:2.25em;padding:0 .55em;border:1px solid var(--_a);border-left-color:color-mix(in srgb,var(--_at) 40%,var(--_a));border-radius:0 calc(var(--_r) / 1.6) calc(var(--_r) / 1.6) 0;background:var(--_a);color:var(--_at);cursor:pointer}.send-more:disabled{opacity:.6;cursor:progress}.send:where([data-ink=dark]),.send-more:where([data-ink=dark]),.draft .capture-view:where([data-ink=dark]){color:#000}.menu{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:var(--_t);box-shadow:var(--_sh)}.save-pdf{font:inherit;padding:.5em .8em;border:0;border-radius:calc(var(--_r) / 2.5);background:none;color:inherit;cursor:pointer;white-space:nowrap}.save-pdf:hover,.save-pdf:focus-visible{background:color-mix(in srgb,var(--_t) 8%,transparent)}.draft button:disabled{opacity:.5;cursor:default}.draft-label{margin:0 4px;font-size:.9em;font-weight:600}[aria-disabled=true]{opacity:.6;cursor:progress}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}@media (max-height:700px){.dialog>.confirm{min-height:2.15em;padding:14px;border-bottom:1px solid var(--_b);border-radius:calc(var(--_r) - 1px) calc(var(--_r) - 1px) 0 0;background:var(--_s);box-shadow:var(--_sh)}}`;
 
 import { type Annotator, annotate, type Tool } from "./annotate";
 import { icon } from "./icon";
@@ -45,11 +45,13 @@ const ENGLISH: Texts = {
   remove: "Delete",
   undo: "Undo",
   clear: "Clear",
+  clearConfirm: "Clear all marks on this screenshot?",
   cancel: "Cancel",
   send: "Send",
   sending: "Sending…",
   sent: "Thanks, it's sent.",
   error: "It didn't send. Your note is kept.",
+  timeout: "It didn't send in 30 seconds. Check your internet connection, then try again.",
   retry: "Try again",
   escHint: "Esc keeps it as a draft",
   minimise: "Keep as draft",
@@ -295,7 +297,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // One header for every view; its close button is the dialog's Cancel, which discards.
   const header = element("div", "header");
   const cancel = iconButton("cancel", text.cancel, ICONS.cancel, () =>
-    lose() ? ask() : handlers.close(),
+    lose() ? askDiscard() : handlers.close(),
   );
   const keep = iconButton("minimise", text.minimise, ICONS.minimise, () => minimise());
   header.append(title, cancel);
@@ -340,8 +342,11 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   let asking: HTMLElement | undefined;
 
   // Cancel has no undo, so it asks first when it would throw away what the user made.
+  // A send under way: nothing closes or folds the dialog until it ends.
+  const busy = () => !over && primary?.getAttribute("aria-disabled") === "true";
+
   function lose(): boolean {
-    if (over || primary?.getAttribute("aria-disabled") === "true") return false;
+    if (over || busy()) return false;
     return Boolean(
       note?.value.trim() ||
         picker?.selectedIndex ||
@@ -350,24 +355,19 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     );
   }
 
-  function ask(): void {
+  // One question at a time, under the header. Keep editing, and Esc on the question, take it
+  // back and put the focus on the button that asked.
+  function ask(prompt: string, choices: HTMLButtonElement[], from: HTMLElement): void {
     asking?.remove();
     const back = () => {
       asking?.remove();
-      cancel.focus();
+      from.focus();
     };
     const question = element("span", "confirm-text");
-    question.textContent = text.discardConfirm;
+    question.textContent = prompt;
     const stay = button("keep-editing", text.keepEditing, back);
-    asking = element("div", "actions confirm", {
-      role: "group",
-      "aria-label": text.discardConfirm,
-    });
-    asking.append(question, button("discard", text.discard, handlers.close));
-    // Only where a fold works: with a screenshot, and before Send.
-    if (taken.length && !draft)
-      asking.append(button("keep-draft", text.minimise, () => minimise()));
-    asking.append(stay);
+    asking = element("div", "actions confirm", { role: "group", "aria-label": prompt });
+    asking.append(question, ...choices, stay);
     // Escape takes back the question only; the dialog's own Escape would fold the draft.
     asking.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") return;
@@ -379,14 +379,34 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     stay.focus();
   }
 
+  function askDiscard(): void {
+    const discard = button("discard", text.discard, handlers.close);
+    // Only where a fold works: with a screenshot, and before Send.
+    const fold =
+      taken.length && !draft ? [button("keep-draft", text.minimise, () => minimise())] : [];
+    ask(text.discardConfirm, [discard, ...fold], cancel);
+  }
+
   function toolbar(): HTMLElement[] {
     if (!drawing) return [];
     const toolbar = element("div", "toolbar");
     const undo = iconButton("undo", text.undo, ICONS.undo, () => annotator?.undo());
-    const clear = iconButton("clear", text.clear, ICONS.clear, () => annotator?.clear());
+    // Clear asks first; Undo then brings every mark back.
+    const clear = iconButton("clear", text.clear, ICONS.clear, () => {
+      // The screenshot asked about, even if another one is picked before the answer.
+      const asked = annotator;
+      const yes = button("confirm-clear", text.clear, () => {
+        asking?.remove();
+        asked?.clear();
+        // Undo, when Clear left it something to bring back; a disabled one would drop the focus.
+        (undo.disabled
+          ? buttons.find((b) => b.getAttribute("aria-pressed") === "true")
+          : undo
+        )?.focus();
+      });
+      ask(text.clearConfirm, [yes], clear);
+    });
     const remove = iconButton("remove", text.remove, ICONS.remove, () => annotator?.remove());
-    // Only Select picks a mark, so without it Delete could never act.
-    const actions = choices.includes("select") ? [remove, undo, clear] : [undo, clear];
     refresh = () => {
       const off = new Map([
         [undo, !annotator?.canUndo],
@@ -413,8 +433,14 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     );
     // Open on something that draws, even when Select is listed first.
     pick(choices.find((choice) => choice !== "select") as Tool);
-    toolbar.append(...buttons, element("span", "divider", { "aria-hidden": "true" }), ...actions);
-    locked.push(...buttons, ...actions);
+    // Delete acts on what Select picked, so it sits right under Select; without Select it could
+    // never act.
+    const tools = buttons.flatMap((choice, i) =>
+      choices[i] === "select" ? [choice, remove] : [choice],
+    );
+    const divider = element("span", "divider", { "aria-hidden": "true" });
+    toolbar.append(...tools, divider, undo, clear);
+    locked.push(...tools, undo, clear);
     return [toolbar];
   }
 
@@ -466,6 +492,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     stage?.prepend(shot.image);
     renderStrip();
     refresh();
+    // Sized before the next paint, so a new image never shows at the size of the one before.
+    measure();
     if (focused) strip?.querySelector<HTMLElement>("[aria-current=true]")?.focus();
   }
 
@@ -643,6 +671,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     lockPage(true);
     renderStrip();
     reink();
+    measure();
     note?.focus();
   }
 
@@ -686,7 +715,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       if (mounted) sent();
     } catch (error) {
       handlers.emit("error", error);
-      if (mounted) failed(module?.shown(error));
+      if (mounted) failed(module?.late(error) ? text.timeout : module?.shown(error));
     }
   }
 
@@ -812,6 +841,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     body = element("div", "body");
     if (image) {
       stage = element("div", "stage");
+      // A taller tool rail holds the panel's height, so the stage is watched too.
+      fit.observe(stage);
       strip = element("div", "strip");
       stage.append(strip);
       body.append(...toolbar(), stage);
@@ -910,7 +941,10 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     locked.push(more);
     footer.append(split);
     panel.classList.toggle("wide", Boolean(image));
-    panel.replaceChildren(header, ...(image ? [body] : []), label, box, footer);
+    // One box for the note side, so a short landscape screen can put it beside the image.
+    const side = element("div", "side");
+    side.append(label, box, footer);
+    panel.replaceChildren(header, ...(image ? [body] : []), side);
     // Added once the view is in the page, so the image's marks resolve their colour.
     if (image) add(image);
     ink(send);
@@ -920,12 +954,13 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
 
   function sending(): void {
     if (!primary) return;
-    // From here Esc closes, so the hint that it keeps a draft goes, and so does a PDF failure.
+    // From here Esc keeps no draft, so the hint that it does goes, and so does a PDF failure.
     panel.querySelector(".hint")?.remove();
     pdfError?.remove();
     asking?.remove();
     for (const control of locked) control.disabled = true;
     for (const item of inert) item.inert = true;
+    cancel.disabled = true;
     failure?.remove();
     // aria-disabled, not disabled: a disabled button drops the focus out of the dialog.
     primary.setAttribute("aria-disabled", "true");
@@ -939,9 +974,15 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     status.textContent = text.sent;
     panel.classList.remove("wide");
     header.replaceChildren(title, cancel);
+    cancel.disabled = false;
     panel.replaceChildren(header, status);
     status.focus();
-    done = setTimeout(handlers.close, 3000);
+    done = setTimeout(handlers.close, 500);
+    // A send that settles in microtasks ends inside the Try again click, which then reaches here.
+    const shown = performance.now();
+    backdrop.addEventListener("click", (event) => {
+      if (event.timeStamp >= shown) handlers.close();
+    });
   }
 
   function failed(message = text.error): void {
@@ -949,6 +990,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     failure = element("p", "error", { role: "alert" });
     failure.textContent = message;
     composer.after(failure);
+    cancel.disabled = false;
     primary.removeAttribute("aria-disabled");
     primary.textContent = text.retry;
     primary.setAttribute("part", "retry");
@@ -958,11 +1000,14 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // Escape: keep an unsent draft, else ask as Cancel does, else close at once, not on the later
   // native close event. Chrome can skip cancel, so both.
   const onEscape = () => {
-    if (taken.length && !draft) minimise();
+    if (busy()) {
+      // Chrome may have closed it already, without a cancel event.
+      if (!backdrop.open) backdrop.showModal();
+    } else if (taken.length && !draft) minimise();
     else if (lose()) {
       // Chrome may have closed it already, without a cancel event.
       if (!backdrop.open) backdrop.showModal();
-      ask();
+      askDiscard();
     } else handlers.close();
   };
   backdrop.addEventListener("cancel", (event) => {
@@ -999,6 +1044,26 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // A draft a closed tab left behind goes after a day, even if no draft is folded again.
   if (keeping()) void import("./keep").then(({ sweep }) => sweep()).catch(() => {});
   let done: ReturnType<typeof setTimeout> | undefined;
+  // The image takes the height the rest of the dialog leaves, measured: a category, a question or
+  // an error adds rows, and a narrow window wraps them.
+  let fitting = 0;
+  // Later changes are written in the next frame: a write inside the callback can end a
+  // ResizeObserver loop with undelivered notifications, an error event the host's monitoring sees.
+  const fit = new ResizeObserver(() => {
+    cancelAnimationFrame(fitting);
+    fitting = requestAnimationFrame(measure);
+  });
+  function measure(): void {
+    const image = stage?.querySelector(":scope > .image");
+    const shown = image?.getBoundingClientRect().height;
+    if (!shown || !stage || !panel.classList.contains("wide")) return;
+    // The part of a taller tool rail that hangs below the stage is room the image may take.
+    const rail = panel.querySelector(".toolbar")?.getBoundingClientRect().height ?? 0;
+    const below = Math.max(0, rail - stage.getBoundingClientRect().height);
+    const chrome = Math.ceil(panel.getBoundingClientRect().height - shown - below);
+    panel.style.setProperty("--_chrome", `${chrome}px`);
+  }
+  fit.observe(panel);
   let scrollLocked = false;
   function lockPage(on: boolean): void {
     if (on !== scrollLocked) (on ? lockScroll : unlockScroll)();
@@ -1080,6 +1145,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       const stays = reviving || (!!keep && !submitted && store());
       mounted = false;
       clearTimeout(done);
+      fit.disconnect();
+      cancelAnimationFrame(fitting);
       lockPage(false);
       backdrop.removeEventListener("close", closed);
       if (backdrop.open) backdrop.close();

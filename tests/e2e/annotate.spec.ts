@@ -33,6 +33,15 @@ async function on(page: Page, path: number[][]): Promise<Point[]> {
   return path.map(([x = 0, y = 0]) => [box.x + box.width * x, box.y + box.height * y]);
 }
 
+/** Clear, and Clear again on its question. */
+async function clear(page: Page): Promise<void> {
+  await tool(page, "Clear").click();
+  await page
+    .getByRole("group", { name: "Clear all marks on this screenshot?" })
+    .getByRole("button", { name: "Clear", exact: true })
+    .click();
+}
+
 async function drag(page: Page, path: number[][]): Promise<void> {
   const [first, ...rest] = await on(page, path);
   await page.mouse.move(...(first as Point));
@@ -130,20 +139,27 @@ const AWAY: Point = [5, 5];
 
 test("the shown image keeps its shape when the window's height limits it", async ({ page }) => {
   await opened(page);
-  const [shown, natural, height, limit] = await image(page).evaluate(
-    (canvas: HTMLCanvasElement) => [
+  const measure = () =>
+    image(page).evaluate((canvas: HTMLCanvasElement) => [
       canvas.clientWidth / canvas.clientHeight,
       canvas.width / canvas.height,
       canvas.clientHeight,
-      Math.min(
-        innerHeight * 0.6,
-        innerHeight - 24.5 * Number.parseFloat(getComputedStyle(canvas).fontSize),
-      ),
-    ],
-  );
+      // The window less its two 16px margins and the rest of the dialog, measured a frame later.
+      innerHeight -
+        32 -
+        Number.parseFloat(
+          (canvas.closest(".dialog") as HTMLElement).style.getPropertyValue("--_chrome"),
+        ),
+    ]);
   // The height limit is the one that applies here.
-  expect(Math.abs((height ?? 0) - (limit ?? 0))).toBeLessThan(1);
-  expect(Math.abs((shown ?? 0) - (natural ?? 0))).toBeLessThan(0.02);
+  await expect
+    .poll(async () => {
+      const [, , height = 0, limit = 0] = await measure();
+      return Math.abs(height - limit);
+    })
+    .toBeLessThan(1);
+  const [shown = 0, natural = 0] = await measure();
+  expect(Math.abs(shown - natural)).toBeLessThan(0.02);
 });
 
 test("a pen stroke drawn by mouse is in the sent image in the mark colour, and in the marks", async ({
@@ -364,11 +380,43 @@ test("Undo removes the last mark and Clear removes all, back to the clean captur
     ]);
   }
   expect(await shown(page, samples)).not.toEqual(fresh);
-  await tool(page, "Clear").click();
+  await clear(page);
   await expect(tool(page, "Clear")).toBeDisabled();
   expect(await shown(page, samples)).toEqual(fresh);
   expect(await send(page)).toEqual([]);
   expect((await read(page, [], MARK))?.counted).toBe(0);
+});
+
+test("Delete sits right under Select, in the tools group above the divider", async ({ page }) => {
+  await opened(page);
+  const items = page.locator("visual-feedback").locator(".toolbar > *");
+  expect(
+    await items.evaluateAll((all) => all.map((item) => item.getAttribute("aria-label") ?? "|")),
+  ).toEqual(["Draw", "Box", "Arrow", "Text", "Select", "Delete", "|", "Undo", "Clear"]);
+});
+
+test("Clear asks first: Keep editing keeps the marks, Clear removes them, and Undo brings them back", async ({
+  page,
+}) => {
+  await opened(page);
+  await drag(page, [
+    [0.2, 0.5],
+    [0.6, 0.5],
+  ]);
+  await tool(page, "Clear").click();
+  const question = page.getByRole("group", { name: "Clear all marks on this screenshot?" });
+  await expect(question.getByRole("button")).toHaveText(["Clear", "Keep editing"]);
+  await expect(question.getByRole("button", { name: "Keep editing" })).toBeFocused();
+  await question.getByRole("button", { name: "Keep editing" }).click();
+  await expect(question).toHaveCount(0);
+  await expect(tool(page, "Clear")).toBeFocused();
+  await expect(tool(page, "Clear")).toBeEnabled();
+  await clear(page);
+  await expect(question).toHaveCount(0);
+  await expect(tool(page, "Clear")).toBeDisabled();
+  await tool(page, "Undo").click();
+  await expect(tool(page, "Clear")).toBeEnabled();
+  expect((await send(page)).map((mark) => mark.tool)).toEqual(["pen"]);
 });
 
 test("the toolbar follows the tools option, and an empty list draws nothing", async ({ page }) => {
@@ -550,7 +598,8 @@ test.describe("real touch, which only Chromium can drive", () => {
 
   /** Opens with the dialog taller than the window, scrolled to its top. */
   async function scrollable(page: Page, css = ""): Promise<number> {
-    await opened(page, { css });
+    // Taller than the window, as the dialog itself no longer is.
+    await opened(page, { css: `.backdrop::after { content: ""; height: 100vh } ${css}` });
     return page.evaluate(() => {
       const backdrop = document
         .querySelector("visual-feedback")
@@ -696,20 +745,24 @@ test("with marks, Tab reaches Undo and Clear, and disabling them keeps the focus
     "add",
     "note",
   ]);
-  for (const name of ["Undo", "Clear"]) {
-    if (name === "Clear") {
-      await drag(page, [
-        [0.2, 0.5],
-        [0.6, 0.5],
-      ]);
-    }
-    await tool(page, name).focus();
-    await page.keyboard.press("Enter");
-    await expect(tool(page, name)).toBeDisabled();
-    await expect(tool(page, "Draw")).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(tool(page, "Box")).toBeFocused();
-  }
+  await tool(page, "Undo").focus();
+  await page.keyboard.press("Enter");
+  await expect(tool(page, "Undo")).toBeDisabled();
+  await expect(tool(page, "Draw")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(tool(page, "Box")).toBeFocused();
+  // Clear asks first; once it has cleared, the focus waits on Undo, which brings the marks back.
+  await drag(page, [
+    [0.2, 0.5],
+    [0.6, 0.5],
+  ]);
+  await tool(page, "Clear").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Keep editing" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Enter");
+  await expect(tool(page, "Clear")).toBeDisabled();
+  await expect(tool(page, "Undo")).toBeFocused();
 });
 
 test("a move with no button pressed ends a stroke whose release was lost", async ({ page }) => {
@@ -912,9 +965,12 @@ test("a second click while typing keeps the first label and starts another; Undo
   expect((await colours(page, box(0.5, 0.6))).mark).toBe(0);
   expect((await colours(page, box(0.2, 0.3))).mark).toBeGreaterThan(10);
   expect((await colours(page, whole)).mark).toBeLessThan(both);
-  await tool(page, "Clear").click();
+  await clear(page);
   expect((await colours(page, whole)).mark).toBe(0);
-  await expect(tool(page, "Undo")).toBeDisabled();
+  // Undo brings back what Clear took.
+  await tool(page, "Undo").click();
+  expect((await colours(page, whole)).mark).toBeGreaterThan(10);
+  await clear(page);
   await page.mouse.click(...(a as Point));
   await label(page).fill("one");
   await page.mouse.click(...(b as Point));
@@ -1291,8 +1347,8 @@ test("while sending, Shift+Tab from Send leaves it, even with the image focusabl
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("button", { name: "Sending…" })).toBeFocused();
   await page.keyboard.press("Shift+Tab");
-  // Past the inert image and the locked tools, to the close button in the header.
-  await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+  // Past the inert image and the locked tools; Cancel waits for the send too, so it stays.
+  await expect(page.getByRole("button", { name: "Sending…" })).toBeFocused();
   await page.evaluate(() => (window as unknown as Mounted).release?.());
 });
 
@@ -1563,4 +1619,68 @@ test("the note shows 4 rows, and Send stays inside a 1280x720 window", async ({ 
   expect(await fits()).toBe(false);
   const send = await page.getByRole("button", { name: "Send", exact: true }).boundingBox();
   expect((send?.y ?? Infinity) + (send?.height ?? 0)).toBeLessThanOrEqual(720);
+});
+
+for (const [width, height] of [
+  [2200, 1300],
+  [1280, 720],
+  [667, 375],
+  [375, 667],
+  [320, 568],
+]) {
+  test(`at ${width}x${height} the dialog fits 16px inside the window, with nothing to scroll`, async ({
+    page,
+  }) => {
+    // The fit must never surface as a page error, as a ResizeObserver loop error would.
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.setViewportSize({ width, height });
+    await opened(page, { categories: [{ id: "bug", label: "Bug" }] });
+    const fit = () =>
+      page
+        .locator("visual-feedback")
+        .locator(".dialog")
+        .evaluate((panel) => {
+          const box = panel.getBoundingClientRect();
+          const backdrop = panel.parentElement as HTMLElement;
+          const send = panel.querySelector(".send")?.getBoundingClientRect();
+          return {
+            overflow: backdrop.scrollHeight - backdrop.clientHeight,
+            inside:
+              box.top >= 15.5 &&
+              box.left >= 15.5 &&
+              box.bottom <= innerHeight - 15.5 &&
+              box.right <= innerWidth - 15.5 &&
+              (send?.bottom ?? Infinity) <= box.bottom,
+          };
+        });
+    await expect.poll(fit).toEqual({ overflow: 0, inside: true });
+    const shown = await image(page).boundingBox();
+    // A large window gives the image most of its height, not a fixed share.
+    if (height >= 1000) expect(shown?.height ?? 0).toBeGreaterThan(height * 0.6);
+    // The dialog reaches the 16px margin on one side or the other: no room is left unused.
+    const panel = await page.locator("visual-feedback").locator(".dialog").boundingBox();
+    expect(
+      Math.min(height - 32 - (panel?.height ?? 0), width - 32 - (panel?.width ?? 0)),
+    ).toBeLessThan(2);
+    // A question adds a row; the image gives up the room, so it still fits.
+    await drag(page, [
+      [0.2, 0.5],
+      [0.6, 0.5],
+    ]);
+    await tool(page, "Clear").click();
+    await expect(page.getByRole("button", { name: "Keep editing" })).toBeVisible();
+    await expect.poll(fit).toEqual({ overflow: 0, inside: true });
+    expect(errors).toEqual([]);
+  });
+}
+
+test("on a short landscape screen the note sits beside the image", async ({ page }) => {
+  await page.setViewportSize({ width: 667, height: 375 });
+  await opened(page);
+  const root = page.locator("visual-feedback");
+  const body = await root.locator(".body").boundingBox();
+  const note = await root.getByRole("textbox", { name: "Your note" }).boundingBox();
+  expect(note?.x ?? 0).toBeGreaterThan((body?.x ?? 0) + (body?.width ?? 0));
+  expect(note?.y ?? Infinity).toBeLessThan((body?.y ?? 0) + (body?.height ?? 0));
 });

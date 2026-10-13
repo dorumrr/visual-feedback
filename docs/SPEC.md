@@ -8,7 +8,7 @@ package sends nothing by itself, and stores nothing but an unsent draft on the u
 
 ## 2. Flow
 ```
-idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> sent --3 s--> idle
+idle --open--> capturing --image ready--> annotating --Send--> sending --ok--> sent --0.5 s or a click--> idle
                    |                          |   ^                |
                    +--fails--> capture error  |   |                +--fails--> send error
                                               |   +--Open, or Capture this view (capturing first)
@@ -24,6 +24,11 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   (idle). This is the first screenshot only; a later one that fails is the draft's (below).
 - **annotating:** a full-viewport overlay shows the image with a tool rail beside it, a strip of
   the report's screenshots under it, and the note field, with Send in a footer row under that.
+  The dialog fits the window, 16 px from its edges (or the safe area's), with nothing to scroll:
+  the image takes the height the rest leaves, and the dialog is as wide as the image needs. Below
+  760 px of height the tool rail has two columns, and below 700 px a question lies over the
+  header in place of adding a row; on a landscape screen under 500 px high, the note and Send go
+  beside the image.
   Esc and the header's Keep as draft fold it into the draft; the header's close button (Cancel)
   discards it. When that would throw away a note, a mark, a second screenshot or a chosen category,
   Cancel first asks `discardConfirm`, with "Discard", `minimise` (before Send, with a screenshot) and
@@ -41,9 +46,12 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   it.
 - **sending:** the note, the category and the tools are disabled, and the Send button shows
   progress. The Esc hint goes, as it is absent with no screenshot: from Send on, Esc keeps no
-  draft, and Cancel and Esc close the dialog.
-- **sent:** a short confirmation, then idle.
-- **send error:** the message comes from the host's error, or else the `error` text. The note and
+  draft. Until the send ends, Cancel, Keep as draft and Esc do nothing. A send that has not ended
+  after 30 seconds fails, with the `timeout` text.
+- **sent:** the `sent` confirmation for half a second, or until a click anywhere on the overlay,
+  then idle.
+- **send error:** the message is the `timeout` text after 30 seconds, else the host's error, or
+  else the `error` text. The note and
   the marks are kept, and "Try again" sends the same report. Cancel and Esc, after
   the same question when it would throw work away, close the dialog, and the draft goes with it.
 
@@ -77,8 +85,9 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   is not kept; a label holds up to 280 characters. Labels are one size, in the mark colour with a white outline. Select picks a mark by
   its line or a label by its text, and shows a dashed outline that never reaches the sent image: a
   drag moves it, kept whole inside the image; the arrow keys move it (Shift for ten); Delete,
-  Backspace or the Delete button removes it; Escape lets go of it. Undo takes back the last add,
-  move or removal, one at a time, and Clear removes all.
+  Backspace or the Delete button, under Select in the tool rail, removes it; Escape lets go of
+  it. Clear asks `clearConfirm` first, with Clear and `keepEditing`, then removes every mark on the
+  shown screenshot. Undo takes back the last add, move, removal or Clear, one at a time.
 - **One colour** for the marks, `--vf-mark`, which defaults to a red that contrasts with most pages.
 - Pointer events, so mouse, pen and touch all work. While drawing, touch never scrolls the page.
 - **Note:** a textarea of 2000 characters at most, with a visible label (`noteLabel`). It is
@@ -153,7 +162,7 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
   mark (§4), or on Cancel's question (§2),
   keeps an unsent draft that has a screenshot in the draft bar, and moves the focus to it ("Capture
   this view", or "Open" at 10 screenshots). With no screenshot, or after a send error, it cancels,
-  asking first as Cancel does; while sending, and once sent, it closes at once.
+  asking first as Cancel does; while sending it does nothing, and once sent it closes at once.
   While the dialog is open, the page does not scroll. On close, focus goes back to the trigger,
   or to where it was before.
 - Every control has an accessible name and a visible focus ring (`--vf-focus`), `unstyled`
@@ -215,10 +224,12 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | pen / box / arrow / text / select | Draw / Box / Arrow / Text / Select |
 | remove | Delete |
 | undo / clear | Undo / Clear |
+| clearConfirm | Clear all marks on this screenshot? |
 | cancel / send | Cancel / Send |
 | sending | Sending… |
 | sent | Thanks, it's sent. |
 | error | It didn't send. Your note is kept. |
+| timeout | It didn't send in 30 seconds. Check your internet connection, then try again. |
 | retry | Try again |
 | triggerText | none: the icon alone |
 | escHint | Esc keeps it as a draft |

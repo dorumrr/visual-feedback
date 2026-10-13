@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { defaultType, events, failable, type Mounted, mount } from "./widget";
+import { confirmed, defaultType, events, failable, type Mounted, mount } from "./widget";
 
 const KEYS = [
   "trigger",
@@ -129,7 +129,7 @@ test("strings replace every text the widget shows", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveText("X error");
   await expect(dialog.getByRole("button", { name: "X retry" })).toBeVisible();
   await dialog.getByRole("button", { name: "X retry" }).click();
-  await expect(page.getByRole("status")).toHaveText("X sent");
+  await confirmed(page, "X sent");
 });
 
 test("an empty triggerText at creation leaves the icon alone, 40 px square", async ({ page }) => {
@@ -180,7 +180,7 @@ test("strings show while sending, and a partial set keeps English for the rest",
   await expect(dialog.getByRole("button", { name: "X sending" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
   await page.evaluate(() => (window as unknown as Mounted).release?.());
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
 });
 
 test("strings name the capture error and its buttons", async ({ page }) => {
@@ -640,7 +640,7 @@ test("update's endpoint is used at the next send, and unstyled can be turned off
   await page.getByRole("button", { name: "Send feedback" }).click();
   await page.getByLabel("Your note").fill("A note");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   const received = async (key: string) =>
     ((await (await page.request.get(`/api/feedback/${key}`)).json()) as unknown[]).length;
   expect([await received(first), await received(second)]).toEqual([0, 1]);
@@ -662,7 +662,7 @@ test("update: undefined puts a key back to its default, and capture is replaced 
   await page.getByRole("button", { name: "Send feedback" }).click();
   await page.getByLabel("Your note").fill("A note");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   const image = await page.evaluate(async () => {
     const blob = (window as unknown as Mounted).reports.at(-1)?.screenshots[0]?.image;
     return blob ? { type: blob.type, width: (await createImageBitmap(blob)).width } : null;
@@ -688,7 +688,7 @@ test("update: headers and redactUrl at the next send, requireNote and categories
   await page.getByRole("button", { name: "Send feedback" }).click();
   await expect(page.getByLabel("Type")).toBeVisible();
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   const [received] = (await (await page.request.get(`/api/feedback/${key}`)).json()) as {
     headers: Record<string, string>;
     body: string;

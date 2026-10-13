@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { markdown } from "../recipes/doc";
-import { failable, type Mounted, mount, withoutSupport } from "./widget";
+import { confirmed, failable, type Mounted, mount, withoutSupport } from "./widget";
 
 const VARIABLES = [
   "--vf-radius",
@@ -310,7 +310,7 @@ test("every element of every view has its ::part() name, and the page can style 
   await expect(page.getByRole("textbox", { name: "Your note" })).toBeDisabled();
   await scan("sending");
   await page.evaluate(() => (window as unknown as Mounted).release?.());
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   await scan("sent");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);

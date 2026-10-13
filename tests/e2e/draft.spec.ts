@@ -431,6 +431,10 @@ test("thumbnails follow their own screenshot's marks, in the strip and in the dr
   await expect.poll(async () => (await strip())[0]).toBe(before);
   await stroke(page);
   await button(page, "Clear").click();
+  await page
+    .getByRole("group", { name: "Clear all marks on this screenshot?" })
+    .getByRole("button", { name: "Clear", exact: true })
+    .click();
   await expect.poll(async () => (await strip())[0]).toBe(before);
   // A second screenshot: marks on it change its thumbnail, never the first one's.
   await button(page, "Add screenshot").click();
@@ -455,4 +459,30 @@ test("Capture this view has the accent colour, as Send does", async ({ page }) =
   );
   await page.keyboard.press("Escape");
   await expect(button(page, "Capture this view")).toHaveCSS("background-color", accent);
+});
+
+test("Clear clears the screenshot it asked about, even when another one is picked before the answer", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await stroke(page);
+  await button(page, "Add screenshot").click();
+  await capture(page);
+  await stroke(page, 0.7);
+  await button(page, "Screenshot 1").click();
+  await button(page, "Clear").click();
+  await button(page, "Screenshot 2").click();
+  await page
+    .getByRole("group", { name: "Clear all marks on this screenshot?" })
+    .getByRole("button", { name: "Clear", exact: true })
+    .click();
+  // Screenshot 2 is shown and keeps its mark: Clear stays on, and the focus stays in the dialog.
+  await expect(button(page, "Clear")).toBeEnabled();
+  await expect(page.locator("visual-feedback").locator(":focus")).toHaveCount(1);
+  await note(page).fill("two screenshots");
+  await button(page, "Send").click();
+  await finish(page);
+  const report = await sent(page);
+  expect(report.screenshots.map((shot) => shot.marks.length)).toEqual([0, 1]);
 });

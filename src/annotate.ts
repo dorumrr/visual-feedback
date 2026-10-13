@@ -6,7 +6,10 @@ type Point = [number, number];
 type Line = Exclude<Mark, { tool: "text" }>;
 type Box = { x: number; y: number; width: number; height: number };
 // What Undo takes back: a mark added, a mark moved from where it was, or a mark removed.
-type Step = { kind: "add" } | { kind: "move" | "remove"; index: number; mark: Mark };
+type Step =
+  | { kind: "add" }
+  | { kind: "move" | "remove"; index: number; mark: Mark }
+  | { kind: "clear"; marks: Mark[] };
 
 export type Annotator = {
   tool: Tool;
@@ -519,6 +522,7 @@ export function annotate(
       const step = history.pop();
       if (!step) return;
       if (step.kind === "add") marks.pop();
+      else if (step.kind === "clear") marks.push(...step.marks);
       else if (step.kind === "move") marks[step.index] = step.mark;
       else marks.splice(step.index, 0, step.mark);
       selected = null;
@@ -527,8 +531,7 @@ export function annotate(
     },
     clear() {
       finishDrag();
-      marks.length = 0;
-      history.length = 0;
+      if (marks.length) history.push({ kind: "clear", marks: marks.splice(0) });
       selected = null;
       paint();
       onChange();

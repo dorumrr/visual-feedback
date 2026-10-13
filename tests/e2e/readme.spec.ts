@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { markdown } from "../recipes/doc";
+import { confirmed } from "./widget";
 
 const { block, cleanup } = markdown("README.md");
 test.afterAll(cleanup);
@@ -23,7 +24,7 @@ test("the README's browser example, as written, adds the button and posts to its
   await page.getByRole("button", { name: "Send feedback" }).click();
   await page.getByLabel("Your note").fill("From the README example");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  await confirmed(page);
   expect(posted).toHaveLength(1);
   expect(posted[0]).toMatch(/^multipart\/form-data; boundary=/);
 });

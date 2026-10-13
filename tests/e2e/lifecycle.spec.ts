@@ -229,7 +229,7 @@ test("destroy during the capture, while drawing, and while sending leaves nothin
     w.vf.on("error", () => w.events.push("error"));
     w.vf.destroy();
     w.release?.();
-    // Long enough for the sent state and its 3 s timer to have started, had they survived.
+    // Long enough for the sent state and its timer to have started, had they survived.
     await new Promise((resolve) => setTimeout(resolve, 100));
   });
   // destroy() fires close last; the delivery under way fires nothing after it.

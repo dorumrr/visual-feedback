@@ -186,7 +186,8 @@ test.describe("on a page with a known colour under the trigger", () => {
     await expect
       .poll(() => page.evaluate(() => (window as unknown as Mounted).reports.length))
       .toBe(1);
-    await page.keyboard.press("Escape");
+    // Esc waits for the send now; the host's close() still ends the dialog.
+    await page.evaluate(() => (window as unknown as Mounted).vf.close());
     await expect(dialog(page)).toHaveCount(0);
     await trigger(page).click();
     await expect(page.locator("visual-feedback").locator("canvas.image")).toBeVisible();

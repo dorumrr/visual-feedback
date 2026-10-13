@@ -81,8 +81,41 @@ export async function build(
   return { ...checked, screenshots };
 }
 
+/** How long a send may take before it fails as a TimeoutError. */
+const SEND_TIMEOUT = 30_000;
+
+// The errors this module's own limit made, so a host's own TimeoutError keeps its message.
+const limits = new WeakSet<object>();
+
+/** Whether the send failed on the widget's own 30 second limit. */
+export function late(error: unknown): boolean {
+  return typeof error === "object" && error !== null && limits.has(error);
+}
+
 /** Sends with onSubmit, or else POSTs what parseFeedbackRequest reads to the endpoint. */
 export async function deliver(report: FeedbackReport, settings: Settings): Promise<void> {
+  const stop = new AbortController();
+  const timer = setTimeout(() => {
+    const error = new DOMException("The send took over 30 seconds.", "TimeoutError");
+    limits.add(error);
+    stop.abort(error);
+  }, SEND_TIMEOUT);
+  // A host's promise cannot be stopped, only no longer waited for.
+  const late = new Promise<never>((_, reject) =>
+    stop.signal.addEventListener("abort", () => reject(stop.signal.reason), { once: true }),
+  );
+  try {
+    return await Promise.race([send(report, settings, stop.signal), late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function send(
+  report: FeedbackReport,
+  settings: Settings,
+  signal: AbortSignal,
+): Promise<void> {
   const { onSubmit, endpoint } = settings;
   if (onSubmit) return host(() => onSubmit(report));
   if (!endpoint) throw new Error("Neither onSubmit nor endpoint is set.");
@@ -96,6 +129,12 @@ export async function deliver(report: FeedbackReport, settings: Settings): Promi
   const { headers: given } = settings;
   const headers = typeof given === "function" ? await host(given) : (given ?? {});
   // A redirect is a failure: an expired session can send a login page that answers 200.
-  const response = await fetch(endpoint, { method: "POST", body, headers, redirect: "manual" });
+  const response = await fetch(endpoint, {
+    method: "POST",
+    body,
+    headers,
+    redirect: "manual",
+    signal,
+  });
   if (!response.ok) throw new Error(`The endpoint answered ${response.status}.`);
 }

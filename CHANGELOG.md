@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.1 (not released yet)
+
+- The dialog fits the window, 16px from its edges, with nothing to scroll: on a large screen the
+  image grows to the height left, and the dialog is as wide as the image needs. On a short
+  screen the tool rail has two columns, and a phone in landscape gets the note beside the image
+  (SPEC §2).
+- While a send is under way, Cancel, Keep as draft and Esc do nothing. A send that takes over 30
+  seconds fails with the new `timeout` text, and `error` fires with a `TimeoutError`; an
+  `endpoint` request is aborted.
+- The sent confirmation shows for half a second, or until a click, in place of 3 seconds.
+- Clear asks first (new `clearConfirm` text), and Undo brings the cleared marks back.
+- Delete sits under Select in the tool rail. New parts: `confirm-clear` and `side`.
+
 ## 0.4.0 (2026-10-13)
 
 - Breaking: the trigger is a tab by default, in the corner `position` names, with a flag icon. It

@@ -68,8 +68,8 @@ Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`
 `thumb-pick`, `thumb-image`, `thumb-number`, `thumb-remove`, `add`, `label`, `composer`, `note`,
 `composer-bar`, `category`, `footer`, `split`, `send-more`, `menu`, `save-pdf`, `actions`, `cancel`,
 `send`, `hint`, `status`, `error`, `retry`, `send-without`, `draft`, `draft-label`, `draft-thumbs`,
-`capture-view`, `reopen`, `discard`, `confirm`, `confirm-text`, `keep-draft`, `keep-editing`. Cancel's
-question is `confirm`, also an `actions` part, with its own `discard` button. After a send error, the Send button's part is `retry` until it
+`capture-view`, `reopen`, `discard`, `confirm`, `confirm-text`, `confirm-clear`, `keep-draft`, `keep-editing`, `side`. Cancel's
+question is `confirm`, also an `actions` part, with its own `discard` button; Clear's is `confirm` too, with `confirm-clear`. `side` holds the label, the composer and the footer; it lays nothing out except beside the image on a short landscape screen. After a send error, the Send button's part is `retry` until it
 sends again, the same part as the capture error's "Try again".
 
 ```css

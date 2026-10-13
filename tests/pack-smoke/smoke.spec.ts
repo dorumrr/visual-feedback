@@ -33,7 +33,15 @@ test("the packed package, installed in a fresh app, stores a report in its .visu
   const note = `Pack smoke ${crypto.randomUUID()}`;
   await page.getByLabel("Your note").fill(note);
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
+  // The confirmation shows for half a second, so it is read at every frame.
+  await page.waitForFunction(
+    () =>
+      [...document.querySelectorAll("*")].some(
+        (host) => host.shadowRoot?.querySelector(".status")?.textContent === "Thanks, it's sent.",
+      ),
+    undefined,
+    { polling: "raf" },
+  );
 
   // Each browser sends its own report into the same app: this test's is the one with its note.
   const folder = join(app(), ".visual-feedback");

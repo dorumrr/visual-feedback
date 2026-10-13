@@ -36,10 +36,24 @@ export async function mount(page: Page, options: Record<string, unknown> = {}): 
   }, options);
 }
 
-/** Waits for the sent confirmation, then closes at once instead of waiting out its 3 s. */
+/**
+ * Waits for the sent confirmation, read at every frame: it shows for half a second only, less
+ * than the gaps between a locator assertion's retries.
+ */
+export async function confirmed(page: Page, text = "Thanks, it's sent."): Promise<void> {
+  await page.waitForFunction(
+    (text) =>
+      [...document.querySelectorAll("*")].some(
+        (host) => host.shadowRoot?.querySelector(".status")?.textContent === text,
+      ),
+    text,
+    { polling: "raf" },
+  );
+}
+
+/** Waits for the sent confirmation, then for the dialog to close. */
 export async function finish(page: Page): Promise<void> {
-  await expect(page.getByRole("status")).toHaveText("Thanks, it's sent.");
-  await page.keyboard.press("Escape");
+  await confirmed(page);
   await expect(page.getByRole("dialog")).toHaveCount(0);
 }
 
