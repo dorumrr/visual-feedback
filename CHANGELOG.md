@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.1 (not released yet)
+## 0.4.1 (2026-10-14)
 
 - The dialog fits the window, 16px from its edges, with nothing to scroll: on a large screen the
   image grows to the height left, and the dialog is as wide as the image needs. On a short
