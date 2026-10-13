@@ -4,6 +4,8 @@ A small button lets your users screenshot the page, mark it up and write a note.
 report and store it where you want. It has no service, no tracking and no global CSS, and it fits
 any design.
 
+**Try it [here](https://dorumrr.github.io/visual-feedback/)**. A report you send stays in the page, as the site's own list.
+
 ![The feedback dialog over a video site, with a box and an arrow drawn around the topic buttons, seven of which read Undefined](docs/demo.png)
 
 ```sh

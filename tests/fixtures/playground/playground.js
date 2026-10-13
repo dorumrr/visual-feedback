@@ -43,9 +43,9 @@ window.playground = { show };
 
 let pkg;
 try {
-  pkg = await import("/dist/index.mjs");
+  pkg = await import("../dist/index.mjs");
 } catch (error) {
-  status.textContent = `Could not load /dist/index.mjs: ${error}. Run npm run build or npm run dev.`;
+  status.textContent = `Could not load dist/index.mjs: ${error}. Run npm run build or npm run dev.`;
 }
 if (pkg && typeof pkg.createFeedback === "function") {
   try {

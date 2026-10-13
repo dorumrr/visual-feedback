@@ -1,0 +1,81 @@
+name: pages
+
+# The playground as the demo site on GitHub Pages: main's newest commit, after check passes on it.
+on:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # A pull request from a fork's main runs check too: only a push to this repo's main counts.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Reads check.yml's runs, to deploy only a commit that passed it.
+      actions: read
+    outputs:
+      sha: ${{ steps.newest.outputs.sha }}
+    steps:
+      # Every run deploys main's newest commit once check passed on it, whichever run started it:
+      # checks end in any order, a waiting run can be replaced, and a run by hand names any branch.
+      - name: Main's newest commit passed check
+        id: newest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          passed=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow check.yml --commit "$sha" \
+            --event push --status success --limit 1 --json databaseId --jq length)
+          if [ "$passed" = "1" ]; then
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          else
+            echo "check has not passed on main's $sha yet: its own check deploys it"
+          fi
+      - if: steps.newest.outputs.sha != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.newest.outputs.sha }}
+      - if: steps.newest.outputs.sha != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.newest.outputs.sha != ''
+        run: npm ci
+      - if: steps.newest.outputs.sha != ''
+        run: npm run build
+      - if: steps.newest.outputs.sha != ''
+        run: npm run site
+      - if: steps.newest.outputs.sha != ''
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: artifacts/site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

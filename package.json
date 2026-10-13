@@ -66,6 +66,7 @@
     "prepack": "npm run --silent build -- --logLevel warn",
     "dev": "node tests/dev.mjs",
     "demo": "node tests/demo.mjs",
+    "site": "node tests/site.mjs",
     "release": "node tests/release.mjs"
   },
   "devDependencies": {

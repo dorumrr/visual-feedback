@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, it } from "vitest";
 import { steps } from "../check.mjs";
+import { shell } from "./workflow";
 
 const workflow = readFileSync(
   new URL("../../.github/workflows/publish.yml", import.meta.url),
@@ -14,18 +15,7 @@ afterAll(() => {
   for (const folder of folders) rmSync(folder, { recursive: true, force: true });
 });
 
-/** The shell of one workflow step, by its name, as GitHub would run it. */
-function step(name: string): string {
-  const start = workflow.indexOf(`- name: ${name}\n`);
-  expect(start, name).toBeGreaterThan(-1);
-  const [, body = ""] =
-    /\n\s+run: \|\n([\s\S]*?)(?=\n\s+- (?:name|uses|run):|$)/.exec(workflow.slice(start)) ?? [];
-  const indent = /^ */.exec(body)?.[0].length ?? 0;
-  return body
-    .split("\n")
-    .map((line) => line.slice(indent))
-    .join("\n");
-}
+const step = (name: string) => shell(workflow, name);
 
 function gate(version: string, changelog: string) {
   const folder = mkdtempSync(join(tmpdir(), "vf-publish-"));

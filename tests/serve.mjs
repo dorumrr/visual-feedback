@@ -2,6 +2,7 @@ import { createReadStream, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pointed, snapdom } from "./vendor.mjs";
 
 const root = fileURLToPath(new URL("fixtures", import.meta.url));
 const dist = fileURLToPath(new URL("../dist", import.meta.url));
@@ -15,30 +16,6 @@ const types = {
   ".svg": "image/svg+xml",
   ".woff2": "font/woff2",
 };
-const vendor = {
-  "/vendor/snapdom.js": "../node_modules/@zumer/snapdom/dist/snapdom.js",
-  "/vendor/snapdom.mjs": "../node_modules/@zumer/snapdom/dist/snapdom.mjs",
-};
-// A browser cannot resolve the bare import a bundler would, so the built files get a path instead.
-const BARE = /(["'])@zumer\/snapdom\1/g;
-
-// snapdom 3.3.0 cuts -webkit-line-clamp text one line short at a fractional line height. Only the
-// copy served here is fixed, for the tests and the playground; a host's install is not (SPEC §5).
-const CLAMP = "t.scrollHeight<=c+.5";
-const { version } = JSON.parse(
-  readFileSync(new URL("../node_modules/@zumer/snapdom/package.json", import.meta.url), "utf8"),
-);
-if (version !== "3.3.0")
-  throw new Error(`serve: the line-clamp fix is for snapdom 3.3.0, not ${version}`);
-const snapdom = Object.fromEntries(
-  Object.entries(vendor).map(([path, file]) => {
-    const code = readFileSync(new URL(file, import.meta.url), "utf8");
-    const sites = code.split(CLAMP).length - 1;
-    if (sites !== 2) throw new Error(`serve: ${file} holds ${sites} line-clamp sites, not 2`);
-    // The limit, c, is a rounded one-line height times the lines, n: allow one pixel per line.
-    return [path, code.replaceAll(CLAMP, "t.scrollHeight<=c+n")];
-  }),
-);
 
 function inside(base, pathname) {
   const path = normalize(join(base, pathname));
@@ -78,10 +55,10 @@ function endpoint(req, res, url) {
 const handler = (req, res) => {
   const url = new URL(req.url, "http://x");
   if (url.pathname.startsWith("/api/feedback/")) return endpoint(req, res, url);
-  if (Object.hasOwn(snapdom, url.pathname)) {
+  if (Object.hasOwn(snapdom, url.pathname.slice(1))) {
     return res
       .writeHead(200, { "content-type": "text/javascript", "cache-control": "no-store" })
-      .end(snapdom[url.pathname]);
+      .end(snapdom[url.pathname.slice(1)]);
   }
   try {
     const file = resolve(decodeURIComponent(url.pathname));
@@ -93,7 +70,7 @@ const handler = (req, res) => {
       "cache-control": "no-store",
     });
     if (file.startsWith(dist + sep) && extname(file) === ".mjs") {
-      return res.end(readFileSync(file, "utf8").replace(BARE, '"/vendor/snapdom.mjs"'));
+      return res.end(pointed(readFileSync(file, "utf8")));
     }
     createReadStream(file)
       .on("error", () => res.destroy())
