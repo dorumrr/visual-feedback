@@ -112,9 +112,9 @@ function variables(): string {
   return `.vf{--_r:var(--vf-radius,var(--_pr,16px));--_s:var(--vf-surface,var(--_ps,Canvas));--_t:var(--vf-text,var(--_pt,CanvasText));--_m:var(--vf-muted,var(--_pm,color-mix(in srgb,var(--_t) 60%,transparent)));--_b:var(--vf-border,color-mix(in srgb,var(--_t) 15%,transparent));--_a:var(--vf-accent,var(--_pa,${system ? "AccentColor" : "#0b57d0"}));--_at:var(--vf-accent-text,#fff);--_f:var(--vf-focus,var(--_a));--_mark:var(--vf-mark,#e5243b);--_bd:var(--vf-backdrop,rgb(0 0 0/45%));--_sh:var(--vf-shadow,0 12px 32px -12px rgb(0 0 0/35%));--_size:var(--vf-trigger-size,2.5em);--_off:var(--vf-offset,16px);--_z:var(--vf-z,2147483000)}`;
 }
 
-const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-icon]{width:var(--_size);padding:0;justify-content:center}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}.still .trigger{transition:none!important}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
+const LAYOUT = `.vf{display:contents;font-family:var(--vf-font,inherit);color-scheme:light dark}.trigger{font:inherit;position:fixed;z-index:var(--_z);box-sizing:border-box;height:var(--_size);margin:0;padding:0 14px 0 12px;display:flex;align-items:center;gap:8px;white-space:nowrap}.trigger[data-icon]{width:var(--_size);padding:0;justify-content:center}.trigger[data-icon] svg{width:100%;height:100%}[data-y=bottom]{bottom:calc(var(--_off) + env(safe-area-inset-bottom,0px))}[data-y=top]{top:calc(var(--_off) + env(safe-area-inset-top,0px))}[data-x=right]{right:calc(var(--_off) + env(safe-area-inset-right,0px))}[data-x=left]{left:calc(var(--_off) + env(safe-area-inset-left,0px))}.trigger svg{width:1.15em;height:1.15em}.capturing,.capturing .backdrop{visibility:hidden}.still .trigger{transition:none!important}:focus-visible{outline:2px solid var(--_f);outline-offset:2px}@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}`;
 
-const THEME = `.trigger{font-weight:600;border:1px solid var(--_b);border-radius:999px;background:var(--_s);color:var(--_t);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s}.trigger:hover{background:color-mix(in srgb,var(--_s) 90%,var(--_t))}`;
+const THEME = `.trigger{font-weight:600;border:1px solid var(--_t);border-radius:999px;background:var(--_s);color:var(--_t);box-shadow:var(--_sh);cursor:pointer;transition:background-color .15s}.trigger:hover{background:color-mix(in srgb,var(--_s) 90%,var(--_t))}`;
 
 // The dialog draws its icons with ./icon; sharing it would put a chunk into the loader's budget.
 function icon(): SVGSVGElement {
@@ -123,14 +123,15 @@ function icon(): SVGSVGElement {
   const attributes = {
     viewBox: "0 0 24 24",
     "aria-hidden": "true",
-    fill: "none",
-    stroke: "currentColor",
-    "stroke-width": "2",
-    "stroke-linejoin": "round",
+    fill: "currentColor",
     part: "trigger-icon",
   };
   for (const [name, value] of Object.entries(attributes)) svg.setAttribute(name, value);
-  path.setAttribute("d", "M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.4A8 8 0 1 1 21 12z");
+  // Six blades out to the edge: the trigger's border, in the same colour, is their ring.
+  path.setAttribute(
+    "d",
+    "M12 12Q17.2 7.9 24 12L22.6 17.6Q16.2 11.6 12 12zM12 12Q18.1 14.5 18 22.4L12.4 24Q14.5 15.4 12 12zM12 12Q12.9 18.5 6 22.4L1.8 18.4Q10.3 15.8 12 12zM12 12Q6.8 16.1 0 12L1.4 6.4Q7.8 12.4 12 12zM12 12Q5.9 9.5 6 1.6L11.6 0Q9.5 8.6 12 12zM12 12Q11.1 5.5 18 1.6L22.2 5.6Q13.7 8.2 12 12z",
+  );
   svg.append(path);
   return svg;
 }

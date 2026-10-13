@@ -49,10 +49,11 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
 
 ## 3. The trigger
 - It is a small round button, 2.5em across by default (40 px on a 16 px site), in a corner
-  (`position`), with an icon and the `trigger` accessible name. A host that gives `triggerText`
-  gets that short label beside the icon, as a pill; with only `triggerText` given, that text is
-  the name too. A host that sets both keeps `triggerText` inside `trigger`, so
-  speech control can say what it sees. It has no badge, and it does not move or pulse.
+  (`position`), filled by a swirl icon edged by a ring in the same colour, with the `trigger`
+  accessible name. A host that gives `triggerText` gets that short label beside a small icon, as a pill; with
+  only `triggerText` given, that text is the name too. A host that sets both keeps `triggerText`
+  inside `trigger`, so speech control can say what it sees. It has no badge, and it does not move
+  or pulse.
 - Its tooltip (`title`) is its name, as for the dialog's icon buttons. With a `shortcut` that can
   match, it is the name and the keys, each modifier once, joined by ` + `, as the platform's
   keyboards name them: Option, Command, Control and Shift on a Mac, iPhone or iPad

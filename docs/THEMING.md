@@ -40,7 +40,7 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 | `--vf-font` | `inherit` | font family of all text, such as `Inter, sans-serif` |
 | `--vf-radius` | from the page's button corners, so the widget's buttons match them up to 15px (this is 1.6 times theirs, up to `24px`), else `16px` | panel and composer, and a share of it for buttons and the image |
 | `--vf-surface` | with `theme: "auto"` the page's background, else `Canvas` | panel, tool rail and composer background |
-| `--vf-text` | with `theme: "auto"` the page's text colour, else `CanvasText` | text |
+| `--vf-text` | with `theme: "auto"` the page's text colour, else `CanvasText` | text, and the trigger's icon and border |
 | `--vf-muted` | text at 60%, more on a page whose text would make that too faint | hints, counters |
 | `--vf-border` | text at 15% | hairlines |
 | `--vf-accent` | the page's accent, else `AccentColor`, or `#0b57d0` where the browser has no `AccentColor` | Send button and its menu button, "Capture this view", active tool, chosen screenshot |

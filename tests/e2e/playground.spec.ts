@@ -306,3 +306,60 @@ test("with the reports panel open, the feedback trigger stays visible and clicka
   await trigger.click();
   await expect(page.getByRole("dialog", { name: "Send feedback" })).toBeVisible();
 });
+
+test("in the playground, every thumbnail rests at 20% colour and a hovered card fades to full colour, in and out alike", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const thumbs = page.locator(".video .thumb");
+  await expect(thumbs).toHaveCount(12);
+  for (let i = 0; i < 12; i++) await expect(thumbs.nth(i)).toHaveCSS("filter", "saturate(0.2)");
+  await expect(thumbs.nth(1)).toHaveCSS("transition-property", "filter");
+  await expect(thumbs.nth(1)).toHaveCSS("transition-duration", "0.4s");
+  await expect(thumbs.nth(1)).toHaveCSS("transition-timing-function", "ease");
+  await expect(thumbs.nth(1)).toHaveCSS("transition-delay", "0s");
+  for (let i = 0; i < 12; i++) {
+    await page.locator(".video").nth(i).hover();
+    await expect(thumbs.nth(i)).toHaveCSS("filter", "saturate(1)");
+  }
+  // The fade in takes as long as the fade out: the hovered style keeps the same transition.
+  await expect(thumbs.nth(11)).toHaveCSS("transition-duration", "0.4s");
+  await expect(thumbs.nth(11)).toHaveCSS("transition-timing-function", "ease");
+  // Only the hovered card: the one left fades back.
+  await page.locator(".video").first().hover();
+  await expect(thumbs.first()).toHaveCSS("filter", "saturate(1)");
+  await expect(thumbs.nth(11)).toHaveCSS("filter", "saturate(0.2)");
+});
+
+test("in the playground, the thumbnails change colour at once under reduced motion", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  const thumb = page.locator(".video .thumb").nth(1);
+  await expect(thumb).toHaveCSS("filter", "saturate(0.2)");
+  await expect(thumb).toHaveCSS("transition-duration", "0s");
+  await page.locator(".video").nth(1).hover();
+  await expect(thumb).toHaveCSS("transition-duration", "0s");
+  // At once: the first read after the hover is already in colour.
+  expect(await thumb.evaluate((element) => getComputedStyle(element).filter)).toBe("saturate(1)");
+});
+
+test("in the playground on a touch screen, which cannot hover, the thumbnails stay in colour", async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName === "firefox", "Playwright has no mobile emulation in Firefox");
+  const context = await browser.newContext({
+    isMobile: true,
+    hasTouch: true,
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await context.newPage();
+  await page.goto("/");
+  expect(await page.evaluate(() => matchMedia("(hover: hover)").matches)).toBe(false);
+  const thumbs = page.locator(".video .thumb");
+  await expect(thumbs).toHaveCount(12);
+  for (let i = 0; i < 12; i++) await expect(thumbs.nth(i)).toHaveCSS("filter", "none");
+  await context.close();
+});

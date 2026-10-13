@@ -87,6 +87,9 @@ test("each variable reaches the element that uses it, and its default matches TH
   await expect(trigger).toHaveCSS("color", await probe("CanvasText"));
   await expect(trigger).toHaveCSS("box-shadow", "rgba(0, 0, 0, 0.35) 0px 12px 32px -12px");
   await expect(trigger).toHaveCSS("z-index", "2147483000");
+  // Ringed in the text colour, the same as its icon, so it stands out on any page.
+  await expect(trigger).toHaveCSS("border-top-width", "1px");
+  await expect(trigger).toHaveCSS("border-top-color", await probe("CanvasText"));
   await trigger.click();
   const panel = page.locator("visual-feedback .dialog");
   const backdrop = page.getByRole("dialog");
@@ -96,7 +99,7 @@ test("each variable reaches the element that uses it, and its default matches TH
 
   await expect(panel).toHaveCSS("border-top-left-radius", "16px");
   await expect(backdrop).toHaveCSS("background-color", "rgba(0, 0, 0, 0.45)");
-  await expect(trigger).toHaveCSS(
+  await expect(page.locator("visual-feedback .toolbar")).toHaveCSS(
     "border-top-color",
     await probe("color-mix(in srgb, CanvasText 15%, transparent)"),
   );
@@ -112,7 +115,7 @@ test("each variable reaches the element that uses it, and its default matches TH
   await expect(panel).toHaveCSS("background-color", "rgb(1, 2, 3)");
   await expect(trigger).toHaveCSS("background-color", "rgb(1, 2, 3)");
   await expect(trigger).toHaveCSS("color", "rgb(4, 5, 6)");
-  await expect(trigger).toHaveCSS("border-top-color", "rgb(7, 8, 9)");
+  await expect(trigger).toHaveCSS("border-top-color", "rgb(4, 5, 6)");
   await expect(trigger).toHaveCSS("box-shadow", "rgb(10, 11, 12) 1px 2px 3px 0px");
   await expect(panel).toHaveCSS("color", "rgb(4, 5, 6)");
   // The composer shows the focus colour while the note has focus, so the rail shows the border.
@@ -330,6 +333,20 @@ test("unstyled keeps the layout and drops the look", async ({ page }) => {
   await expect(trigger).toHaveCSS("box-shadow", "none");
   await expect(trigger).not.toHaveCSS("border-top-left-radius", "999px");
   await expect(trigger).not.toHaveCSS("font-weight", "600");
+  // No ring of its own: the border a plain button has on this page.
+  const plain = await page.evaluate(() => {
+    const button = document.createElement("button");
+    document.body.append(button);
+    const { borderTopWidth, borderTopStyle, borderTopColor } = getComputedStyle(button);
+    button.remove();
+    return [borderTopWidth, borderTopStyle, borderTopColor];
+  });
+  expect(
+    await trigger.evaluate((element) => {
+      const { borderTopWidth, borderTopStyle, borderTopColor } = getComputedStyle(element);
+      return [borderTopWidth, borderTopStyle, borderTopColor];
+    }),
+  ).toEqual(plain);
   await trigger.click();
   const backdrop = page.getByRole("dialog");
   await expect(backdrop).toHaveCSS("position", "fixed");
@@ -533,12 +550,52 @@ test("with no --vf-* set, the widget takes the page's accent, corners and backgr
   await page.emulateMedia({ colorScheme: "light" });
   await brand(page);
   await mount(page);
+  // The trigger's ring takes the page's text colour, not its accent.
+  await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS(
+    "border-top-color",
+    "rgb(240, 240, 240)",
+  );
   expect(await look(page)).toEqual({
     surface: "rgb(16, 24, 32)",
     accent: "rgb(228, 0, 124)",
     corner: "6px",
     scheme: "dark",
   });
+});
+
+test("the trigger's icon is a swirl filled in the text colour, with no outline", async ({
+  page,
+}) => {
+  await mount(page);
+  const trigger = page.locator("visual-feedback").locator(".trigger");
+  const icon = trigger.locator("svg");
+  await expect(icon).toHaveAttribute("part", "trigger-icon");
+  const color = await trigger.evaluate((element) => getComputedStyle(element).color);
+  await expect(icon).toHaveCSS("fill", color);
+  await expect(icon).toHaveCSS("stroke", "none");
+  // Six blades: one path, drawn by its fill alone.
+  expect(await icon.locator("path").getAttribute("d")).toMatch(/^(?:[^M]*M){6}[^M]*$/);
+  // It fills the button inside its border, so the blades meet the border, its ring.
+  const [box, inner] = await Promise.all([
+    icon.boundingBox(),
+    trigger.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const border = Number.parseFloat(getComputedStyle(element).borderTopWidth);
+      return { x: rect.x + border, y: rect.y + border, width: rect.width - 2 * border };
+    }),
+  ]);
+  expect(box && [box.x, box.y, box.width, box.height].map(Math.round)).toEqual(
+    [inner.x, inner.y, inner.width, inner.width].map(Math.round),
+  );
+});
+
+test("with a label, the trigger keeps a small icon beside it", async ({ page }) => {
+  await mount(page, { strings: { triggerText: "Feedback" } });
+  const icon = page.locator("visual-feedback").locator(".trigger svg");
+  const [width, size] = await icon.evaluate((element) =>
+    [getComputedStyle(element).width, getComputedStyle(element).fontSize].map(Number.parseFloat),
+  );
+  expect(width).toBeCloseTo((size ?? 0) * 1.15, 1);
 });
 
 test("the page's theme-color comes before its buttons", async ({ page }) => {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.3 (not released yet)
+
+- The trigger stands out more: a swirl icon that fills it, in place of the speech bubble, ringed
+  by a 1px border in the same colour (`--vf-text`). With `triggerText`, the icon stays small
+  beside the label.
+- The demo site shows a "Click here" hint at the trigger, and its thumbnails rest at 20% colour and
+  fade to full colour on hover.
+
 ## 0.3.2 (2026-10-13)
 
 - The README links a live demo: the playground on GitHub Pages, at

@@ -432,6 +432,16 @@ main {
   content: "";
   position: absolute;
 }
+/* 20% colour until hovered; a screen that cannot hover keeps them in full colour. */
+@media (hover: hover) {
+  .video .thumb {
+    filter: saturate(0.2);
+    transition: filter 0.4s ease;
+  }
+  .video:hover .thumb {
+    filter: saturate(1);
+  }
+}
 .sun::before {
   width: 34%;
   aspect-ratio: 1;
@@ -777,5 +787,8 @@ main {
 @media (prefers-reduced-motion: reduce) {
   .click-hint {
     animation: none;
+  }
+  .video .thumb {
+    transition: none;
   }
 }
