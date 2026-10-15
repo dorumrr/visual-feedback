@@ -49,18 +49,26 @@ try {
 }
 if (pkg && typeof pkg.createFeedback === "function") {
   try {
-    const widget = pkg.createFeedback({ onSubmit: async (report) => show(report) });
+    const widget = pkg.createFeedback({
+      trigger: "none",
+      onSubmit: async (report) => show(report),
+    });
     status.textContent = "Widget loaded. Use the feedback button.";
     const hint = document.getElementById("hint");
+    const button = document.getElementById("feedback");
     const done = () => {
       hint.hidden = true;
     };
-    // No element where the browser lacks what the widget needs: then it has no trigger to point at.
-    const host = document.querySelector("visual-feedback");
-    if (host) {
+    // No element where the browser lacks what the widget needs: then there is nothing to open.
+    if (document.querySelector("visual-feedback")) {
+      button.hidden = false;
       hint.hidden = false;
-      // Capture phase: the hint must be gone before the trigger's own click starts the screenshot.
-      host.addEventListener("click", done, { capture: true });
+      button.addEventListener("click", () => {
+        // The hint is on the page, so it goes before the screenshot starts.
+        done();
+        // A failed open already fires the widget's error event, as its own trigger leaves it.
+        widget.open().catch(() => {});
+      });
       widget.on("open", done);
     }
   } catch (error) {

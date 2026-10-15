@@ -29,7 +29,15 @@
     <kbd>/</kbd>
   </form>
   <nav class="actions" aria-label="Account">
-    <span class="avatar" aria-hidden="true">DM</span>
+    <div class="feedback-slot">
+      <button type="button" id="feedback" class="icon feedback" aria-label="Send feedback" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H10l-5 4v-4H4zM8 9h8M8 12h5" /></svg>
+      </button>
+      <p id="hint" class="click-hint" aria-hidden="true" hidden>
+        <svg class="click-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
+        <span>Click here</span>
+      </p>
+    </div>
     <button type="button" class="icon" aria-label="Notifications">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4" /></svg>
     </button>
@@ -38,12 +46,13 @@
     </button>
     <button type="button" id="reports-toggle" class="btn btn-grey reports-toggle" aria-controls="reports-panel" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h4l2 3h4l2-3h4M6 4h12l2 9v7H4v-7z" /></svg>
-      Reports <span id="reports-count">0</span>
+      <span class="label">Reports</span> <span id="reports-count">0</span>
     </button>
     <button type="button" class="btn btn-pink upload">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-5 5m5-5 5 5M5 20h14" /></svg>
       Upload
     </button>
+    <span class="avatar" aria-hidden="true">DM</span>
   </nav>
 </header>
 
@@ -131,11 +140,6 @@
   <p id="empty">No report yet. Send one with the feedback button.</p>
   <ol id="reports"></ol>
 </aside>
-
-<p id="hint" class="click-hint" aria-hidden="true" hidden>
-  <span>Click here</span>
-  <svg class="click-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" /></svg>
-</p>
 
 <script type="module" src="playground/playground.js"></script>
 </body>

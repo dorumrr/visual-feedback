@@ -92,7 +92,7 @@ test("in the playground, the logo sits in the top row, left of the search, at ev
   }
 });
 
-test("in the playground, the trigger captures the page and Send shows the report", async ({
+test("in the playground, the feedback button captures the page and Send shows the report", async ({
   page,
 }) => {
   await page.goto("/");
@@ -121,7 +121,28 @@ async function watchCapture(page: Page): Promise<() => Promise<boolean[] | undef
     page.evaluate(() => (window as unknown as { shownAtCapture?: boolean[] }).shownAtCapture);
 }
 
-test("in the playground, a looping Click here hint with an arrow points at the trigger", async ({
+test("in the playground, the feedback button sits in the top bar before the bell, and the avatar comes last", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const bar = page.getByRole("navigation", { name: "Account" });
+  const button = bar.getByRole("button", { name: "Send feedback" });
+  await expect(button).toBeVisible();
+  await expect(button).toHaveClass(/\bicon\b/);
+  await expect(button.locator("svg")).toBeVisible();
+  const order = await bar.evaluate((nav) =>
+    [...nav.querySelectorAll("button, .avatar")].map(
+      (item) => item.getAttribute("aria-label") ?? item.className,
+    ),
+  );
+  expect(order.indexOf("Send feedback")).toBe(order.indexOf("Notifications") - 1);
+  expect(order.at(-1)).toBe("avatar");
+  // The widget draws no trigger of its own here: the top bar's button is the only one.
+  await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Send feedback" })).toHaveCount(1);
+});
+
+test("in the playground, a looping Click here hint points up at the feedback button", async ({
   page,
 }) => {
   await page.goto("/");
@@ -133,16 +154,28 @@ test("in the playground, a looping Click here hint with an arrow points at the t
   await expect(hint).toHaveCSS("pointer-events", "none");
   await expect(hint).toHaveCSS("animation-name", /hint-nudge/);
   await expect(hint).toHaveCSS("animation-iteration-count", /infinite/);
-  // It sits just left of the trigger, centred on it.
-  const trigger = page.getByRole("button", { name: "Send feedback" });
-  const [h, t] = [await hint.boundingBox(), await trigger.boundingBox()];
-  if (!h || !t) throw new Error("no box");
-  // The tab sits in the corner.
-  expect(Math.round((page.viewportSize()?.height ?? 0) - (t.y + t.height))).toBe(0);
-  expect(t.x - (h.x + h.width)).toBeGreaterThanOrEqual(0);
-  expect(t.x - (h.x + h.width)).toBeLessThan(24);
-  expect(Math.abs(h.y + h.height / 2 - (t.y + t.height / 2))).toBeLessThan(4);
+  await expect(hint.locator("svg")).toHaveCSS("rotate", "-90deg");
+  // No glow from the top bar's icons on the pill.
+  await expect(hint.locator("svg")).toHaveCSS("filter", "none");
+  for (const width of [1380, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    const button = page.getByRole("button", { name: "Send feedback" });
+    const [h, a, b] = [
+      await hint.boundingBox(),
+      await hint.locator("svg").boundingBox(),
+      await button.boundingBox(),
+    ];
+    if (!h || !a || !b) throw new Error("no box");
+    // Just under the button, its arrow right under the icon, and inside the window.
+    expect(h.y - (b.y + b.height), `${width}`).toBeGreaterThanOrEqual(0);
+    expect(h.y - (b.y + b.height), `${width}`).toBeLessThan(24);
+    expect(Math.abs(a.x + a.width / 2 - (b.x + b.width / 2)), `${width}`).toBeLessThan(3);
+    expect(h.x, `${width}`).toBeGreaterThanOrEqual(0);
+    expect(h.x + h.width, `${width}`).toBeLessThanOrEqual(width);
+  }
   // A click on it reaches the page under it.
+  const h = await hint.boundingBox();
+  if (!h) throw new Error("no box");
   const under = await page.evaluate(
     ([x, y]) => document.elementFromPoint(x ?? 0, y ?? 0)?.closest("#hint") === null,
     [h.x + h.width / 2, h.y + h.height / 2],
@@ -150,45 +183,19 @@ test("in the playground, a looping Click here hint with an arrow points at the t
   expect(under).toBe(true);
 });
 
-test("in the playground, hovering the trigger swaps the Click here hint for its tooltip, in the same style", async ({
+test("in the playground, hovering or focusing the feedback button shows no tooltip, and the hint stays", async ({
   page,
 }) => {
   await page.goto("/");
   const hint = page.locator("#hint");
-  const tip = page.locator("visual-feedback").locator(".tip");
+  const button = page.getByRole("button", { name: "Send feedback" });
+  await expect(button).not.toHaveAttribute("title");
+  await button.hover();
+  await expect(page.locator("visual-feedback").locator(".tip")).toHaveCount(0);
   await expect(hint).toHaveCSS("opacity", "1");
-  await page.getByRole("button", { name: "Send feedback" }).hover();
-  await expect(tip).toHaveCSS("opacity", "1");
-  await expect(hint).toHaveCSS("opacity", "0");
-  const look = (element: Element) => {
-    const style = getComputedStyle(element);
-    const arrow = Math.round(
-      (element.querySelector("svg")?.getBoundingClientRect().width ?? 0) * 10,
-    );
-    const box = element.getBoundingClientRect().height;
-    const { backgroundImage, color, borderRadius, padding, fontWeight, fontSize, boxShadow } =
-      style;
-    return [
-      backgroundImage,
-      color,
-      borderRadius,
-      padding,
-      fontWeight,
-      fontSize,
-      boxShadow,
-      box,
-      arrow,
-    ];
-  };
-  expect(await tip.evaluate(look)).toEqual(await hint.evaluate(look));
-  await page.mouse.move(0, 0);
-  await expect(hint).toHaveCSS("opacity", "1");
-  await expect(tip).toHaveCSS("opacity", "0");
-  // Reached by the keyboard, the tooltip shows and the hint goes the same way.
-  await page.keyboard.press("Shift");
-  await page.getByRole("button", { name: "Send feedback" }).focus();
-  await expect(tip).toHaveCSS("opacity", "1");
-  await expect(hint).toHaveCSS("opacity", "0");
+  await button.focus();
+  await expect(page.locator("visual-feedback").locator(".tip")).toHaveCount(0);
+  await expect(hint).toBeVisible();
 });
 
 for (const [how, open] of [
@@ -219,28 +226,19 @@ for (const [how, open] of [
   });
 }
 
-test("in the playground on a phone, the hint sits above the trigger, clear of the status line", async ({
+test("in the playground on a phone, the feedback button and its hint show, and the search keeps its room", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.getByRole("status")).toHaveText("Widget loaded. Use the feedback button.");
-  const [h, t, s] = await Promise.all(
-    [
-      page.locator("#hint"),
-      page.getByRole("button", { name: "Send feedback" }),
-      page.getByRole("status"),
-    ].map((locator) => locator.boundingBox()),
-  );
-  if (!h || !t || !s) throw new Error("no box");
-  expect(t.y - (h.y + h.height)).toBeGreaterThanOrEqual(0);
-  expect(t.y - (h.y + h.height)).toBeLessThan(24);
-  // Its arrow, at its right end, is over the trigger.
-  expect(h.x + h.width).toBeGreaterThan(t.x + t.width / 2);
-  expect(h.x + h.width).toBeLessThanOrEqual(t.x + t.width + 1);
-  expect(h.x >= s.x + s.width || h.y + h.height <= s.y, "the hint overlaps the status line").toBe(
-    true,
-  );
+  await expect(page.getByRole("button", { name: "Send feedback" })).toBeVisible();
+  await expect(page.locator("#hint")).toBeVisible();
+  // The Reports button keeps its name, with only its icon and count in sight.
+  await expect(page.getByRole("button", { name: /Reports/ })).toBeVisible();
+  const input = await page.locator(".top .search input").boundingBox();
+  expect(input?.width ?? 0).toBeGreaterThan(100);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
 test("in the playground, the hint goes when a kept draft comes back after a page load", async ({
@@ -318,8 +316,6 @@ for (const system of ["light", "dark"] as const) {
     expect(await theme()).toBe(other);
     const after = await background();
     expect(after).not.toBe(before);
-    // The widget follows the switch at once, with no open and no reload.
-    await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS("color", after);
     // The widget reads the page again at open: its panel takes the page's new background.
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.locator("visual-feedback").locator(".dialog")).toHaveCSS(
@@ -332,7 +328,6 @@ for (const system of ["light", "dark"] as const) {
     await expect(page.getByRole("status")).toHaveText("Widget loaded. Use the feedback button.");
     expect(await theme()).toBe(other);
     await expect(button).toHaveAttribute("aria-pressed", String(other === "dark"));
-    await expect(page.locator("visual-feedback").locator(".trigger")).toHaveCSS("color", after);
 
     // Back to what the system shows: the page follows the system again.
     await button.click();
@@ -342,7 +337,7 @@ for (const system of ["light", "dark"] as const) {
   });
 }
 
-test("with the reports panel open, the feedback trigger stays visible and clickable", async ({
+test("with the reports panel open, the feedback button stays visible and clickable", async ({
   page,
 }) => {
   await page.goto("/");
@@ -350,16 +345,16 @@ test("with the reports panel open, the feedback trigger stays visible and clicka
   await expect(page.getByRole("complementary", { name: "Reports" })).toBeVisible();
   await expect(page.getByRole("status")).toHaveText("Widget loaded. Use the feedback button.");
   await expect(page.locator("#empty")).toBeVisible();
-  const trigger = page.getByRole("button", { name: "Send feedback" });
-  const box = await trigger.boundingBox();
-  if (!box) throw new Error("no trigger");
-  // The topmost element at the trigger's centre is the widget, not the panel.
+  const feedback = page.getByRole("button", { name: "Send feedback" });
+  const box = await feedback.boundingBox();
+  if (!box) throw new Error("no feedback button");
+  // The topmost element at the button's centre is the button, not the panel.
   const top = await page.evaluate(
-    ([x, y]) => document.elementFromPoint(x ?? 0, y ?? 0)?.localName,
+    ([x, y]) => document.elementFromPoint(x ?? 0, y ?? 0)?.closest("#feedback") !== null,
     [box.x + box.width / 2, box.y + box.height / 2],
   );
-  expect(top).toBe("visual-feedback");
-  await trigger.click();
+  expect(top).toBe(true);
+  await feedback.click();
   await expect(page.getByRole("dialog", { name: "Send feedback" })).toBeVisible();
 });
 

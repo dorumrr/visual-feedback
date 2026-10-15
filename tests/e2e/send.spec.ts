@@ -653,6 +653,11 @@ test("while it sends, the controls are locked, drawing does nothing, and Cancel,
   expect(Buffer.compare(await image(page).screenshot(), before)).toBe(0);
   await expect(page.getByRole("button", { name: "Cancel" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Keep as draft" })).toBeDisabled();
+  // They look it too: dimmed, with no hand cursor.
+  for (const name of ["Cancel", "Keep as draft"]) {
+    await expect(page.getByRole("button", { name })).toHaveCSS("opacity", "0.35");
+    await expect(page.getByRole("button", { name })).toHaveCSS("cursor", "default");
+  }
   // A real press on each, not only their look.
   await page.getByRole("button", { name: "Cancel" }).click({ force: true });
   await page.getByRole("button", { name: "Keep as draft" }).click({ force: true });

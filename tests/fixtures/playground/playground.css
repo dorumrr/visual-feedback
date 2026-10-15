@@ -195,6 +195,9 @@ button {
 .actions .icon[aria-pressed="true"] {
   background: var(--glass);
 }
+.feedback[hidden] {
+  display: none;
+}
 .btn {
   display: inline-flex;
   align-items: center;
@@ -677,6 +680,15 @@ main {
   .search kbd {
     display: none;
   }
+  /* Kept as the button's name, out of sight, so the search keeps its room. */
+  .reports-toggle .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   main {
     padding: 0 16px 72px;
   }
@@ -703,7 +715,13 @@ main {
   }
 }
 @media (max-width: 600px) {
-  .actions .icon:not(.theme),
+  .top {
+    column-gap: 8px;
+  }
+  .actions {
+    gap: 2px;
+  }
+  .actions .icon:not(.theme, .feedback),
   .avatar,
   .upload {
     display: none;
@@ -725,18 +743,21 @@ main {
   }
 }
 
-/* Points at the widget's trigger: its tab in the bottom-right corner, 2.5em square. */
+/* Points up at the feedback button in the top bar. */
+.feedback-slot {
+  position: relative;
+}
 .click-hint {
-  position: fixed;
+  position: absolute;
   z-index: 15;
-  right: calc(2.5em + 10px + env(safe-area-inset-right, 0px));
-  bottom: calc(1.25em + env(safe-area-inset-bottom, 0px));
-  translate: 0 50%;
+  top: calc(100% + 10px);
+  /* The arrow, not the pill, is centred under the icon: half the arrow plus the padding. */
+  left: calc(50% - 0.575em - 8px);
   margin: 0;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 8px 6px 14px;
+  padding: 6px 14px 6px 8px;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--pink-fill), var(--blue));
   color: #fff;
@@ -744,8 +765,7 @@ main {
   white-space: nowrap;
   box-shadow: var(--shadow);
   pointer-events: none;
-  transition: opacity 0.15s;
-  --away: -8px, 0;
+  --away: 0, 8px;
   animation:
     hint-in 0.4s ease-out both,
     hint-nudge 1.2s ease-in-out 0.4s infinite;
@@ -753,19 +773,12 @@ main {
 .click-hint[hidden] {
   display: none;
 }
-/* The widget's own tooltip takes its place while the trigger is hovered or focused. */
-body:has(visual-feedback:hover, visual-feedback:focus-within) .click-hint {
-  opacity: 0;
-}
-visual-feedback::part(trigger-tooltip) {
-  background: linear-gradient(135deg, var(--pink-fill), var(--blue));
-  color: #fff;
-  box-shadow: var(--shadow);
-}
-.click-arrow {
+.click-hint .click-arrow {
   width: 1.15em;
   height: 1.15em;
   stroke-width: 2.4;
+  rotate: -90deg;
+  filter: none;
 }
 @keyframes hint-in {
   from {
@@ -775,22 +788,6 @@ visual-feedback::part(trigger-tooltip) {
 @keyframes hint-nudge {
   50% {
     transform: translate(var(--away));
-  }
-}
-/* Above the trigger on a phone, clear of the status line beside it. */
-@media (max-width: 600px) {
-  .click-hint {
-    right: calc(4px + env(safe-area-inset-right, 0px));
-    bottom: calc(2.5em + 10px + env(safe-area-inset-bottom, 0px));
-    translate: none;
-    --away: 0, -8px;
-  }
-  .click-arrow {
-    rotate: 90deg;
-  }
-  /* Clear of the hint above the tab. */
-  #status {
-    max-width: calc(100vw - 160px);
   }
 }
 @media (prefers-reduced-motion: reduce) {

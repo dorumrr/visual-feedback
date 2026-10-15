@@ -5,6 +5,8 @@
 - An empty note no longer shows "Write a few words first." Send is disabled until the note has
   text; on hover it shows `noteRequired`, now "Describe the issue.", as its tooltip, and the
   note's border turns `--vf-mark` red (SPEC §4).
+- While a send is under way, Cancel (X) and Keep as draft look disabled too: dimmed, with no hand
+  cursor.
 
 ## 0.4.1 (2026-10-14)
 
