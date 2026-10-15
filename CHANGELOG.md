@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.2 (not released yet)
+## 0.4.2 (2026-10-15)
 
 - An empty note no longer shows "Write a few words first." Send is disabled until the note has
   text; on hover it shows `noteRequired`, now "Describe the issue.", as its tooltip, and the
