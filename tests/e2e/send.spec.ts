@@ -424,30 +424,71 @@ test("an error with no message, or no way to send, shows the default send error"
   }
 });
 
-test("the note is required: a blank note is refused, named and focused, and nothing is sent", async ({
+test("the note is required: Send waits for it, says why on hover, and marks the note", async ({
   page,
 }) => {
   await opened(page, { submit: "ok" });
+  const composer = page.locator("visual-feedback .composer");
+  const border = () => composer.evaluate((box) => getComputedStyle(box).borderTopColor);
+  const mark = await composer.evaluate((box) => {
+    const probe = document.createElement("i");
+    probe.style.color = getComputedStyle(box).getPropertyValue("--_mark");
+    box.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
   await note(page).fill("   ");
-  await page.getByRole("button", { name: "Cancel" }).focus();
-  await sendButton(page).click();
-  const hint = page.getByRole("alert");
-  await expect(hint).toHaveText("Write a few words first.");
-  await expect(note(page)).toBeFocused();
-  await expect(note(page)).toHaveAttribute("aria-invalid", "true");
-  await expect(note(page)).toHaveAccessibleDescription("Write a few words first.");
+  await expect(sendButton(page)).toHaveAttribute("aria-disabled", "true");
+  await expect(sendButton(page)).toHaveAttribute("title", "Describe the issue.");
+  await expect(sendButton(page)).toHaveAccessibleDescription("Describe the issue.");
+  expect(await border()).not.toBe(mark);
+  await sendButton(page).hover();
+  await expect.poll(border).toBe(mark);
+  await page.mouse.move(0, 0);
+  await expect.poll(border).not.toBe(mark);
+  await sendButton(page).click({ force: true });
+  await expect(page.getByRole("alert")).toHaveCount(0);
   expect(await log(page)).toEqual(["open"]);
   await note(page).pressSequentially("ok");
-  await expect(hint).toHaveCount(0);
-  await expect(note(page)).not.toHaveAttribute("aria-invalid", "true");
+  await expect(sendButton(page)).not.toHaveAttribute("aria-disabled");
+  await expect(sendButton(page)).not.toHaveAttribute("title");
+  await sendButton(page).hover();
+  expect(await border()).not.toBe(mark);
+  await note(page).fill("");
+  await expect(sendButton(page)).toHaveAttribute("aria-disabled", "true");
+  await note(page).fill("   ok");
   await sendButton(page).click();
   await confirmed(page);
   const notes = await page.evaluate(() => (window as unknown as Page2).reports.map((r) => r.note));
   expect(notes).toEqual(["   ok"]);
 });
 
+test("a tap on Send while it waits for a note leaves the note red until it has text", async ({
+  page,
+}) => {
+  await opened(page, { submit: "ok" });
+  const composer = page.locator("visual-feedback .composer");
+  await sendButton(page).dispatchEvent("pointerenter", { pointerType: "touch" });
+  await sendButton(page).dispatchEvent("pointerleave", { pointerType: "touch" });
+  await expect(composer).toHaveClass(/\bwanted\b/);
+  await expect(composer).toHaveCSS("border-top-color", "rgb(229, 36, 59)");
+  await note(page).pressSequentially("ok");
+  await expect(composer).not.toHaveClass(/\bwanted\b/);
+});
+
+test("while Send waits for a note, Esc still keeps the draft", async ({ page }) => {
+  await opened(page, { submit: "ok" });
+  await expect(sendButton(page)).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("Escape");
+  await expect(note(page)).toBeHidden();
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toBeVisible();
+});
+
 test("with requireNote: false, an empty note is sent", async ({ page }) => {
   await opened(page, { submit: "ok", requireNote: false });
+  await expect(sendButton(page)).not.toHaveAttribute("aria-disabled");
+  await expect(sendButton(page)).not.toHaveAttribute("title");
   await sendButton(page).click();
   await confirmed(page);
   const notes = await page.evaluate(() => (window as unknown as Page2).reports.map((r) => r.note));

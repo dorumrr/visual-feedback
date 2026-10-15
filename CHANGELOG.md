@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 (not released yet)
+
+- An empty note no longer shows "Write a few words first." Send is disabled until the note has
+  text; on hover it shows `noteRequired`, now "Describe the issue.", as its tooltip, and the
+  note's border turns `--vf-mark` red (SPEC §4).
+
 ## 0.4.1 (2026-10-14)
 
 - The dialog fits the window, 16px from its edges, with nothing to scroll: on a large screen the

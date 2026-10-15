@@ -296,8 +296,10 @@ test("every element of every view has its ::part() name, and the page can style 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Screenshot 1", exact: true }).click();
   await page.getByRole("button", { name: "Clear", exact: true }).click();
-  await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
   await scan("note required");
   await page.getByRole("textbox", { name: "Your note" }).fill("A note");
   await page.getByRole("button", { name: "Cancel" }).click();

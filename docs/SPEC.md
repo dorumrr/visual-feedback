@@ -92,7 +92,9 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
 - **One colour** for the marks, `--vf-mark`, which defaults to a red that contrasts with most pages.
 - Pointer events, so mouse, pen and touch all work. While drawing, touch never scrolls the page.
 - **Note:** a textarea of 2000 characters at most, with a visible label (`noteLabel`). It is
-  required unless `requireNote: false`.
+  required unless `requireNote: false`: while it is empty or only spaces, Send is disabled, still
+  focusable, with `noteRequired` as its tooltip, and the pointer on it turns the note's border red;
+  after a tap on a touch screen the border stays red until the note has text.
 - **Category:** shown only when `categories` is given, with a visible label (`categoryLabel`).
 - **Save as PDF:** Send is a split button; its caret ("More send options") opens a menu with "Save
   as PDF". It downloads `feedback-<date>.pdf`, dated by the user's clock and made in the browser:
@@ -220,7 +222,7 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | sendWithout | Send without screenshot |
 | noteLabel | Your note |
 | notePlaceholder | What happened, or what would you change? |
-| noteRequired | Write a few words first. |
+| noteRequired | Describe the issue. |
 | categoryLabel | Type |
 | pen / box / arrow / text / select | Draw / Box / Arrow / Text / Select |
 | remove | Delete |

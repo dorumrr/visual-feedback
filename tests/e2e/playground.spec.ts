@@ -75,6 +75,23 @@ test("the site's own page is the playground: a video site at / with its styles a
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
 });
 
+test("in the playground, the logo sits in the top row, left of the search, at every width", async ({
+  page,
+}) => {
+  await page.goto("/");
+  for (const width of [2200, 1380, 901, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    const brand = await page.getByRole("link", { name: "SomeTube home" }).boundingBox();
+    const search = await page.locator(".top .search").boundingBox();
+    if (!brand || !search) throw new Error("no header");
+    expect(
+      Math.abs(brand.y + brand.height / 2 - (search.y + search.height / 2)),
+      `${width}`,
+    ).toBeLessThan(2);
+    expect(brand.x + brand.width, `${width}`).toBeLessThanOrEqual(search.x);
+  }
+});
+
 test("in the playground, the trigger captures the page and Send shows the report", async ({
   page,
 }) => {

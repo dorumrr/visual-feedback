@@ -122,8 +122,9 @@ test("strings replace every text the widget shows", async ({ page }) => {
     "X notePlaceholder",
   );
   await expect(dialog.getByLabel("X categoryLabel")).toBeVisible();
-  await dialog.getByRole("button", { name: "X send" }).click();
-  await expect(page.getByRole("alert")).toHaveText("X noteRequired");
+  await expect(dialog.getByRole("button", { name: "X send" })).toHaveAccessibleDescription(
+    "X noteRequired",
+  );
   await dialog.getByLabel("X noteLabel").fill("A note");
   await dialog.getByRole("button", { name: "X send" }).click();
   await expect(page.getByRole("alert")).toHaveText("X error");

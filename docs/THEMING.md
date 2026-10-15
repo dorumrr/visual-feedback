@@ -46,7 +46,7 @@ Set these on `visual-feedback` (or on any ancestor). Custom properties cross the
 | `--vf-accent` | the page's accent, else `AccentColor`, or `#0b57d0` where the browser has no `AccentColor` | Send button and its menu button, "Capture this view", active tool, chosen screenshot |
 | `--vf-accent-text` | black or white, whichever contrasts more with the accent | text on the accent |
 | `--vf-focus` | `--vf-accent` | focus ring |
-| `--vf-mark` | `#e5243b` | marks on the screenshot |
+| `--vf-mark` | `#e5243b` | marks on the screenshot, and the note's border while the pointer is on a Send that waits for a note |
 | `--vf-backdrop` | `rgb(0 0 0 / 45%)` | overlay behind the image |
 | `--vf-shadow` | `0 12px 32px -12px rgb(0 0 0 / 35%)` | trigger, its tooltip, panel and draft bar |
 | `--vf-trigger-size` | `2.5em`, 40px on a 16px site | trigger height, and its width when it shows the icon alone |
@@ -70,7 +70,8 @@ Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`
 `send`, `hint`, `status`, `error`, `retry`, `send-without`, `draft`, `draft-label`, `draft-thumbs`,
 `capture-view`, `reopen`, `discard`, `confirm`, `confirm-text`, `confirm-clear`, `keep-draft`, `keep-editing`, `side`. Cancel's
 question is `confirm`, also an `actions` part, with its own `discard` button; Clear's is `confirm` too, with `confirm-clear`. `side` holds the label, the composer and the footer; it lays nothing out except beside the image on a short landscape screen. After a send error, the Send button's part is `retry` until it
-sends again, the same part as the capture error's "Try again".
+sends again, the same part as the capture error's "Try again". While Send waits for a note it carries
+`data-empty`, and the pointer on it gives the composer the class `wanted`; `css` can restyle both.
 
 ```css
 visual-feedback::part(trigger) { opacity: .6; }

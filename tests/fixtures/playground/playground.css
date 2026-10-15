@@ -95,7 +95,8 @@ button {
   z-index: 10;
   height: var(--tall);
   display: grid;
-  grid-template: ". search actions" var(--top) "brand . ." 1fr / 1fr minmax(0, 520px) 1fr;
+  grid-template: "brand search actions" var(--top) / 1fr minmax(0, 520px) 1fr;
+  align-content: start;
   align-items: center;
   column-gap: 16px;
   padding: 0 32px;
@@ -104,8 +105,6 @@ button {
 }
 .brand {
   grid-area: brand;
-  align-self: end;
-  margin-bottom: 22px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -669,10 +668,6 @@ main {
   .top {
     grid-template: "brand search actions" var(--top) / auto minmax(0, 1fr) auto;
     padding: 0 16px;
-  }
-  .brand {
-    align-self: center;
-    margin: 0;
   }
   .brand svg {
     width: 36px;
