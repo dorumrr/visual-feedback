@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3 (not released yet)
+
+- The GitHub Issues recipe assigns each issue to the logins in `GITHUB_FEEDBACK_ASSIGNEES`, up to
+  10. It assigns only those GitHub says it can, and names the rest in the issue, so a misspelt login
+  never stops a report.
+
 ## 0.4.2 (2026-10-15)
 
 - An empty note no longer shows "Write a few words first." Send is disabled until the note has

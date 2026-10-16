@@ -5,7 +5,13 @@ import { recipe, SERVER } from "./doc";
 const { doc, block, load, cleanup } = recipe("github-issues.md");
 
 type Route = { POST(request: Request): Promise<Response> };
-type Issue = { number: number; title: string; body: string; labels: string[] };
+type Issue = {
+  number: number;
+  title: string;
+  body: string;
+  labels: string[];
+  assignees?: string[];
+};
 
 const TOKEN = "github_pat_test_not_real";
 const REPO = "acme/app-feedback";
@@ -20,6 +26,9 @@ let repo = { private: true, default_branch: "main", full_name: REPO };
 let failIssue = false;
 let failMarker = false;
 let conflicts = 0;
+// Who GitHub can assign in the repo; the check answers 204 for them and 404 for anyone else.
+const assignable = new Set<string>();
+let failAssignee = false;
 const realFetch = globalThis.fetch;
 
 async function fake(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
@@ -43,6 +52,11 @@ async function fake(input: RequestInfo | URL, init: RequestInit = {}): Promise<R
   const path = url.pathname.slice(base.length);
   const body = init.body ? JSON.parse(String(init.body)) : null;
   if (method === "GET" && path === "") return Response.json(repo);
+  const login = /^\/assignees\/([^/]+)$/.exec(path)?.[1];
+  if (login && method === "GET") {
+    if (failAssignee) return new Response(null, { status: 500 });
+    return new Response(null, { status: assignable.has(login.toLowerCase()) ? 204 : 404 });
+  }
   const file = /^\/contents\/(.+)$/.exec(path)?.[1];
   if (file && method === "GET") {
     if (!branches.has(String(url.searchParams.get("ref"))))
@@ -82,6 +96,15 @@ async function fake(input: RequestInfo | URL, init: RequestInit = {}): Promise<R
       body.body.length > 65_536 ||
       body.labels.some((label: string) => !label || label.length > 50);
     if (tooLong) return new Response(null, { status: 422 });
+    // The worst case GitHub's docs leave open: a login it cannot assign refuses the issue.
+    const assignees = body.assignees ?? [];
+    if (
+      !Array.isArray(assignees) ||
+      assignees.length > 10 ||
+      assignees.some((name: string) => !assignable.has(name.toLowerCase()))
+    ) {
+      return new Response(null, { status: 422 });
+    }
     const issue = { number: issues.length + 1, ...body };
     issues.push(issue);
     return Response.json(issue, { status: 201 });
@@ -112,13 +135,22 @@ beforeEach(() => {
   failIssue = false;
   failMarker = false;
   conflicts = 0;
+  failAssignee = false;
+  assignable.clear();
+  assignable.add("octocat").add("hubot");
   process.env.GITHUB_FEEDBACK_REPO = REPO;
   process.env.GITHUB_FEEDBACK_TOKEN = TOKEN;
   delete process.env.GITHUB_FEEDBACK_BRANCH;
+  delete process.env.GITHUB_FEEDBACK_ASSIGNEES;
 });
 
 afterEach(() => {
-  for (const name of ["GITHUB_FEEDBACK_REPO", "GITHUB_FEEDBACK_TOKEN", "GITHUB_FEEDBACK_BRANCH"]) {
+  for (const name of [
+    "GITHUB_FEEDBACK_REPO",
+    "GITHUB_FEEDBACK_TOKEN",
+    "GITHUB_FEEDBACK_BRANCH",
+    "GITHUB_FEEDBACK_ASSIGNEES",
+  ]) {
     if (name in saved) process.env[name] = saved[name];
     else delete process.env[name];
   }
@@ -443,6 +475,101 @@ it("missing or malformed settings are a clear error, and GitHub is not asked", a
     process.env[name] = before;
   }
   expect(requests).toEqual([]);
+});
+
+it("with no assignees set, GitHub is not asked about any, and the issue has none", async () => {
+  expect((await route.POST(post(valid(), PNG))).status).toBe(204);
+  expect(requests.filter((r) => r.includes("/assignees/"))).toEqual([]);
+  expect(issues[0]?.assignees).toBeUndefined();
+  expect(issues[0]?.body).not.toContain("Not assigned");
+});
+
+it("the assignees set are checked and each issue is assigned to them", async () => {
+  process.env.GITHUB_FEEDBACK_ASSIGNEES = " @octocat ,hubot,, OctoCat";
+  expect((await route.POST(post(valid(), PNG))).status).toBe(204);
+  expect(issues[0]?.assignees).toEqual(["OctoCat", "hubot"]);
+  expect(requests.filter((r) => r.includes("/assignees/"))).toEqual([
+    `GET /repos/${REPO}/assignees/OctoCat`,
+    `GET /repos/${REPO}/assignees/hubot`,
+  ]);
+  expect(issues[0]?.body).not.toContain("Not assigned");
+});
+
+it("a login GitHub cannot assign never stops the issue, and the issue names it", async () => {
+  process.env.GITHUB_FEEDBACK_ASSIGNEES = "octocat,left-the-team,typo-name";
+  expect((await route.POST(post(valid(), PNG))).status).toBe(204);
+  expect(issues).toHaveLength(1);
+  expect(issues[0]?.assignees).toEqual(["octocat"]);
+  expect(issues[0]?.body).toContain(
+    "**Not assigned, GitHub cannot assign them here:** `left-the-team`, `typo-name`",
+  );
+  // No one GitHub can assign: the issue opens with none.
+  process.env.GITHUB_FEEDBACK_ASSIGNEES = "nobody-here";
+  const next = { ...valid(), id: "1c7d4b63-8a2f-4d3b-8e4c-6f9a1b2c3d4e" };
+  expect((await route.POST(post(next, PNG))).status).toBe(204);
+  expect(issues[1]?.assignees).toBeUndefined();
+  expect(issues[1]?.body).toContain("`nobody-here`");
+});
+
+it("a blank assignee setting is the same as none", async () => {
+  for (const value of ["", "   ", " , ,"]) {
+    process.env.GITHUB_FEEDBACK_ASSIGNEES = value;
+    const report = { ...valid(), id: crypto.randomUUID() };
+    expect((await route.POST(post(report, PNG))).status, JSON.stringify(value)).toBe(204);
+  }
+  expect(requests.filter((r) => r.includes("/assignees/"))).toEqual([]);
+  expect(issues.map((issue) => issue.assignees)).toEqual([undefined, undefined, undefined]);
+});
+
+it("sending the same report again with assignees set asks GitHub about none of them", async () => {
+  process.env.GITHUB_FEEDBACK_ASSIGNEES = "octocat";
+  await route.POST(post(valid(), PNG));
+  requests.length = 0;
+  failAssignee = true;
+  expect((await route.POST(post(valid(), PNG))).status).toBe(204);
+  expect(requests.filter((r) => r.includes("/assignees/"))).toEqual([]);
+  expect(issues).toHaveLength(1);
+});
+
+it("an assignee check GitHub fails is an error, and no issue opens", async () => {
+  process.env.GITHUB_FEEDBACK_ASSIGNEES = "octocat";
+  failAssignee = true;
+  await expect(route.POST(post(valid(), PNG))).rejects.toThrow(
+    "GitHub answered 500 for assignee octocat.",
+  );
+  expect(issues).toEqual([]);
+});
+
+it("a malformed assignee setting is a clear error, and GitHub is not asked", async () => {
+  for (const value of [
+    "not a login",
+    "octocat,not a login",
+    "@@octocat",
+    "octo/cat",
+    "octo`cat",
+    "a".repeat(101),
+    Array.from({ length: 11 }, (_, i) => `user${i}`).join(","),
+  ]) {
+    process.env.GITHUB_FEEDBACK_ASSIGNEES = value;
+    await expect(route.POST(post(valid(), PNG)), value).rejects.toThrow(
+      "Set GITHUB_FEEDBACK_ASSIGNEES to up to 10 GitHub logins, comma-separated.",
+    );
+  }
+  expect(requests).toEqual([]);
+  // A managed user's login has an underscore; one GitHub would refuse is its check's to judge.
+  process.env.GITHUB_FEEDBACK_ASSIGNEES = "mona_acme,-octocat,octocat";
+  assignable.add("mona_acme");
+  expect((await route.POST(post(valid(), PNG))).status).toBe(204);
+  expect(issues[0]?.assignees).toEqual(["mona_acme", "octocat"]);
+  expect(issues[0]?.body).toContain("`-octocat`");
+  // At the limits: ten logins, one of them 100 characters long.
+  const ten = ["a".repeat(100), ...Array.from({ length: 9 }, (_, i) => `user${i}`)];
+  for (const login of ten) assignable.add(login);
+  process.env.GITHUB_FEEDBACK_ASSIGNEES = ten.join(",");
+  const next = { ...valid(), id: crypto.randomUUID() };
+  expect((await route.POST(post(next, PNG))).status).toBe(204);
+  expect(requests.filter((r) => r.includes("/assignees/"))).toHaveLength(3 + 10);
+  expect(issues[1]?.assignees).toEqual(ten);
 });
 
 it("the token goes only in the authorization header, never into an issue or a file", async () => {

@@ -49,6 +49,14 @@ Create a fine-grained personal access token for that one repo, with **Issues: re
 | `GITHUB_FEEDBACK_REPO` | `acme/app-feedback` |
 | `GITHUB_FEEDBACK_TOKEN` | the token; never send it to the browser |
 | `GITHUB_FEEDBACK_BRANCH` | `visual-feedback` for the code-repo layout; unset for the default branch |
+| `GITHUB_FEEDBACK_ASSIGNEES` | `octocat, hubot`: up to 10 GitHub logins each issue is assigned to; unset or blank for none |
+
+On every send the route asks GitHub which of those logins it can assign in the repo, assigns those,
+and names the rest in the issue, so a misspelt login or someone who left the repo never stops a
+report. A login may start with `@`. A value that is no login at all, such as `octo cat`, or more than 10
+different logins, is an error on every send until it is fixed.
+GitHub assigns only when the token's owner can push to the repo (write access or more): with less,
+it drops the assignees without an error, and the issue opens with none.
 
 Send PNG from the widget, the image type this recipe was checked with inside an issue:
 `createFeedback({ endpoint: "/api/feedback", capture: { type: "image/png" } })`. Without it the
@@ -85,8 +93,24 @@ function github() {
       ...(body ? { body: JSON.stringify(body) } : {}),
       cache: "no-store",
     });
-    return { status: response.status, json: response.ok ? await response.json() : null };
+    // A 204, such as the assignee check's, has no body.
+    const json = response.ok && response.status !== 204 ? await response.json() : null;
+    return { status: response.status, json };
   };
+}
+
+// Only what is safe in a URL path and in the issue text: GitHub's own check judges the rest.
+function assignees(): string[] {
+  const logins = (process.env.GITHUB_FEEDBACK_ASSIGNEES ?? "")
+    .split(",")
+    .map((login) => login.trim().replace(/^@/, ""))
+    .filter(Boolean);
+  const unique = [...new Map(logins.map((login) => [login.toLowerCase(), login])).values()];
+  const login = /^[\w-]{1,100}$/;
+  if (unique.length > 10 || !unique.every((name) => login.test(name))) {
+    throw new Error("Set GITHUB_FEEDBACK_ASSIGNEES to up to 10 GitHub logins, comma-separated.");
+  }
+  return unique;
 }
 
 // GitHub refuses an issue body over 65,536 characters; report.json keeps every field in full.
@@ -114,18 +138,23 @@ function shots(report: FeedbackReport, imageUrls: string[], share: number): stri
     .join("\n\n");
 }
 
-function issueBody(report: FeedbackReport, imageUrls: string[]): string {
+function issueBody(report: FeedbackReport, imageUrls: string[], unassigned: string[]): string {
   // A fence can be as long as its text, so a report of backticks can pass GitHub's limit at the
   // usual cuts: they shrink until it fits. At a tenth, the longest report is far under it.
   let body = "";
   for (const share of [1, 0.5, 0.25, 0.1]) {
-    body = bodyAt(report, imageUrls, share);
+    body = bodyAt(report, imageUrls, unassigned, share);
     if (body.length <= 65_536) break;
   }
   return body;
 }
 
-function bodyAt(report: FeedbackReport, imageUrls: string[], share: number): string {
+function bodyAt(
+  report: FeedbackReport,
+  imageUrls: string[],
+  unassigned: string[],
+  share: number,
+): string {
   const { page, viewport, userAgent, language, timeZone, createdAt, id } = report;
   const screen = `${viewport.width}x${viewport.height} @${viewport.devicePixelRatio}x`;
   // Each fence starts its own line: after other text on that line it is no block.
@@ -137,6 +166,9 @@ function bodyAt(report: FeedbackReport, imageUrls: string[], share: number): str
     `**Browser:**\n${fenced(`${userAgent}\n${screen}, ${language}, ${timeZone}`, 1_000 * share)}`,
     `**Sent:** ${createdAt}, report \`${id}\``,
     `**Context, from the browser:**\n${fenced(JSON.stringify(report.context, null, 2), 6_000 * share)}`,
+    ...(unassigned.length
+      ? [`**Not assigned, GitHub cannot assign them here:** ${unassigned.map((login) => `\`${login}\``).join(", ")}`]
+      : []),
   ].join("\n\n");
 }
 
@@ -144,6 +176,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const { report } = await parseFeedbackRequest(request);
     const api = github();
+    const wanted = assignees();
     const repo = await api("GET", "");
     // Checked on every send: a repo made public later must not receive reports.
     if (repo.status !== 200) throw new Error(`GitHub answered ${repo.status} for the repo.`);
@@ -185,10 +218,20 @@ export async function POST(request: Request): Promise<Response> {
     // GitHub refuses a label name over 50 characters, and one that is only space.
     const category = cut(report.category?.replace(/\s+/g, " ").trim() ?? "", 49);
     const title = cut(report.note.split("\n")[0]?.trim() || "Feedback", 80);
+    const assigned: string[] = [];
+    const unassigned: string[] = [];
+    for (const login of wanted) {
+      const check = await api("GET", `/assignees/${login}`);
+      if (check.status !== 204 && check.status !== 404) {
+        throw new Error(`GitHub answered ${check.status} for assignee ${login}.`);
+      }
+      (check.status === 204 ? assigned : unassigned).push(login);
+    }
     const issue = await api("POST", "/issues", {
       title,
-      body: issueBody(report, imageUrls),
+      body: issueBody(report, imageUrls, unassigned),
       labels: ["feedback", ...(category ? [category] : [])],
+      ...(assigned.length ? { assignees: assigned } : {}),
     });
     if (issue.status !== 201) throw new Error(`GitHub answered ${issue.status} for the issue.`);
     const screenshots = report.screenshots.map((shot, i) => ({ ...shot, image: imageUrls[i] }));
