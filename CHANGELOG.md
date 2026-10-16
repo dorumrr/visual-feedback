@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.3 (not released yet)
+## 0.4.3 (2026-10-16)
 
 - The GitHub Issues recipe assigns each issue to the logins in `GITHUB_FEEDBACK_ASSIGNEES`, up to
   10. It assigns only those GitHub says it can, and names the rest in the issue, so a misspelt login
