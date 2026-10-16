@@ -10,12 +10,21 @@ screen as the user saw it, with nothing masked (SPEC §7).
 It uses `fetch` and Vercel Blob's REST API, so it needs no package. The URLs, headers and token
 shape are the ones `@vercel/blob` 2.8.1 sends; if Vercel changes its API, compare with that client.
 
+## Questions to ask
+
+1. Is there a Blob store with private access yet? If not, the developer creates one (section 1).
+2. Does the route run on Vercel? There, a report's screenshots together must stay under 4.5 MB
+   (section 1).
+3. Who are the admins, and how does the app tell them from other users? The `GET` route's
+   `canRead` needs it.
+
 ## 1. Create the store
 
 Create a Blob store with private access in your Vercel project. That sets `BLOB_READ_WRITE_TOKEN`
 on the server. Never send it to the browser. Check it: open
 `https://<store id>.private.blob.vercel-storage.com/feedback/<id>/report.json` without the token,
-where the store id is the part after `vercel_blob_rw_` in the token, and Vercel refuses it.
+where the store id is the part of the token between `vercel_blob_rw_` and the next `_` (never the
+secret after it), and Vercel refuses it.
 
 Vercel refuses a request body over 4.5 MB, all screenshots of a report together, with 413, and the
 widget then shows its send error. The route takes images up to 3 MB each; a smaller

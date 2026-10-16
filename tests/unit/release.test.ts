@@ -8,7 +8,11 @@ type Output = { ok: boolean; out: string };
  * repo: main is clean and level with origin, npm has 0.3.2 and CHANGELOG.md waits on 0.3.3, unless
  * `outputs` says otherwise. Returns how it ended, and every question, command and write in order.
  */
-async function rehearse(answers: string[], outputs: Record<string, Output> = {}) {
+async function rehearse(
+  answers: string[],
+  outputs: Record<string, Output> = {},
+  stored: Record<string, string> = {},
+) {
   const log: string[] = [];
   const known: Record<string, Output> = {
     "git branch --show-current": { ok: true, out: "main" },
@@ -22,6 +26,7 @@ async function rehearse(answers: string[], outputs: Record<string, Output> = {})
       "# Changelog\n\n## 0.3.3 (not released yet)\n\n- x\n\n## 0.3.2 (2026-10-13)\n\n- y\n",
   };
   let asked = 0;
+  const written: Record<string, string> = {};
   const result = await release({
     ask: async (question: string) => {
       log.push(`ask ${question}`);
@@ -36,15 +41,17 @@ async function rehearse(answers: string[], outputs: Record<string, Output> = {})
       return (call in outputs ? outputs[call] : known[call]) ?? { ok: true, out: "" };
     },
     sleep: async () => {},
-    read: (name: string) => files[name] ?? "",
-    write: (name: string) => {
+    // Read at each call, so a file can change between two reads.
+    read: (name: string) => (name in stored ? stored[name] : files[name]) ?? "",
+    write: (name: string, text: string) => {
       log.push(`write ${name}`);
+      written[name] = text;
     },
   }).then(
     () => "done",
     (error: Error) => error.message,
   );
-  return { result, log, at: (entry: string) => log.indexOf(entry) };
+  return { result, log, written, at: (entry: string) => log.indexOf(entry) };
 }
 
 const CHECK = "run npm run check";
@@ -205,18 +212,32 @@ describe("npm run release", () => {
   });
 
   it("asks first whether to run the full check, and Enter skips it", async () => {
-    // The last answer, no to publishing, ends the rehearsal.
-    const { result, log } = await rehearse(["", "0.3.3", "n"]);
-    expect(result).toBe("done");
-    expect(log[0]).toBe(QUESTION);
+    const { log } = await rehearse(["", "0.3.3", "y"]);
+    expect(log.find((entry) => entry.startsWith("ask "))).toBe(QUESTION);
     expect(log).toContain("write CHANGELOG.md");
     expect(log).not.toContain(CHECK);
   });
 
+  it("asks every question before the check, the first write and the first push", async () => {
+    const { log, at } = await rehearse(["y", "y", "0.3.3", "y"], {
+      "git log --oneline origin/main..HEAD": { ok: true, out: "abc x" },
+    });
+    const asked = log.flatMap((entry, i) => (entry.startsWith("ask ") ? [i] : []));
+    expect(asked).toHaveLength(4);
+    const first = Math.min(
+      at(CHECK),
+      ...log.flatMap((entry, i) => (entry.startsWith("write") ? [i] : [])),
+      at("run git push origin main"),
+    );
+    expect(Math.max(...asked)).toBeLessThan(first);
+    expect(at(CHECK)).toBeGreaterThan(-1);
+  });
+
   it("y runs npm run check once the version passed every refusal, before the first write", async () => {
-    const { result, at, log } = await rehearse(["y", "0.3.3", "n"]);
-    expect(result).toBe("done");
-    expect(at("ask Version to publish: ")).toBeGreaterThan(-1);
+    const { at, log, written } = await rehearse(["y", "0.3.3", "y"]);
+    expect(JSON.parse(written["package.json"] ?? "").version).toBe("0.3.3");
+    expect(JSON.parse(written["package-lock.json"] ?? "").version).toBe("0.3.3");
+    expect(written["CHANGELOG.md"]).toMatch(/^## 0\.3\.3 \(\d{4}-\d{2}-\d{2}\)$/m);
     expect(at(CHECK)).toBeGreaterThan(at("ask Version to publish: "));
     const writes = log.flatMap((entry, i) => (entry.startsWith("write") ? [i] : []));
     expect(writes).toHaveLength(3);
@@ -251,7 +272,7 @@ describe("npm run release", () => {
     const skipped = await rehearse(["", "0.3.3", "n"]);
     expect(skipped.log.filter((entry) => entry === fetch)).toHaveLength(1);
     let behind = 0;
-    const moved = await rehearse(["y", "0.3.3"], {
+    const moved = await rehearse(["y", "0.3.3", "y"], {
       get "git rev-list --count HEAD..origin/main"() {
         behind++;
         return { ok: true, out: behind === 1 ? "0" : "1" };
@@ -264,7 +285,7 @@ describe("npm run release", () => {
   });
 
   it("a failed check stops the release before anything is changed", async () => {
-    const { result, log } = await rehearse(["y", "0.3.3"], {
+    const { result, log } = await rehearse(["y", "0.3.3", "y"], {
       "npm run check": { ok: false, out: "" },
     });
     expect(log.some((entry) => entry.startsWith("write"))).toBe(false);
@@ -287,7 +308,10 @@ describe("npm run release", () => {
     for (const [outputs, answers, expected] of refusals) {
       const { result, log } = await rehearse(answers, outputs);
       // Declining unpushed commits ends it there, at that question.
-      if (expected === "done") expect(log.at(-1)).toBe("ask Release them too? [y/N] ");
+      if (expected === "done") {
+        expect(log.at(-1)).toBe("ask Release them too? [y/N] ");
+        expect(log.some((entry) => entry.startsWith("write"))).toBe(false);
+      }
       expect(result, String(expected)).toMatch(expected);
       expect(log, String(expected)).not.toContain(CHECK);
     }
@@ -300,15 +324,22 @@ describe("npm run release", () => {
       ["N", false],
       ["yes", false],
     ] as const) {
-      const { log } = await rehearse([answer, "0.3.3", "n"]);
+      const { log } = await rehearse([answer, "0.3.3", "y"]);
       expect(log.includes(CHECK), answer).toBe(runs);
     }
   });
 
-  it("the publish question shows Y/n: Enter, y or Y go ahead, anything else stops and restores the files", async () => {
+  it("the publish question shows Y/n: Enter, y or Y go ahead, anything else stops with nothing written or run", async () => {
     const push = "run git push origin main";
-    const restore = "run git checkout -- CHANGELOG.md package.json package-lock.json";
-    const commit = "run git commit --quiet -m Release 0.3.3";
+    const commit =
+      "run git commit --quiet -m Release 0.3.3 -- CHANGELOG.md package.json package-lock.json";
+    // Already at 0.3.3 and dated: nothing to commit, only to push and publish.
+    const released = {
+      "package.json": '{\n  "name": "visual-feedback",\n  "version": "0.3.3"\n}\n',
+      "package-lock.json": '{\n  "name": "visual-feedback",\n  "version": "0.3.3"\n}\n',
+      "CHANGELOG.md":
+        "# Changelog\n\n## 0.3.3 (2026-10-14)\n\n- x\n\n## 0.3.2 (2026-10-13)\n\n- y\n",
+    };
     for (const wrote of [true, false]) {
       const question = wrote
         ? 'ask Commit "Release 0.3.3", push and publish 0.3.3? [Y/n] '
@@ -322,23 +353,79 @@ describe("npm run release", () => {
         ["yes", false],
       ] as const) {
         let status = 0;
-        const { result, log } = await rehearse(["", "0.3.3", answer], {
-          // Clean before the release, then the three files it wrote, unless they held that version.
-          get "git status --porcelain"() {
-            return { ok: true, out: status++ === 0 || !wrote ? "" : " M CHANGELOG.md" };
+        const { result, log } = await rehearse(
+          ["y", "0.3.3", answer],
+          {
+            // Clean before the release, then the three files it wrote, unless they held that version.
+            get "git status --porcelain"() {
+              return { ok: true, out: status++ === 0 || !wrote ? "" : " M CHANGELOG.md" };
+            },
           },
-        });
+          wrote ? {} : released,
+        );
         const label = `${wrote} ${answer}`;
         expect(log, label).toContain(question);
         expect(log.includes(push), label).toBe(goes);
-        expect(log.includes(restore), label).toBe(wrote && !goes);
         expect(log.includes(commit), label).toBe(wrote && goes);
+        expect(log.includes(CHECK), label).toBe(goes);
+        expect(
+          log.some((entry) => entry.startsWith("write")),
+          label,
+        ).toBe(wrote && goes);
         expect(
           log.some((entry) => entry.startsWith("run gh ")),
           label,
         ).toBe(goes);
         if (!goes) expect(result, label).toBe("done");
       }
+    }
+  });
+
+  it("a commit that fails puts the release files back and pushes nothing", async () => {
+    const names = "CHANGELOG.md package.json package-lock.json";
+    const { result, log, at } = await rehearse(["", "0.3.3", "y"], {
+      [`git commit --quiet -m Release 0.3.3 -- ${names}`]: { ok: false, out: "" },
+    });
+    expect(result).toMatch(/The release files were put back: nothing was pushed\.$/);
+    expect(at(`run git checkout -- ${names}`)).toBeGreaterThan(at("write CHANGELOG.md"));
+    expect(log).not.toContain("run git push origin main");
+  });
+
+  it("a restore that fails says so, with the command to run", async () => {
+    const names = "CHANGELOG.md package.json package-lock.json";
+    const { result } = await rehearse(["", "0.3.3", "y"], {
+      [`git commit --quiet -m Release 0.3.3 -- ${names}`]: { ok: false, out: "" },
+      [`git checkout -- ${names}`]: { ok: false, out: "" },
+    });
+    expect(result).toMatch(
+      /failed too: git checkout -- CHANGELOG\.md package\.json package-lock\.json\. Nothing was pushed\.$/,
+    );
+  });
+
+  it("a release file changed during the check stops it before anything is written", async () => {
+    let reads = 0;
+    const { result, log } = await rehearse(
+      ["y", "0.3.3", "y"],
+      {},
+      {
+        get "package.json"() {
+          reads++;
+          return `{\n  "name": "visual-feedback",\n  "version": "${reads > 2 ? "9.9.9" : "0.3.2"}"\n}\n`;
+        },
+      },
+    );
+    expect(result).toBe("package.json changed during the check: nothing was written or pushed.");
+    expect(log.some((entry) => entry.startsWith("write"))).toBe(false);
+  });
+
+  it("refuses a branch, a dirty tree or a main behind origin before it asks anything", async () => {
+    for (const outputs of [
+      { "git branch --show-current": { ok: true, out: "other" } },
+      { "git status --porcelain": { ok: true, out: " M x" } },
+      { "git rev-list --count HEAD..origin/main": { ok: true, out: "2" } },
+    ]) {
+      const { log } = await rehearse([], outputs);
+      expect(log.some((entry) => entry.startsWith("ask "))).toBe(false);
     }
   });
 

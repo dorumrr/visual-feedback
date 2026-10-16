@@ -156,9 +156,6 @@ const strict =
 /** The release, with the terminal, the commands and the repo's files passed in, for a test to fake. */
 export async function release({ ask, run, sleep, read, write }) {
   const must = strict(run);
-  const checked =
-    (await ask("Run the full check first, npm run check (a few minutes)? [y/N] ")).toLowerCase() ===
-    "y";
   if (must("git", ["branch", "--show-current"], true) !== "main") {
     throw new Error("Run it on main: a real publish runs from main only.");
   }
@@ -172,6 +169,9 @@ export async function release({ ask, run, sleep, read, write }) {
     }
   };
   level();
+  const checked =
+    (await ask("Run the full check first, npm run check (a few minutes)? [y/N] ")).toLowerCase() ===
+    "y";
   // `git push origin main` sends every local commit, not only the release commit.
   const unpushed = must("git", ["log", "--oneline", "origin/main..HEAD"], true);
   if (unpushed) {
@@ -203,6 +203,25 @@ export async function release({ ask, run, sleep, read, write }) {
   }
   const refused = refusal(changelog, version);
   if (refused) throw new Error(refused);
+
+  const today = new Date().toLocaleDateString("en-CA");
+  const before = Object.fromEntries(
+    ["CHANGELOG.md", "package.json", "package-lock.json"].map((name) => [name, read(name)]),
+  );
+  const files = {
+    "CHANGELOG.md": dated(changelog, version, today),
+    "package.json": setVersion(before["package.json"], version),
+    "package-lock.json": setVersion(before["package-lock.json"], version),
+  };
+  const commits = Object.entries(files).some(([name, text]) => text !== before[name]);
+  // The last question: from here it runs to the end with no one at the terminal.
+  const go = await ask(
+    `${commits ? `Commit "Release ${version}", push` : "Push"} and publish ${version}? [Y/n] `,
+  );
+  if (go && go.toLowerCase() !== "y") {
+    console.log("Stopped: nothing was changed, committed, pushed or published.");
+    return;
+  }
   // After every refusal above, so a check is never run for a release that cannot happen.
   if (checked) {
     if (!run("npm", ["run", "check"]).ok) {
@@ -212,26 +231,35 @@ export async function release({ ask, run, sleep, read, write }) {
     level();
   }
 
-  const today = new Date().toLocaleDateString("en-CA");
-  write("CHANGELOG.md", dated(changelog, version, today));
-  for (const name of ["package.json", "package-lock.json"]) {
-    write(name, setVersion(read(name), version));
-  }
-  const changed = must("git", ["status", "--porcelain"], true);
-  if (changed) must("git", ["--no-pager", "diff", "--stat"]);
-
-  const go = await ask(
-    `${changed ? `Commit "Release ${version}", push` : "Push"} and publish ${version}? [Y/n] `,
-  );
-  if (go && go.toLowerCase() !== "y") {
-    if (changed)
-      must("git", ["checkout", "--", "CHANGELOG.md", "package.json", "package-lock.json"]);
-    console.log("Stopped: nothing was committed, pushed or published.");
-    return;
-  }
-  if (changed) {
-    must("git", ["add", "CHANGELOG.md", "package.json", "package-lock.json"]);
-    must("git", ["commit", "--quiet", "-m", `Release ${version}`]);
+  if (commits) {
+    const names = Object.keys(files);
+    // Read before the check: a file changed meanwhile must not be written over.
+    const moved = names.filter((name) => read(name) !== before[name]);
+    if (moved.length) {
+      throw new Error(
+        `${moved.join(", ")} changed during the check: nothing was written or pushed.`,
+      );
+    }
+    const head = must("git", ["rev-parse", "HEAD"], true);
+    try {
+      for (const [name, text] of Object.entries(files)) write(name, text);
+      must("git", ["--no-pager", "diff", "--stat", "--", ...names]);
+      must("git", ["add", "--", ...names]);
+      must("git", ["commit", "--quiet", "-m", `Release ${version}`, "--", ...names]);
+    } catch (error) {
+      // No one may be at the terminal: leave the tree as it was, so the next run can start.
+      if (run("git", ["rev-parse", "HEAD"], true).out !== head) {
+        throw new Error(`${error.message} The release commit was made anyway: nothing was pushed.`);
+      }
+      const back =
+        run("git", ["reset", "--quiet", "--", ...names]).ok &&
+        run("git", ["checkout", "--", ...names]).ok;
+      throw new Error(
+        back
+          ? `${error.message} The release files were put back: nothing was pushed.`
+          : `${error.message} Putting back ${names.join(", ")} failed too: git checkout -- ${names.join(" ")}. Nothing was pushed.`,
+      );
+    }
   }
   must("git", ["push", "origin", "main"]);
   const pushed = must("git", ["rev-parse", "HEAD"], true);

@@ -14,18 +14,41 @@ of who sent the report. The images show the screen as the user saw it, with noth
 (SPEC §7). Only people with access to the repo see them. GitHub shows an image in an issue through
 a signed link that works for anyone who holds it, for a few minutes: show it, never share it.
 
+## Questions to ask
+
+1. **Will the code repo stay private forever?** Show the two layouts of section 1 side by side,
+   then:
+   - **Yes:** recommend the code repo, with the `visual-feedback` branch. Read its owner and name
+     from `git remote get-url origin`, without `.git`, and confirm them; stop and ask if `origin`
+     is not on github.com. Check it is private today: `gh repo view <owner>/<name> --json
+     visibility`.
+   - **No, or unsure:** a dedicated private repo. Ask its owner and name, such as
+     `acme/app-feedback`.
+2. **Assign issues to you?** Yes by default. Find their login first, with `gh api user --jq
+   .login` where `gh` is signed in, and ask "Assign issues to `<login>`, and anyone else?"; else
+   ask for it. The logins go in `GITHUB_FEEDBACK_ASSIGNEES` (section 2).
+3. **Once 1 and 2 are answered:** the developer pushes the branch or creates the repo (section 1),
+   and creates the token (section 2). With assignees, the token's owner needs write access to the
+   repo, or GitHub drops them without an error.
+
 ## 1. Pick a layout
 
-**A dedicated private repo (the default).** Create a private repo only for feedback, such as
-`<app>-feedback`, never the code repo, with a README so it has a default branch. Images stay out of the code repo's clones, and making the
-code repo public later exposes nothing. Images are committed to its default branch.
+Pick by one question: will the code repo stay private forever?
 
-**The code repo, with an orphan branch.** Only when you are sure the code repo stays private
-forever. Issues sit next to the code with one token, and images go to a branch `visual-feedback`
-that shares no history with the code. A token cannot be limited to one branch, so the server's
-token can also push to the code: a leak of it is a leak of write access to your source. But every clone and fetch downloads that branch unless it is
-cloned with `--single-branch`, and if the repo is ever made public, every report is exposed. Create
-the branch once, in a clean clone (git 2.23 or later):
+| | the code repo, `visual-feedback` branch | a dedicated private repo |
+|---|---|---|
+| issues | next to the code, one place to triage | in a repo of their own |
+| images | on a branch that shares no history with the code | on that repo's default branch |
+| clones | every clone downloads the branch, unless `--single-branch` | the code repo's clones stay clean |
+| the token | can also push to the code: a leak is write access to the source | reaches only feedback |
+| made public later | every report and image is exposed | nothing of the code repo changes |
+
+**Yes: the code repo, with an orphan branch (the default then).** Issues sit next to the code with
+one token, and images go to a branch `visual-feedback` that shares no history with the code. A
+token cannot be limited to one branch, so the server's token can also push to the code: a leak of
+it is a leak of write access to your source. Every clone and fetch downloads that branch unless it
+is cloned with `--single-branch`, and if the repo is ever made public, every report is exposed.
+Create the branch once, in a clean clone (git 2.23 or later):
 
 ```sh
 git switch --orphan visual-feedback
@@ -33,6 +56,11 @@ git commit --allow-empty -m "visual-feedback images"
 git push origin visual-feedback
 git switch -
 ```
+
+**No, or unsure: a dedicated private repo.** Create a private repo only for feedback, such as
+`<app>-feedback`, never the code repo, with a README so it has a default branch. Images stay out of
+the code repo's clones, and making the code repo public later exposes nothing. Images are committed
+to its default branch.
 
 In both layouts, deleting a file or a branch does not remove its images or reports: commits stay reachable by
 their SHA on GitHub until GitHub Support purges them. A later option, once it works with a

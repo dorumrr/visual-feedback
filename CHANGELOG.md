@@ -5,6 +5,15 @@
 - The GitHub Issues recipe assigns each issue to the logins in `GITHUB_FEEDBACK_ASSIGNEES`, up to
   10. It assigns only those GitHub says it can, and names the rest in the issue, so a misspelt login
   never stops a report.
+- AGENTS.md asks more before an install. It installs the package first, says what each storage
+  gives, then asks the questions each recipe now starts with, under **Questions to ask**. For
+  GitHub Issues the code repo's `visual-feedback` branch is the default when the repo stays
+  private forever, a dedicated repo otherwise, and issues are assigned to the developer unless
+  they say no. Settings go where and how the app already keeps them; the developer makes every
+  account, key and token, and no secret goes through the chat. The test send is done by the
+  agent where it can drive a browser, else handed over, and called checked only when someone saw
+  it arrive. It warns about a CSP without `img-src data:`, and a new section 5 updates an
+  install: the copied route names its version and recipe near its top.
 
 ## 0.4.2 (2026-10-15)
 

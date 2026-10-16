@@ -78,7 +78,7 @@ describe("AGENTS.md", () => {
       /user id from the server session/,
       /rate limit/,
       /discardDraft\(\)` from `visual-feedback` at logout/,
-      /separate private repo/,
+      /`visual-feedback` branch only when the developer confirms/,
     ];
     for (const topic of topics) {
       expect(
@@ -97,7 +97,27 @@ describe("AGENTS.md", () => {
   it("tells the agent to ask, and to say each reason to the developer, each in its own section", () => {
     for (const [title, line] of [
       ["1. Ask", "Never pick storage yourself"],
+      ["1. Ask", "First install it with the app's own package manager"],
+      ["1. Ask", "| who reads them | works on |"],
+      ["1. Ask", "Each recipe starts with **Questions to ask**. Ask them in one message"],
+      ["1. Ask", "Never assume an answer the developer did not give"],
+      ["2. Wire it", "its `img-src` must allow `data:`"],
+      ["2. Wire it", "Put one line near its top that names the version and the recipe"],
+      ["2. Wire it", "A real secret goes only where the app keeps secrets out of git"],
+      ["2. Wire it", "never create or push these yourself"],
+      ["2. Wire it", "never ask for one in the chat"],
+      ["2. Wire it", "If you can run the app and drive a browser, do it yourself"],
+      ["2. Wire it", 'otherwise say "not checked" and why'],
+      ["5. Updating", "Find the app's copy of the route by that line near its top"],
+      ["5. Updating", "keep what the app filled in"],
+      ["5. Updating", "Ask each new question in the recipe's **Questions to ask**"],
       ["1. Ask", "tell the developer each one, with its reason"],
+      ["2. Wire it", "from a page that shows no real data"],
+      ["1. Ask", "| who reads them | works on |"],
+      ["2. Wire it", "with each secret's value hidden"],
+      ["2. Wire it", "that it is assigned to the logins they chose"],
+      ["2. Wire it", "the way the app already keeps its server settings"],
+      ["2. Wire it", "End with one report to the developer"],
       ["2. Wire it", "stop and ask the developer how sends and reads will be protected"],
       ["2. Wire it", "the `.gitignore` line comes before the first report"],
       ["2. Wire it", "Fit the button to the app's own design"],
@@ -108,6 +128,28 @@ describe("AGENTS.md", () => {
       ["4. The feedback loop", "the text of every label in each screenshot's `marks`"],
     ] as const) {
       expect(section(title).replace(/\s+/g, " "), `${title}: ${line}`).toContain(line);
+    }
+  });
+
+  it("starts every recipe with its questions, and the GitHub one with the layout and assignee ones", () => {
+    for (const recipe of recipes) {
+      const text = readFileSync(new URL(`../../${recipe}`, import.meta.url), "utf8");
+      const headings = [...text.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
+      expect(headings[0], recipe).toBe("Questions to ask");
+    }
+    const github = readFileSync(
+      new URL("../../docs/recipes/github-issues.md", import.meta.url),
+      "utf8",
+    ).replace(/\s+/g, " ");
+    for (const line of [
+      "**Will the code repo stay private forever?**",
+      "**Yes:** recommend the code repo, with the `visual-feedback` branch",
+      "**No, or unsure:** a dedicated private repo",
+      "**Assign issues to you?** Yes by default",
+      "the token's owner needs write access to the repo",
+      "| the token | can also push to the code",
+    ]) {
+      expect(github, line).toContain(line);
     }
   });
 

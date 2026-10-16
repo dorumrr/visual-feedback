@@ -13,6 +13,10 @@ Vercel, Netlify, Cloudflare and most containers. Use another recipe there.
 The images show the screen as the user saw it, with nothing masked (SPEC §7), so treat the folder
 as private.
 
+## Questions to ask
+
+None. Tell the developer it writes only in development, and stops working at the first deploy.
+
 ## 1. Keep the folder out of git
 
 Add this line to `.gitignore`:

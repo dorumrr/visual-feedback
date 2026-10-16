@@ -10,6 +10,17 @@ and nobody but your server can write.
 `user_id` is the proof of who sent a report; `report.context` is not (docs/API.md). The images show
 the screen as the user saw it, with nothing masked (SPEC §7).
 
+## Questions to ask
+
+1. Which Supabase project?
+2. Does the app sign users in with Supabase Auth? This recipe needs it: each report is tied to a
+   Supabase user, and admins are read from `app_metadata.role`. If not, offer the Postgres recipe.
+3. Who are the admins, and is their `app_metadata.role` already `admin` (section 1)? The developer
+   runs section 1's SQL in the SQL editor, and sets the role as section 1 says, with the service
+   role.
+4. Where will admins read reports? This recipe ships no read screen: row-level security lets an
+   admin read them from the app's own screens.
+
 ## 1. Install and create the table, the bucket and the policies
 
 ```sh

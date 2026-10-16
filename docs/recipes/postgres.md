@@ -22,6 +22,16 @@ To keep images in a bucket instead (docs/recipes/s3.md):
 The images show the screen as the user saw it, with nothing masked (SPEC §7), so read the table only
 from your own admin screens.
 
+## Questions to ask
+
+1. Which database? The route uses the `postgres` package; where the app already reaches the
+   database with another client, such as Prisma, Drizzle or `pg`, say this adds a second one.
+2. How does the app's session give the signed-in user's id? The route ships closed on
+   `currentUser` until it does.
+3. Images in the table, or in a bucket? A bucket adds the S3 recipe's setup above, its package and
+   its `S3_*` settings: then ask its questions too.
+4. Where will admins read reports? This recipe stores them and ships no read route.
+
 ## 1. Install and create the table
 
 ```sh
