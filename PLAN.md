@@ -16,7 +16,7 @@ Tier: default  how hard each step is worked: low, medium or high, or default for
    [ ] E4  With attachments on, the user adds and removes files, sees each limit it meets, and they arrive   BLOCKS E5, E12
    [ ] E5  A kept draft brings its attachments back after a fold and a page load
    [x] E6  Recipe local stores attachments
-   [ ] E7  Recipe S3 stores attachments and serves them as downloads
+   [x] E7  Recipe S3 stores attachments and serves them as downloads
    [ ] E8  Recipe Postgres stores attachments            an existing install adds one table, only to opt in
    [x] E9  Recipe Supabase stores attachments
    [ ] E10 Recipe Vercel Blob stores attachments         Vercel refuses a body over 4.5 MB
