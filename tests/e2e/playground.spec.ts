@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { stored, withoutSupport } from "./widget";
 
@@ -103,6 +104,40 @@ test("in the playground, the feedback button captures the page and Send shows th
   await expect(report.getByRole("heading", { name: "From the playground" })).toBeVisible();
   await expect(report.getByRole("img", { name: "Screenshot 1" })).toBeVisible();
   await expect(report.locator("pre")).toContainText('"marks": []');
+});
+
+test("in the playground, each attached file arrives listed with a download under its stored name", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  await page
+    .locator("visual-feedback")
+    .locator("input.attach-input")
+    .setInputFiles([
+      { name: "My notes.log", mimeType: "text/plain", buffer: Buffer.from("line one\nline two\n") },
+      { name: "Totals.CSV", mimeType: "text/csv", buffer: Buffer.from("a,b\n") },
+    ]);
+  const widget = page.locator("visual-feedback");
+  await expect(widget.getByText("Totals.CSV")).toBeVisible();
+  await page.getByRole("textbox", { name: "Your note" }).fill("See the files");
+  await widget.getByRole("button", { name: "Send", exact: true }).click();
+  const report = page.locator(".report");
+  const details = report.locator("pre");
+  await expect(details).toContainText('"name": "My notes.log"');
+  const { id } = JSON.parse((await details.textContent()) ?? "{}");
+  expect(id).toMatch(/^[0-9a-f-]{36}$/);
+  for (const [i, name, label, stored, text] of [
+    [0, "My notes.log", "text/plain, 18 bytes", `${id}-file-0.log`, "line one\nline two\n"],
+    [1, "Totals.CSV", "text/csv, 4 bytes", `${id}-file-1.csv`, "a,b\n"],
+  ] as const) {
+    const link = report.getByRole("link", { name: `Download ${name} (${label})`, exact: true });
+    await expect(link, `file ${i}`).toHaveAttribute("download", stored);
+    const [download] = await Promise.all([page.waitForEvent("download"), link.click()]);
+    expect(download.suggestedFilename()).toBe(stored);
+    expect(readFileSync(await download.path(), "utf8")).toBe(text);
+  }
+  await expect(details).toContainText('"file": "Blob"');
 });
 
 /** Records whether the hint was still shown each time the widget started to capture the page. */

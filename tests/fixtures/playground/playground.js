@@ -29,9 +29,22 @@ function show(report) {
     link.textContent = `Download screenshot ${i + 1} (${image.type}, ${image.size} bytes)`;
     item.append(img, link);
   }
+  for (const [i, { file, name, type, size }] of (report.attachments ?? []).entries()) {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(file);
+    // A download, never the user's name, as AGENTS.md asks of a host: the file is unchecked.
+    link.download = `${report.id}-file-${i}${name.slice(name.lastIndexOf(".")).toLowerCase()}`;
+    link.textContent = `Download ${name} (${type}, ${size} bytes)`;
+    item.append(link);
+  }
   const screenshots = report.screenshots.map((shot) => ({ ...shot, image: "Blob" }));
+  const attachments = report.attachments?.map((item) => ({ ...item, file: "Blob" }));
   const details = document.createElement("pre");
-  details.textContent = JSON.stringify({ ...report, screenshots }, null, 2);
+  details.textContent = JSON.stringify(
+    { ...report, screenshots, ...(attachments && { attachments }) },
+    null,
+    2,
+  );
   item.append(details);
   list.prepend(item);
   empty.hidden = true;
@@ -51,6 +64,7 @@ if (pkg && typeof pkg.createFeedback === "function") {
   try {
     const widget = pkg.createFeedback({
       trigger: "none",
+      attachments: true,
       onSubmit: async (report) => show(report),
     });
     status.textContent = "Widget loaded. Use the feedback button.";

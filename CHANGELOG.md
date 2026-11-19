@@ -24,6 +24,8 @@
   option and the recipe's switch together. A new safety rule serves an attached file only as a
   download, with its reason, and an update keeps the app's `ATTACHMENTS` switch. The Supabase
   recipe's admin screen opens a file with a signed URL that downloads it.
+- The demo site takes attachments, and lists each file of a report with a link that downloads it
+  under a stored name, never the user's. The README points to the option.
 
 ## 0.4.3 (2026-10-16)
 

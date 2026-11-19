@@ -66,6 +66,12 @@ it("the README's prompt for a coding agent names the package and the guide it sh
   expect(pkg.files).toContain("AGENTS.md");
 });
 
+it("the README points to the attachments option, off by default, and the switch that stores files", () => {
+  expect(doc.replace(/\s+/g, " ")).toContain(
+    "Files users attach: the `attachments` option, off by default ([docs/API.md](docs/API.md)), together with the `ATTACHMENTS` switch of the recipe ([docs/recipes/](docs/recipes/))",
+  );
+});
+
 it("the CHANGELOG has an entry for the version the package will publish", () => {
   const changelog = readFileSync(new URL("../../CHANGELOG.md", import.meta.url), "utf8");
   const { version } = JSON.parse(
