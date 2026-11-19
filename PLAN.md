@@ -15,7 +15,7 @@ Tier: default  how hard each step is worked: low, medium or high, or default for
    [x] E3  The report type and parseFeedbackRequest carry attachments, only when the host opts in   BLOCKS E4, E6-E11
    [ ] E4  With attachments on, the user adds and removes files, sees each limit it meets, and they arrive   BLOCKS E5, E12
    [ ] E5  A kept draft brings its attachments back after a fold and a page load
-   [ ] E6  Recipe local stores attachments
+   [x] E6  Recipe local stores attachments
    [ ] E7  Recipe S3 stores attachments and serves them as downloads
    [ ] E8  Recipe Postgres stores attachments            an existing install adds one table, only to opt in
    [x] E9  Recipe Supabase stores attachments
