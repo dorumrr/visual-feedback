@@ -86,6 +86,7 @@ const ENGLISH: Texts = {
   attachTooBigTogether: "{file} is not attached: the most for all files together is {limit}.",
   attachType:
     "{file} is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be.",
+  attachNotKept: "{file} was not kept with the draft.",
   attachName:
     "{file} is not attached: its name is too long, is only an ending, or holds a character that is not allowed.",
   attachUnreadable: "{file} is not attached: it could not be read as the type its name says.",
@@ -326,6 +327,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // Select alone has nothing to act on, so there is nothing to draw with.
   const drawing = choices.some((choice) => choice !== "select");
   const text = texts(settings.strings);
+  const lostText = (name: string) => text.attachNotKept.replaceAll("{file}", name);
   const backdrop = element("dialog", "backdrop", {
     "aria-modal": "true",
     "aria-labelledby": "vf-title",
@@ -368,6 +370,10 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   let hint: [HTMLElement, HTMLElement] | undefined;
   // The files attached to this draft, in the order Send carries them.
   let files: File[] = [];
+  // Files a kept draft lost, named once it comes back; kept with it until the files change.
+  let notKept: string[] = [];
+  // Files a kept draft brought back, not yet listed while they are checked again.
+  let pending: File[] = [];
   // Picks are checked one at a time, and Send waits for the last, so no file is half added.
   let checking = Promise.resolve();
   const root = () => parent.getRootNode() as ShadowRoot;
@@ -398,6 +404,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     return Boolean(
       note?.value.trim() ||
         files.length ||
+        pending.length ||
         picker?.selectedIndex ||
         taken.length > 1 ||
         taken.some((shot) => shot.annotator?.marks.length),
@@ -677,9 +684,11 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         if (turn !== ended) return;
         const saved = Date.now();
         // Files can fill the device's storage: then the draft is kept without them.
-        await keep(id, { saved, ...draft, shots: images, files: attached }).catch((error) => {
+        const lost = [...notKept];
+        await keep(id, { saved, ...draft, shots: images, files: attached, lost }).catch((error) => {
           if (!attached.length) throw error;
-          return keep(id, { saved, ...draft, shots: images, files: [] });
+          const all = [...lost, ...attached.map((file) => file.name)];
+          return keep(id, { saved, ...draft, shots: images, files: [], lost: all });
         });
         // Ended while it was written: discard() already let go of the key, so the record goes too.
         if (turn !== ended) await forget(id);
@@ -969,6 +978,10 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       const [attach, pick, list] = attaching(limits);
       box.append(pick, list);
       fields.unshift(attach);
+    } else if (notKept.length) {
+      const told = element("p", "error", { role: "alert" });
+      told.textContent = notKept.map(lostText).join(" ");
+      box.append(told);
     }
     // The category, when there is one, stays with the note; Send goes to the footer.
     if (fields.length) {
@@ -1072,6 +1085,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
             ICONS.cancel,
             () => {
               files = files.filter((_, at) => at !== i);
+              notKept = [];
               refusal?.remove();
               render();
               attach.focus();
@@ -1086,11 +1100,14 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     pick.addEventListener("change", () => {
       const picked = [...(pick.files ?? [])];
       pick.value = "";
-      checking = checking.then(() => take(picked)).catch(() => {});
+      checking = checking.then(() => take(picked, true)).catch(() => {});
     });
-    const take = async (picked: File[]) => {
+    const take = async (picked: File[], user = false) => {
       const messages: string[] = [];
+      let added = false;
+      const refused: string[] = [];
       for (const given of picked) {
+        const before = files.length;
         const type = typeOf(given.name);
         const say = (message: string, limit = "") =>
           messages.push(message.replaceAll("{limit}", limit).replaceAll("{file}", given.name));
@@ -1110,23 +1127,41 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         } else if ((await fileType(given, type).catch(() => null)) !== type) {
           // A file deleted or moved since it was picked cannot be read either.
           say(text.attachUnreadable);
-        } else files.push(new File([given], given.name, { type }));
+        } else {
+          files.push(new File([given], given.name, { type }));
+          added = true;
+        }
+        if (!user && files.length === before) refused.push(given.name);
       }
+      // A pick that added a file changed the files; a refused one leaves the lost ones told.
+      if (user && added) notKept = [];
       refusal?.remove();
       refusal = undefined;
-      if (messages.length) {
+      // Read now, not at the pick: a Remove while the files were checked ended the notice.
+      const shown = [...notKept.map(lostText), ...messages];
+      if (shown.length) {
         refusal = element("p", "error", { role: "alert" });
-        refusal.textContent = messages.join(" ");
+        refusal.textContent = shown.join(" ");
         list.after(refusal);
       }
+      // Told now by its refusal, and named on later returns: a folded draft may never show this one.
+      notKept = [...notKept, ...refused];
       render();
     };
+    // Files a kept draft brought back meet this page's limits, as a pick does, and are listed
+    // only once checked: a Remove on a row not yet in `files` would remove nothing.
+    pending = files;
+    files = [];
     render();
     locked.push(attach);
-    // Files a kept draft brought back meet this page's limits, as a pick does.
-    const brought = files;
-    files = [];
-    if (brought.length) checking = checking.then(() => take(brought)).catch(() => {});
+    if (pending.length || notKept.length) {
+      checking = checking
+        .then(() => take(pending))
+        .finally(() => {
+          pending = [];
+        })
+        .catch(() => {});
+    }
     return [attach, pick, list];
   }
 
@@ -1341,7 +1376,9 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         kept = id;
         seen = draft.shots[0]?.seen ?? look();
         // Before show(), which lists them; a page with attachments off takes none.
-        files = attachmentLimits(settings.attachments) ? draft.files : [];
+        const on = attachmentLimits(settings.attachments);
+        files = on ? draft.files : [];
+        notKept = on ? draft.lost : [...draft.lost, ...draft.files.map((file) => file.name)];
         show({ image: images[0] ?? null });
         for (const image of images.slice(1)) add(image);
         showShot(0);

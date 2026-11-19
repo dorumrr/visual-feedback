@@ -8,13 +8,16 @@ export type Kept = {
   category: string | undefined;
   shots: { image: Blob; marks: Mark[]; seen: Seen }[];
   files: File[];
+  // The names of files the draft could not keep, told to the user when it comes back.
+  lost: string[];
 };
 
 // Bytes, not Blobs: WebKit cannot store a Blob in a private window's IndexedDB.
-type Stored = Omit<Kept, "shots" | "files"> & {
+type Stored = Omit<Kept, "shots" | "files" | "lost"> & {
   shots: { image: ArrayBuffer; type: string; marks: Mark[]; seen: Seen }[];
   // A draft kept before attachments has none.
   files?: { bytes: ArrayBuffer; name: string; type: string }[];
+  lost?: string[];
 };
 
 /** A draft older than this is gone: the tab that kept it was most likely closed. */
@@ -72,12 +75,14 @@ export async function keep(id: string, draft: Kept): Promise<unknown> {
     shots.push({ ...shot, image: await image.arrayBuffer(), type: image.type });
   }
   const files = [];
+  const lost = [...draft.lost];
   for (const file of draft.files) {
     // Moved or changed on disk since the pick: that file alone is left out.
     const bytes = await file.arrayBuffer().catch(() => undefined);
     if (bytes) files.push({ bytes, name: file.name, type: file.type });
+    else lost.push(file.name);
   }
-  const stored: Stored = { ...draft, shots, files };
+  const stored: Stored = { ...draft, shots, files, lost };
   return run("readwrite", (store) => {
     store.put(stored, id);
     sweepIn(store);
@@ -95,7 +100,7 @@ export async function read(id: string): Promise<Kept | undefined> {
   const files = (stored.files ?? []).map(
     ({ bytes, name, type }) => new File([bytes], name, { type }),
   );
-  return { ...stored, shots, files };
+  return { ...stored, shots, files, lost: stored.lost ?? [] };
 }
 
 export function forget(id: string): Promise<unknown> {

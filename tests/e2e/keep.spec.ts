@@ -1627,10 +1627,212 @@ test("a kept draft brought back on a page with attachments off takes no files", 
   // Written again without them, so no later page with attachments on brings them back.
   await expect.poll(async () => (await storedDraft(page))?.files).toEqual([]);
   await button(page, "Open").click();
+  await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
+    "a.txt was not kept with the draft.",
+  );
   await note(page).fill("Attachments off now");
   await button(page, "Send").click();
   await finish(page);
   expect(await sentFiles(page)).toEqual([]);
+});
+
+test("a file removed while the files a draft brought back are checked stays removed", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+    { name: "b.txt", mimeType: "text/plain", buffer: Buffer.from("2") },
+  ]);
+  await note(page).fill("Without a");
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["a.txt", "b.txt"]);
+  await page.reload();
+  await page.evaluate(() => {
+    const slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (this: Blob, ...args: Parameters<Blob["slice"]>) {
+      const part = slice.apply(this, args);
+      const read = part.arrayBuffer.bind(part);
+      part.arrayBuffer = () => new Promise((done) => setTimeout(() => done(read()), 800));
+      return part;
+    };
+  });
+  await mount(page, { attachments: true });
+  await button(page, "Open").click();
+  await button(page, "Remove a.txt").click();
+  await expect(files(page)).toHaveText(["b.txt"]);
+  await page.waitForTimeout(1000);
+  await expect(files(page)).toHaveText(["b.txt"]);
+  await button(page, "Send").click();
+  await finish(page);
+  expect(await sentFiles(page)).toEqual([["b.txt", "text/plain", "2"]]);
+});
+
+test("Cancel while the files a draft brought back are checked still asks before they are lost", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["a.txt"]);
+  await page.reload();
+  await page.evaluate(() => {
+    const slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (this: Blob, ...args: Parameters<Blob["slice"]>) {
+      const part = slice.apply(this, args);
+      const read = part.arrayBuffer.bind(part);
+      part.arrayBuffer = () => new Promise((done) => setTimeout(() => done(read()), 800));
+      return part;
+    };
+  });
+  await mount(page, { attachments: true });
+  await button(page, "Open").click();
+  await button(page, "Cancel").click();
+  await expect(page.getByText("Discard this feedback?")).toBeVisible();
+  expect(await stored(page)).toBe(1);
+});
+
+test("a Remove listed after Send locked the dialog is locked too", async ({ page }) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Send at once");
+  await page.evaluate(() => {
+    const slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (this: Blob, ...args: Parameters<Blob["slice"]>) {
+      const part = slice.apply(this, args);
+      const read = part.arrayBuffer.bind(part);
+      part.arrayBuffer = () => new Promise((done) => setTimeout(() => done(read()), 800));
+      return part;
+    };
+  });
+  await page.evaluate(() => {
+    const w = window as unknown as { hold: Promise<void> };
+    w.hold = new Promise(() => {});
+  });
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await button(page, "Send").click();
+  await expect(button(page, "Remove a.txt")).toBeDisabled();
+});
+
+test("a brought-back file a page refuses while the draft stays folded is named on the next return", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+    { name: "b.txt", mimeType: "text/plain", buffer: Buffer.from("2") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["a.txt", "b.txt"]);
+  await load(page, { attachments: { maxFiles: 1 } });
+  await expect(bar(page)).toBeVisible();
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["a.txt"]);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["a.txt"]);
+  await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
+    "b.txt was not kept with the draft.",
+  );
+});
+
+test("a pick that adds a file ends the not-kept notice", async ({ page }) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page);
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual([]);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  const told = page.locator("visual-feedback").locator(".composer [role=alert]");
+  await expect(told).toHaveText("a.txt was not kept with the draft.");
+  await picker(page).setInputFiles([
+    { name: "c.txt", mimeType: "text/plain", buffer: Buffer.from("3") },
+  ]);
+  await expect(files(page)).toHaveText(["c.txt"]);
+  await expect(told).toHaveCount(0);
+});
+
+test("a Remove made while a pick is checked ends the not-kept notice", async ({ page }) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "ok.txt", mimeType: "text/plain", buffer: Buffer.from("ok") },
+    { name: "gone.txt", mimeType: "text/plain", buffer: Buffer.from("gone") },
+  ]);
+  await expect(files(page)).toHaveText(["ok.txt", "gone.txt"]);
+  await page.evaluate(() => {
+    const read = Blob.prototype.arrayBuffer;
+    Blob.prototype.arrayBuffer = function (this: Blob) {
+      if (this instanceof File && this.name === "gone.txt") {
+        return Promise.reject(new DOMException("gone", "NotReadableError"));
+      }
+      return read.call(this);
+    };
+  });
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["ok.txt"]);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  const told = page.locator("visual-feedback").locator(".composer [role=alert]");
+  await expect(told).toHaveText("gone.txt was not kept with the draft.");
+  // The next pick's check waits, so the Remove lands while it runs.
+  await page.evaluate(() => {
+    const slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (this: Blob, ...args: Parameters<Blob["slice"]>) {
+      const part = slice.apply(this, args);
+      const read = part.arrayBuffer.bind(part);
+      part.arrayBuffer = () => new Promise((done) => setTimeout(() => done(read()), 800));
+      return part;
+    };
+  });
+  await picker(page).setInputFiles([
+    { name: "a.svg", mimeType: "image/svg+xml", buffer: Buffer.from("<svg/>") },
+    { name: "late.txt", mimeType: "text/plain", buffer: Buffer.from("late") },
+  ]);
+  await button(page, "Remove ok.txt").click();
+  await expect(files(page)).toHaveText(["late.txt"]);
+  await expect(told).toHaveText(
+    "a.svg is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be.",
+  );
+});
+
+test("a file a page with attachments off dropped is still named on a later page with them on", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page);
+  await expect(bar(page)).toBeVisible();
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual([]);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveCount(0);
+  await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
+    "a.txt was not kept with the draft.",
+  );
 });
 
 for (const [what, bad, error] of [
@@ -1821,6 +2023,35 @@ test("a file that can no longer be read is left out of the kept draft, and the o
   await load(page, { attachments: true });
   await button(page, "Open").click();
   await expect(files(page)).toHaveText(["ok.txt"]);
+  const told = page.locator("visual-feedback").locator(".composer [role=alert]");
+  await expect(told).toHaveText("gone.txt was not kept with the draft.");
+  // Told again after another load, until the user changes the files.
+  await page.keyboard.press("Escape");
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(told).toHaveText("gone.txt was not kept with the draft.");
+  // A pick the page refuses changes no file, so the name is still told.
+  await picker(page).setInputFiles([
+    { name: "a.svg", mimeType: "image/svg+xml", buffer: Buffer.from("<svg/>") },
+  ]);
+  await expect(told).toContainText("gone.txt was not kept with the draft.");
+  await expect(told).toContainText("a.svg is not attached");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(told).toHaveText("gone.txt was not kept with the draft.");
+  await button(page, "Remove ok.txt").click();
+  await expect(told).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  // Long enough for the fold's write to land before the load.
+  await page.waitForTimeout(500);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(note(page)).toBeVisible();
+  // The told names render after the brought files are checked, which takes a moment.
+  await page.waitForTimeout(500);
+  await expect(told).toHaveCount(0);
 });
 
 test("a draft whose files do not fit in storage is kept without them, screenshots and note intact", async ({
@@ -1860,4 +2091,7 @@ test("a draft whose files do not fit in storage is kept without them, screenshot
   await expect(note(page)).toHaveValue("Kept without the file");
   await expect(image(page)).toBeVisible();
   await expect(files(page)).toHaveCount(0);
+  await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
+    "big.txt was not kept with the draft.",
+  );
 });

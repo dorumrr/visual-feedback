@@ -68,6 +68,7 @@ export type FeedbackStrings = Record<
   | "attachTooBigTogether"
   | "attachType"
   | "attachName"
+  | "attachNotKept"
   | "attachUnreadable",
   string
 >;

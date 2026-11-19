@@ -121,7 +121,9 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   Save as PDF lists the files by name and size under the note. A fold and a page load keep
   them, with the exceptions §7 names. Brought back, they meet the page's limits again, as a pick
   does: a page with `attachments` off drops them all, and a refused file is dropped, so a later
-  page does not bring it back.
+  page does not bring it back. Each file the draft did not keep, by §7 or on a page with
+  `attachments` off, is named with `attachNotKept` when the draft comes back, and one a page's limits
+  refused is named so on the returns after its refusal, until the files change.
 - **Screenshots:** a report holds up to 10. Each keeps its own marks and its own Undo; the tool
   chosen stays the same across them. The strip numbers them in the order they are sent: a click
   shows one, and its remove button, there only when there are two or more, takes one out. "Add
@@ -163,7 +165,7 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - No console logs, network logs, cookies or keystrokes are collected. Nothing is stored, with one
   exception: a draft folded in the draft bar is kept on this device for this tab, so a page load
   does not lose it. sessionStorage holds its id, and IndexedDB its screenshots with each one's
-  page facts (the whole URL: `redactUrl` applies only to the sent report), marks, note and category, and the attached files with their names and types. A file that can no longer be read, such as one moved since it was picked, is left out; if the files do not fit in the device's storage, the draft is kept without them. It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard,
+  page facts (the whole URL: `redactUrl` applies only to the sent report), marks, note and category, and the attached files with their names and types. A file that can no longer be read, such as one moved since it was picked, is left out; if the files do not fit in the device's storage, the draft is kept without them. The name of each file left out, there or on a page with `attachments` off, is kept with the draft, so the dialog can name it when the draft comes back (§4). It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard,
   `close()` or `discardDraft()`, which a host calls at a logout. `destroy()`, or the host removing the element, keeps it, open or folded, for the next
   widget of that tag in this tab, unless its Send was already handed to the host; a click while
   this tab keeps one opens it. One widget of a tag keeps a draft, the first whose element is in
@@ -270,4 +272,5 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | attachTooBigTogether | {file} is not attached: the most for all files together is {limit}. |
 | attachType | {file} is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be. |
 | attachName | {file} is not attached: its name is too long, is only an ending, or holds a character that is not allowed. |
+| attachNotKept | {file} was not kept with the draft. |
 | attachUnreadable | {file} is not attached: it could not be read as the type its name says. |
