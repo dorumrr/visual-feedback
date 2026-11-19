@@ -1351,8 +1351,11 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         }
         minimise(false);
         return true;
-      } catch {
-        return false;
+      } catch (error) {
+        // Found but not shown: it stays kept for a page that can show it, and the open fails.
+        if (!kept) return false;
+        kept = undefined;
+        throw error;
       } finally {
         reviving = false;
       }

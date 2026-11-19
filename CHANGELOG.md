@@ -24,6 +24,9 @@
   option and the recipe's switch together. A new safety rule serves an attached file only as a
   download, with its reason, and an update keeps the app's `ATTACHMENTS` switch. The Supabase
   recipe's admin screen opens a file with a signed URL that downloads it.
+- A kept draft that cannot come back, such as on a page whose `categories` or `attachments`
+  option is malformed, stays kept: `open()` rejects and `error` fires, and a page with valid
+  options brings it back. Before, the draft was deleted.
 - The demo site takes attachments, and lists each file of a report with a link that downloads it
   under a stored name, never the user's. The README points to the option.
 

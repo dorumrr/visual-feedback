@@ -1633,6 +1633,43 @@ test("a kept draft brought back on a page with attachments off takes no files", 
   expect(await sentFiles(page)).toEqual([]);
 });
 
+for (const [what, bad, error] of [
+  ["an invalid attachments option", { attachments: { maxFiles: 20 } }, "RangeError"],
+  ["a malformed categories option", { categories: [null] }, "TypeError"],
+] as const) {
+  test(`a page with ${what} keeps the draft, and a corrected page brings it back`, async ({
+    page,
+  }) => {
+    await mount(page, { attachments: true });
+    await trigger(page).click();
+    await expect(image(page)).toBeVisible();
+    await picker(page).setInputFiles([
+      { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+    ]);
+    await note(page).fill("Keep me");
+    await page.keyboard.press("Escape");
+    await expect.poll(async () => (await storedDraft(page))?.files?.length).toBe(1);
+    await load(page, { attachments: true, ...bad });
+    const opened = await page.evaluate(() =>
+      (window as unknown as Mounted).vf.open().then(
+        () => "opened",
+        (error: Error) => error.name,
+      ),
+    );
+    expect(opened).toBe(error);
+    // Long enough for a delete the failed open started to land, had it started one.
+    await page.waitForTimeout(500);
+    expect(await stored(page)).toBe(1);
+    expect(
+      await page.evaluate(() => sessionStorage.getItem("visual-feedback:visual-feedback")),
+    ).not.toBeNull();
+    await load(page, { attachments: true });
+    await button(page, "Open").click();
+    await expect(note(page)).toHaveValue("Keep me");
+    await expect(files(page)).toHaveText(["a.txt"]);
+  });
+}
+
 test("a fold made while a picked file is still being checked keeps that file", async ({ page }) => {
   await mount(page, { attachments: true });
   await trigger(page).click();
