@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { events, failable, finish, type Mounted, mount } from "./widget";
 
@@ -532,6 +532,216 @@ test("each copy is freed once its page is encoded, not only at the end", async (
   expect(during.length).toBeGreaterThanOrEqual(3);
   // Only the page being encoded still holds its pixels.
   expect(during.filter((width) => width > 0)).toHaveLength(1);
+});
+
+/** For each page, the rightmost dark pixel of each band of rows, and the dark pixels in a last band. */
+function inkIn(
+  page: Page,
+  jpegs: Buffer[],
+  bands: [number, number][][],
+): Promise<{ ends: number[]; ink: number[] }[]> {
+  return page.evaluate(
+    async ([all, bands]) => {
+      const out = [];
+      for (const [i, base64] of all.entries()) {
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/jpeg" }));
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const context = canvas.getContext("2d");
+        context?.drawImage(bitmap, 0, 0);
+        const ends = [];
+        const ink = [];
+        for (const [from, to] of bands[i] ?? []) {
+          const data = context?.getImageData(0, from, canvas.width, to - from).data ?? [];
+          let end = -1;
+          let dark = 0;
+          for (let j = 0; j < data.length; j += 4) {
+            if ((data[j] ?? 255) < 100) {
+              dark++;
+              end = Math.max(end, (j / 4) % canvas.width);
+            }
+          }
+          ends.push(end);
+          ink.push(dark);
+        }
+        out.push({ ends, ink });
+      }
+      return out;
+    },
+    [jpegs.map((jpeg) => jpeg.toString("base64")), bands] as const,
+  );
+}
+
+// Line i is 1 + i % 40 letters W wide, so where its ink ends says which line a band holds.
+const letters = (i: number) => 1 + (i % 40);
+
+/** Saves a note of `count` such lines, and checks every line is on its page in order, none lost. */
+async function longNote(page: Page, count: (fit: number) => number, shot: boolean): Promise<void> {
+  await mount(page);
+  if (!shot) await failable(page);
+  await trigger(page).click();
+  if (shot) await expect(image(page)).toBeVisible();
+  else await button(page, "Send without screenshot").click();
+  const first = shot ? await sizeOf(page) : { width: 1200, height: 0 };
+  const scale = first.width / 1200;
+  const line = Math.round(Math.round(22 * scale) * 1.4);
+  const margin = Math.round(40 * scale);
+  const tall = Math.round((first.width * 841.89) / 595.28);
+  const fit = Math.floor((tall - 2 * margin) / line);
+  const total = count(fit);
+  const lines = Array.from({ length: total }, (_, i) => "W".repeat(letters(i)));
+  await note(page).fill(lines.join("\n"));
+  const { pages, jpegs, sizes } = parse((await download(page)).bytes);
+  const expected = Math.ceil(total / fit);
+  expect(pages).toBe(expected);
+  const left = total - (expected - 1) * fit;
+  const top = 2 * margin + left * line;
+  // Every page but the last is A4 tall; the last holds the rest of the note, then the screenshot.
+  for (const size of sizes.slice(0, -1)) expect(size).toEqual({ width: first.width, height: tall });
+  expect(sizes.at(-1)).toEqual({ width: first.width, height: top + first.height });
+  const rows = (n: number) =>
+    Array.from({ length: n }, (_, i): [number, number] => [
+      margin + i * line,
+      margin + (i + 1) * line,
+    ]);
+  const bands = sizes.map((_, i) => {
+    const own = rows(i === sizes.length - 1 ? left : fit);
+    // Under the last row: the screenshot on the last page, else an empty foot.
+    const last = i === sizes.length - 1;
+    const foot: [number, number] = last
+      ? [margin + left * line, shot ? top + first.height : top]
+      : [margin + fit * line, tall];
+    return [...own, foot];
+  });
+  const read = await inkIn(page, jpegs, bands);
+  const ends = read.flatMap(({ ends }) => ends.slice(0, -1));
+  expect(ends).toHaveLength(total);
+  // One end per width: the same line length ends at the same pixel, a longer one further right.
+  const byWidth = new Map<number, number>();
+  for (const [i, end] of ends.entries()) if (!byWidth.has(letters(i))) byWidth.set(letters(i), end);
+  const widths = [...byWidth.entries()].sort(([a], [b]) => a - b).map(([, end]) => end);
+  for (const [i, end] of widths.entries()) if (i) expect(end).toBeGreaterThan(widths[i - 1] ?? 0);
+  const wrong = ends.flatMap((end, i) =>
+    Math.abs(end - (byWidth.get(letters(i)) ?? -1)) > 3 ? [i] : [],
+  );
+  expect(wrong).toEqual([]);
+  const feet = read.map(({ ink }) => ink.at(-1) ?? 0);
+  // No text past the last row of any page; the screenshot, which has dark pixels, under the note.
+  expect(feet.slice(0, shot ? -1 : undefined).filter((ink) => ink > 0)).toEqual([]);
+  if (shot) expect(feet.at(-1)).toBeGreaterThan(1000);
+  expect(await events(page)).toEqual(["open", "saved"]);
+}
+
+test("a long note goes over as many A4 pages as it needs, every line in order, the screenshot after it", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await longNote(page, () => 5000, true);
+});
+
+test("a note one line past two pages puts that line on a third, then the screenshot", async ({
+  page,
+}) => {
+  await longNote(page, (fit) => 2 * fit + 1, true);
+});
+
+test("a note that fills its pages exactly, with no screenshot, adds no empty page", async ({
+  page,
+}) => {
+  await longNote(page, (fit) => 3 * fit, false);
+});
+
+test("a screenshot too narrow for a line of text still gives a page with it, as before", async ({
+  page,
+}) => {
+  // The writer's own chunk, as the dialog loads it: a 10 px screenshot rounds the text to 0 px.
+  const chunk = readdirSync("dist").find((name) => /^pdf-.*\.mjs$/.test(name));
+  const pages = await page.evaluate(async (chunk) => {
+    const writer = await import(`/dist/${chunk}`);
+    const image = document.createElement("canvas");
+    image.width = 10;
+    image.height = 10;
+    const paint = image.getContext("2d");
+    if (paint) paint.fillStyle = "#f00";
+    paint?.fillRect(0, 0, 10, 10);
+    return writer
+      .cover("A note", undefined, image, "sans-serif")
+      .map((make: () => HTMLCanvasElement) => {
+        const made = make();
+        const [r, g, b] = made.getContext("2d")?.getImageData(5, 5, 1, 1).data ?? [];
+        return [made.width, made.height, r, g, b];
+      });
+  }, chunk);
+  // The screenshot, red, fills the page: it is drawn, not lost.
+  expect(pages).toEqual([[10, 10, 255, 0, 0]]);
+});
+
+test("a last page, the screenshot under the note, with no 2D context fails loudly too", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  const shot = await sizeOf(page);
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  await page.evaluate((shot) => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    // Only the page that holds the note and, under it, the screenshot.
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      ...args: unknown[]
+    ) {
+      if (
+        args[0] === "2d" &&
+        this.width === shot.width &&
+        this.height > shot.height &&
+        !this.isConnected
+      ) {
+        return null;
+      }
+      return (getContext as (...a: unknown[]) => unknown).apply(this, args);
+    } as typeof getContext;
+  }, shot);
+  await note(page).fill("One line");
+  await more(page).click();
+  await save(page).click();
+  await expect(page.getByRole("alert")).toHaveText("Couldn't save the PDF.");
+  await page.waitForTimeout(300);
+  expect(downloads).toBe(0);
+  expect(await events(page)).toEqual(["open"]);
+});
+
+test("a note page the browser gives no 2D context fails loudly, never as a blank page", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  const first = await sizeOf(page);
+  const tall = Math.round((first.width * 841.89) / 595.28);
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  await page.evaluate((tall) => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    // Only the note's full A4 pages, made out of the page.
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      ...args: unknown[]
+    ) {
+      if (args[0] === "2d" && this.height === tall && !this.isConnected) return null;
+      return (getContext as (...a: unknown[]) => unknown).apply(this, args);
+    } as typeof getContext;
+  }, tall);
+  await note(page).fill(Array.from({ length: 200 }, (_, i) => `Line ${i + 1}`).join("\n"));
+  await more(page).click();
+  await save(page).click();
+  await expect(page.getByRole("alert")).toHaveText("Couldn't save the PDF.");
+  await page.waitForTimeout(300);
+  expect(downloads).toBe(0);
+  expect(await events(page)).toEqual(["open"]);
 });
 
 test("the cover shows the category's label, not its id", async ({ page }) => {

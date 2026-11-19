@@ -6,6 +6,8 @@
   without images is over 1 MiB, the most `parseFeedbackRequest` takes, is not sent: the new
   `noteTooLong` text says so, `error` fires, and the dialog is back to editing (SPEC §4).
   `onSubmit` has no cap.
+- Save as PDF puts a long note over as many A4-tall pages as it needs, the first screenshot under
+  its last line. A note of a few thousand lines made no PDF before.
 
 ## 0.4.3 (2026-10-16)
 

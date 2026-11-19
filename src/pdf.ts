@@ -5,9 +5,13 @@ type Encode = (
 
 // Every page is as wide as A4, so a viewer shows each screenshot at the same width.
 const WIDTH = 595.28;
+const A4 = 841.89 / WIDTH;
+
+/** Draws one page when its turn to be encoded comes, so a long note never holds every page. */
+export type Page = () => HTMLCanvasElement;
 
 /** A PDF 1.4 of JPEG pages, one per canvas, made in the browser with no library. */
-export async function pdf(pages: HTMLCanvasElement[], encode: Encode): Promise<Blob> {
+export async function pdf(pages: Page[], encode: Encode): Promise<Blob> {
   const text = new TextEncoder();
   const parts: Uint8Array<ArrayBuffer>[] = [];
   const offsets: number[] = [];
@@ -26,7 +30,8 @@ export async function pdf(pages: HTMLCanvasElement[], encode: Encode): Promise<B
   begin(1, "<< /Type /Catalog /Pages 2 0 R >>\nendobj");
   const kids = pages.map((_, i) => `${3 + 3 * i} 0 R`).join(" ");
   begin(2, `<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>\nendobj`);
-  for (const [i, page] of pages.entries()) {
+  for (const [i, make] of pages.entries()) {
+    const page = make();
     // Read first: the caller may free the canvas once it is encoded.
     const { width, height: tall } = page;
     const jpeg = new Uint8Array(
@@ -58,20 +63,28 @@ export async function pdf(pages: HTMLCanvasElement[], encode: Encode): Promise<B
   return new Blob(parts, { type: "application/pdf" });
 }
 
-/** The first page: the category and the note, then the first screenshot under them, if any. */
+/**
+ * The category and the note, on A4-tall pages as many as they need, then the first screenshot
+ * under the last line. The screenshot is freed once drawn.
+ */
 export function cover(
   note: string,
   category: string | undefined,
   image: HTMLCanvasElement | undefined,
   font: string,
-): HTMLCanvasElement {
+): Page[] {
   const width = image?.width ?? 1200;
   const scale = width / 1200;
   const size = Math.round(22 * scale);
   const line = Math.round(size * 1.4);
   const margin = Math.round(40 * scale);
-  const page = document.createElement("canvas");
-  const context = page.getContext("2d");
+  const tall = Math.round(width * A4);
+  const fit = Math.max(1, Math.floor((tall - 2 * margin) / line));
+  // Only measures text: no pixels, so it holds no memory while the pages are made.
+  const measure = document.createElement("canvas");
+  measure.width = 0;
+  measure.height = 0;
+  const context = measure.getContext("2d");
   if (!context) throw new Error("no 2d context");
   const lines: [string, string][] = [];
   const wrap = (paragraph: string, weight: string) => {
@@ -91,18 +104,30 @@ export function cover(
   };
   if (category) wrap(category, "600");
   for (const paragraph of (note || " ").split("\n")) wrap(paragraph, "400");
-  const top = margin * 2 + lines.length * line;
-  page.width = width;
-  page.height = top + (image?.height ?? 0);
-  // Setting the size clears the canvas and its font, so drawing starts here.
-  context.fillStyle = "#fff";
-  context.fillRect(0, 0, page.width, page.height);
-  context.fillStyle = "#111";
-  context.textBaseline = "top";
-  for (const [i, [weight, row]] of lines.entries()) {
-    context.font = `${weight} ${size}px ${font}`;
-    context.fillText(row, margin, margin + i * line);
-  }
-  if (image) context.drawImage(image, 0, top);
-  return page;
+  // A screenshot too narrow for any text rounds the line to 0: one page, as before paging.
+  const count = Math.max(1, Math.ceil(lines.length / fit));
+  return Array.from({ length: count }, (_, n) => () => {
+    const rows = lines.slice(n * fit, (n + 1) * fit);
+    const last = n === count - 1;
+    const top = margin * 2 + rows.length * line;
+    const page = document.createElement("canvas");
+    page.width = width;
+    page.height = last ? top + (image?.height ?? 0) : tall;
+    const ink = page.getContext("2d");
+    // iOS gives no context past its canvas memory: the page would be saved blank.
+    if (!ink) throw new Error("no 2d context");
+    ink.fillStyle = "#fff";
+    ink.fillRect(0, 0, page.width, page.height);
+    ink.fillStyle = "#111";
+    ink.textBaseline = "top";
+    for (const [i, [weight, row]] of rows.entries()) {
+      ink.font = `${weight} ${size}px ${font}`;
+      ink.fillText(row, margin, margin + i * line);
+    }
+    if (last && image) {
+      ink.drawImage(image, 0, top);
+      image.width = 0;
+    }
+    return page;
+  });
 }

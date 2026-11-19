@@ -756,15 +756,17 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       const writer = await import("./pdf");
       const [first, ...rest] = pages;
       const front = writer.cover(note, category, first, font);
-      if (first) first.width = 0;
       // Each copy is freed once encoded, so a phone holds one fewer at a time.
-      const file = await writer.pdf([front, ...rest], async (page, options) => {
-        try {
-          return await capture.encode(page, options);
-        } finally {
-          page.width = 0;
-        }
-      });
+      const file = await writer.pdf(
+        [...front, ...rest.map((page) => () => page)],
+        async (page, options) => {
+          try {
+            return await capture.encode(page, options);
+          } finally {
+            page.width = 0;
+          }
+        },
+      );
       // Cancelled while it was built: nothing is saved.
       if (!mounted) return;
       const link = document.createElement("a");

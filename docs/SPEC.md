@@ -101,9 +101,8 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
 - **Category:** shown only when `categories` is given, with a visible label (`categoryLabel`).
 - **Save as PDF:** Send is a split button; its caret ("More send options") opens a menu with "Save
   as PDF". It downloads `feedback-<date>.pdf`, dated by the user's clock and made in the browser:
-  the category and the note,
-  then the first screenshot, on page 1, and each other screenshot on a page of its own, marks
-  included. Nothing is sent, the dialog and the draft stay as they are, and the `saved` event
+  the category and the note, on A4-tall pages as many as they need, the last only as tall as what
+  is left, then the first screenshot under the last line, and each other screenshot on a page of its own, marks included. Nothing is sent, the dialog and the draft stay as they are, and the `saved` event
   fires. While the menu is open, Esc closes the menu only, from Send and the menu button too, and
   puts the focus on the menu button; Tab closes it too. A PDF that cannot be made, a page the browser has no memory to draw
   included (as on iOS), shows the `pdfError` text, never a blank page, and
