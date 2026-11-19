@@ -7,6 +7,13 @@ Each report becomes one folder, `.visual-feedback/<id>/`, holding `report.json` 
 screenshot: `screenshot-0.png` or `screenshot-0.webp`, then `screenshot-1`, and so on. That file is
 the `FeedbackReport` (docs/API.md), with each screenshot's `image` set to its file name.
 
+Attachments are off. To take the files a user attaches, set `ATTACHMENTS` at the top of the route
+to `true`, and only together with the widget's `attachments` option. Each file is then stored in
+the same folder by its place and the ending its name has, lower-cased, which the server allows only
+when it fits the file's type: `file-0.png`, `file-1.log`, `file-2.txt` and on. The user's file name
+is never used as a path; each entry of `attachments` in `report.json` keeps it as `name`, with its
+`type` and `size`, and `file` set to the stored file name.
+
 It does not work on hosts whose disk is read-only or wiped on each deploy or restart, such as
 Vercel, Netlify, Cloudflare and most containers. Use another recipe there.
 
@@ -39,29 +46,46 @@ import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FeedbackRequestError, parseFeedbackRequest } from "visual-feedback/server";
 
+// Set to true only together with the widget's attachments option.
+const ATTACHMENTS = false;
+
 export async function POST(request: Request): Promise<Response> {
   // Development only: a deployed disk can be read-only or wiped, and NODE_ENV may be unset.
   if (process.env.NODE_ENV !== "development") {
     return new Response("Local feedback storage works only in development.", { status: 503 });
   }
   try {
-    const { report } = await parseFeedbackRequest(request);
+    const { report } = await parseFeedbackRequest(request, { attachments: ATTACHMENTS });
     // report.id is a checked UUID, so it is safe as a folder name.
     const folder = join(process.cwd(), ".visual-feedback", report.id);
     const name = (image: Blob, i: number) =>
       `screenshot-${i}.${image.type === "image/png" ? "png" : "webp"}`;
+    // The parser checked that a file's name ends as its type does, so only that ending is taken.
+    const stored = (given: string, i: number) =>
+      `file-${i}${given.slice(given.lastIndexOf(".")).toLowerCase()}`;
     await mkdir(folder, { recursive: true });
-    // The images first: a report.json on disk then always has its images beside it.
+    // The files first: a report.json on disk then always has its files beside it.
     for (const [i, { image }] of report.screenshots.entries()) {
       await writeFile(join(folder, name(image, i)), new Uint8Array(await image.arrayBuffer()));
     }
+    for (const [i, { file, name: given }] of (report.attachments ?? []).entries()) {
+      await writeFile(join(folder, stored(given, i)), new Uint8Array(await file.arrayBuffer()));
+    }
     const screenshots = report.screenshots.map((shot, i) => ({ ...shot, image: name(shot.image, i) }));
+    const attachments = report.attachments?.map(({ file: _, ...entry }, i) => ({
+      ...entry,
+      file: stored(entry.name, i),
+    }));
     await writeFile(
       join(folder, "report.json"),
-      JSON.stringify({ ...report, screenshots }, null, 2),
+      JSON.stringify({ ...report, screenshots, ...(attachments && { attachments }) }, null, 2),
     );
-    // After report.json, so a resend with other images, or fewer, leaves no stray image.
-    const kept = new Set(["report.json", ...screenshots.map((shot) => shot.image)]);
+    // After report.json, so a resend with other files, or fewer, leaves no stray file.
+    const kept = new Set([
+      "report.json",
+      ...screenshots.map((shot) => shot.image),
+      ...(attachments ?? []).map((entry) => entry.file),
+    ]);
     for (const old of await readdir(folder)) {
       if (!kept.has(old)) await rm(join(folder, old), { force: true });
     }

@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import {
+  type Dirent,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -11,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
+import { ATTACHMENT_TYPES } from "../../src/shared/report";
 import { PNG, valid, WEBP } from "../server/sample";
 import { recipe, SERVER } from "./doc";
 
@@ -18,12 +20,18 @@ const { doc, block, load, cleanup } = recipe("local.md");
 
 type Route = { POST(request: Request): Promise<Response> };
 let route: Route;
+let withFiles: Route;
 let cwd = "";
 let home = "";
 const env = process.env.NODE_ENV;
 
 beforeAll(async () => {
-  route = await load<Route>(block("ts"), { "visual-feedback/server": SERVER });
+  const imports = { "visual-feedback/server": SERVER };
+  route = await load<Route>(block("ts"), imports);
+  // The same route with its one switch flipped, as a host turns attachments on.
+  const off = "const ATTACHMENTS = false;";
+  expect(block("ts").split(off).length).toBe(2);
+  withFiles = await load<Route>(block("ts").replace(off, "const ATTACHMENTS = true;"), imports);
 });
 
 afterAll(cleanup);
@@ -64,6 +72,28 @@ const stored = (id: unknown) =>
   JSON.parse(readFileSync(join(folder(id), "report.json"), "utf8")) as Report;
 
 const folder = (id: unknown) => join(home, ".visual-feedback", String(id));
+
+const TEXT = new TextEncoder().encode("step 1\nstep 2\n");
+type File = [bytes: Uint8Array, name: string, type: string];
+
+// A report with one PNG screenshot and the given files, as the widget sends them.
+function postFiles(report: Report, ...files: File[]): Request {
+  const attachments = files.map(([bytes, name, type]) => ({ name, type, size: bytes.length }));
+  const form = new FormData();
+  form.append("report", JSON.stringify({ ...report, attachments }));
+  form.append("image0", new Blob([PNG as Uint8Array<ArrayBuffer>], { type: "image/png" }), "x");
+  for (const [i, [bytes, name, type]] of files.entries()) {
+    form.append(`file${i}`, new Blob([bytes as Uint8Array<ArrayBuffer>], { type }), name);
+  }
+  return new Request("http://localhost/api/feedback", { method: "POST", body: form });
+}
+
+// Every file under the test's folder, so a write anywhere else would show.
+const everything = () =>
+  (readdirSync(home, { recursive: true, withFileTypes: true }) as Dirent[])
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath, entry.name).slice(home.length + 1))
+    .sort();
 
 it("a report sent through the recipe is read back from disk, with its image", async () => {
   const report = valid();
@@ -175,4 +205,130 @@ it("the recipe names the files it writes, and how to run it outside Next.js", ()
 
 it("the recipe says it does not work on a read-only or wiped disk", () => {
   expect(doc).toMatch(/does not work on hosts whose disk is read-only or wiped/);
+});
+
+it("with ATTACHMENTS false, as the recipe ships, a report with files is refused and nothing is written", async () => {
+  const response = await route.POST(postFiles(valid(), [PNG, "bill.png", "image/png"]));
+  expect(response.status).toBe(400);
+  expect(existsSync(join(home, ".visual-feedback"))).toBe(false);
+  // The control: the same files go through once the switch is on.
+  expect((await withFiles.POST(postFiles(valid(), [PNG, "bill.png", "image/png"]))).status).toBe(
+    204,
+  );
+});
+
+it("with ATTACHMENTS true, each file is stored by its place and ending, and read back", async () => {
+  const report = valid();
+  const files: File[] = [
+    [PNG, "Bill 12.PNG", "image/png"],
+    [TEXT, "steps.log", "text/plain"],
+    [TEXT, "notes.txt", "text/plain"],
+  ];
+  expect((await withFiles.POST(postFiles(report, ...files))).status).toBe(204);
+  expect(readdirSync(folder(report.id)).sort()).toEqual([
+    "file-0.png",
+    "file-1.log",
+    "file-2.txt",
+    "report.json",
+    "screenshot-0.png",
+  ]);
+  expect(stored(report.id).attachments).toEqual([
+    { name: "Bill 12.PNG", type: "image/png", size: PNG.length, file: "file-0.png" },
+    { name: "steps.log", type: "text/plain", size: TEXT.length, file: "file-1.log" },
+    { name: "notes.txt", type: "text/plain", size: TEXT.length, file: "file-2.txt" },
+  ]);
+  expect(new Uint8Array(readFileSync(join(folder(report.id), "file-0.png")))).toEqual(PNG);
+  expect(new Uint8Array(readFileSync(join(folder(report.id), "file-1.log")))).toEqual(TEXT);
+});
+
+it("every ending the server allows is stored lower-cased, as file-0 with that ending", async () => {
+  const text = new TextEncoder().encode("{}\n");
+  const bytes: Record<string, Uint8Array> = {
+    "image/png": PNG,
+    "image/webp": WEBP,
+    "image/jpeg": Uint8Array.of(0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1),
+    "image/gif": new TextEncoder().encode("GIF89a\x01\x00\x01\x00"),
+    "application/pdf": new TextEncoder().encode("%PDF-1.4\n"),
+  };
+  const report = valid();
+  const endings = Object.entries(ATTACHMENT_TYPES).flatMap(([type, list]) =>
+    list.map((ending) => [type, ending] as const),
+  );
+  expect(endings.length).toBe(11);
+  for (const [type, ending] of endings) {
+    const name = `Upload${ending.toUpperCase()}`;
+    const response = await withFiles.POST(postFiles(report, [bytes[type] ?? text, name, type]));
+    expect(response.status, name).toBe(204);
+    expect(readdirSync(folder(report.id)), name).toContain(`file-0${ending}`);
+    expect((stored(report.id).attachments as Report[])[0]?.file, name).toBe(`file-0${ending}`);
+  }
+});
+
+it("a hostile file name never becomes a path: it is refused, or stored under the recipe's own name", async () => {
+  const report = valid();
+  for (const name of [
+    "../escape.png",
+    "../../.visual-feedback/x.png",
+    "a/b.png",
+    "..\\up.png",
+    "..",
+  ]) {
+    const response = await withFiles.POST(postFiles(report, [PNG, name, "image/png"]));
+    expect(response.status, name).toBe(400);
+    expect(everything(), name).toEqual([]);
+  }
+  const odd = ["..png", ".png.png", "report.json.png", "screenshot-0.png"];
+  const files = odd.map((name): File => [PNG, name, "image/png"]);
+  expect((await withFiles.POST(postFiles(report, ...files))).status).toBe(204);
+  const at = (file: string) => `.visual-feedback/${report.id}/${file}`;
+  expect(everything()).toEqual(
+    ["file-0.png", "file-1.png", "file-2.png", "file-3.png", "report.json", "screenshot-0.png"].map(
+      at,
+    ),
+  );
+  expect((stored(report.id).attachments as Report[]).map((entry) => entry.name)).toEqual(odd);
+});
+
+it("sending again with fewer files, or none, leaves no file the report does not name", async () => {
+  const report = valid();
+  const two: File[] = [
+    [PNG, "a.png", "image/png"],
+    [TEXT, "b.log", "text/plain"],
+  ];
+  expect((await withFiles.POST(postFiles(report, ...two))).status).toBe(204);
+  expect(readdirSync(folder(report.id)).sort()).toEqual([
+    "file-0.png",
+    "file-1.log",
+    "report.json",
+    "screenshot-0.png",
+  ]);
+  expect((await withFiles.POST(postFiles(report, [TEXT, "c.txt", "text/plain"]))).status).toBe(204);
+  expect(readdirSync(folder(report.id)).sort()).toEqual([
+    "file-0.txt",
+    "report.json",
+    "screenshot-0.png",
+  ]);
+  expect((await withFiles.POST(post(report, [PNG]))).status).toBe(204);
+  expect(readdirSync(folder(report.id)).sort()).toEqual(["report.json", "screenshot-0.png"]);
+  expect(Object.hasOwn(stored(report.id), "attachments")).toBe(false);
+});
+
+it("a report with no files writes exactly the same files and report.json with ATTACHMENTS true or false", async () => {
+  const report = two(valid());
+  const written = async (one: Route) => {
+    expect((await one.POST(post(report, [PNG], [WEBP, "image/webp"]))).status).toBe(204);
+    const names = readdirSync(folder(report.id)).sort();
+    const json = readFileSync(join(folder(report.id), "report.json"), "utf8");
+    rmSync(join(home, ".visual-feedback"), { recursive: true });
+    return { names, json };
+  };
+  const off = await written(route);
+  expect(off.names).toEqual(["report.json", "screenshot-0.png", "screenshot-1.webp"]);
+  expect(await written(withFiles)).toEqual(off);
+});
+
+it("the recipe says attachments are off, and to turn them on only with the widget's option", () => {
+  expect(doc).toContain("only together with the widget's `attachments` option");
+  expect(doc).toContain("`file-0.png`, `file-1.log`");
+  expect(block("ts")).toContain("parseFeedbackRequest(request, { attachments: ATTACHMENTS })");
 });
