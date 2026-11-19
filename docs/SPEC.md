@@ -268,7 +268,7 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | discardConfirm / keepEditing | Discard this feedback? / Keep editing |
 | moreSend / savePdf | More send options / Save as PDF |
 | pdfError | Couldn't save the PDF. |
-| noteTooLong | Too long to send: the most is 1 MB of text. Shorten the note, then send again. |
+| noteTooLong | Too big to send: the report's text is over 1 MB. Shorten the note, then send again. |
 | attach / attachments / removeAttachment | Attach files / Attached files / Remove (with the file's name, as "Remove steps.log") |
 | attachTooMany | {file} is not attached: the most is {limit} files. |
 | attachTooBig | {file} is not attached: the most for one file is {limit}. |

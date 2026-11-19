@@ -542,7 +542,7 @@ test("endpoint: a report part one byte over 1 MiB is not sent, says why, and a s
   await note(page).fill(fill(limit - rest + 1));
   await sendButton(page).click();
   await expect(page.getByRole("alert")).toHaveText(
-    "Too long to send: the most is 1 MB of text. Shorten the note, then send again.",
+    "Too big to send: the report's text is over 1 MB. Shorten the note, then send again.",
   );
   await expect(note(page)).toBeEnabled();
   await expect(note(page)).toBeFocused();

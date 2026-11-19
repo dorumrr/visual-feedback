@@ -77,7 +77,8 @@ const ENGLISH: Texts = {
   moreSend: "More send options",
   savePdf: "Save as PDF",
   pdfError: "Couldn't save the PDF.",
-  noteTooLong: "Too long to send: the most is 1 MB of text. Shorten the note, then send again.",
+  noteTooLong:
+    "Too big to send: the report's text is over 1 MB. Shorten the note, then send again.",
   attach: "Attach files",
   attachments: "Attached files",
   removeAttachment: "Remove",
