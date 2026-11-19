@@ -992,7 +992,9 @@ add("with attachments on, each file comes back as a Blob typed from its bytes", 
     files.map(({ file }) => file.type),
     ["image/png", "application/pdf", "text/plain"],
   );
-  assert.deepEqual(new Uint8Array(await (files[2]?.file as Blob).arrayBuffer()), TEXT);
+  const third = files[2];
+  assert.ok(third);
+  assert.deepEqual(new Uint8Array(await third.file.arrayBuffer()), TEXT);
 });
 
 add("a report with no attachments field keeps none, with attachments on or off", async () => {
