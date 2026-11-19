@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 (not released yet)
+## 0.5.0 (2026-11-19)
 
 - The note has no length limit; it was 2000 characters. With `endpoint`, a report whose part
   without images is over 1 MiB, the most `parseFeedbackRequest` takes, is not sent: the new
