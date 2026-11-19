@@ -68,8 +68,11 @@ error, never a row, and a download from `feedback` is refused.
 An admin screen reads with the admin's own session, never the service role key:
 `from("feedback_reports").select()` for the rows, filtered and paged as the screen needs, and
 `storage.from("feedback").createSignedUrl("<id>/<image>", 60)` for a screenshot, where `<image>` is
-its `image` in `report`, such as `screenshot-0.png`, or an attachment's `file`. A signed URL works
-for anyone who holds it for those 60 seconds: show it, never share it.
+its `image` in `report`, such as `screenshot-0.png`. For an attachment, sign `"<id>/<file>"`, where
+`<file>` is its `file` in `report`, such as `file-0.log`, and pass `{ download: true }` as the third
+argument, so the browser saves the file and never opens it as a page: the server checks only that a
+file's bytes fit its type, never what is in it. A signed URL works for anyone who holds it for those
+60 seconds: show it, never share it.
 
 Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` on the server. The service role key bypasses
 row-level security: never send it to the browser.

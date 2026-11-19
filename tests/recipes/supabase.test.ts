@@ -398,6 +398,12 @@ it("the recipe's endpoint, install line and pointer match what it says", () => {
   expect(doc).toContain("docs/recipes/postgres.md");
 });
 
+it("tells the admin screen to open an attached file only as a download", () => {
+  expect(doc.replace(/\s+/g, " ")).toContain(
+    'For an attachment, sign `"<id>/<file>"`, where `<file>` is its `file` in `report`, such as `file-0.log`, and pass `{ download: true }` as the third argument',
+  );
+});
+
 it("when Storage refuses the image, no row is written without it", async () => {
   failing = "storage";
   const report = valid();

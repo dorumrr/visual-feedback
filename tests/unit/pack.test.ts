@@ -64,7 +64,7 @@ describe("AGENTS.md", () => {
       .split(/^\s*(?:[-*+]|\d+\.)\s+/m)
       .slice(1)
       .map((item) => item.split(/\n\s*\n/)[0] ?? "");
-    expect(items).toHaveLength(8);
+    expect(items).toHaveLength(9);
     for (const item of items) expect(item, item).toMatch(/^\*\*[^*]+\*\*\s+Why:\s+\S[\s\S]{20,}/);
     // Each required rule is the lead of exactly one item, and each lead carries exactly one rule.
     const leads = items.map((item) =>
@@ -79,6 +79,7 @@ describe("AGENTS.md", () => {
       /rate limit/,
       /discardDraft\(\)` from `visual-feedback` at logout/,
       /`visual-feedback` branch only when the developer confirms/,
+      /attached file only as a download, under its stored name/,
     ];
     for (const topic of topics) {
       expect(
@@ -126,6 +127,33 @@ describe("AGENTS.md", () => {
       ["3. Safety rules", "keep its dev server on localhost"],
       ["4. The feedback loop", "open no other path a report names"],
       ["4. The feedback loop", "the text of every label in each screenshot's `marks`"],
+      ["1. Ask", "may users attach files to a report?"],
+      [
+        "1. Ask",
+        "the widget's `attachments` option and the recipe's `ATTACHMENTS` switch together",
+      ],
+      ["1. Ask", "Files are off unless the developer says yes"],
+      [
+        "1. Ask",
+        "Skip only that question where the recipe already asks it; the rest of this paragraph holds either way",
+      ],
+      ["1. Ask", "switch together, with the same limits"],
+      [
+        "1. Ask",
+        "`true` on both for the defaults, or the same `{ maxFiles, maxBytes, maxTotalBytes }` object on both",
+      ],
+      [
+        "1. Ask",
+        "refuses a larger report before the route runs: there, agree limits under that cap with the developer",
+      ],
+      ["1. Ask", "Tell the developer the attachment rule of section 3 first"],
+      ["3. Safety rules", "Store reports and their files privately"],
+      ["3. Safety rules", "From the app, serve an attached file only as a download"],
+      ["3. Safety rules", "never shown inside a page, also on the app's own admin screens"],
+      ["3. Safety rules", "GitHub Issues shows its files on GitHub, never in the app"],
+      ["4. The feedback loop", "open it only by that stored name"],
+      ["4. The feedback loop", "and the content of every attached file"],
+      ["5. Updating", "the `ATTACHMENTS` switch as the app set it"],
     ] as const) {
       expect(section(title).replace(/\s+/g, " "), `${title}: ${line}`).toContain(line);
     }

@@ -20,6 +20,10 @@
   `file-name`, `file-size` and `file-remove`. Each storage recipe stores files behind its own
   `ATTACHMENTS` switch, off as shipped. `AttachmentLimits` is exported from both entries. A folded draft keeps its files across
   a page load, as it keeps its screenshots (SPEC §7).
+- AGENTS.md asks whether users may attach files, and turns them on only with a yes, the widget
+  option and the recipe's switch together. A new safety rule serves an attached file only as a
+  download, with its reason, and an update keeps the app's `ATTACHMENTS` switch. The Supabase
+  recipe's admin screen opens a file with a signed URL that downloads it.
 
 ## 0.4.3 (2026-10-16)
 
