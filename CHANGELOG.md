@@ -16,20 +16,46 @@
   a list with a remove button for each, and a message naming the file and the limit for any it
   keeps out (SPEC §4). Off by default; with `endpoint`, the files go as `file<n>` parts. New
   strings `attach`, `attachments`, `removeAttachment`, `attachTooMany`, `attachTooBig`,
-  `attachTooBigTogether`, `attachType`, `attachName`, `attachUnreadable` and `attachNotKept`; new parts `attach`, `attach-input`, `files`, `file`,
+  `attachTooBigTogether`, `attachType`, `attachName`, `attachUnreadable` and `attachNotKept`, whose
+  `{file}` is set between U+2068 and U+2069, its own isolate marks taken out and a paragraph end
+  shown as a space, so a name's direction marks stay inside it; new parts `attach`, `attach-input`, `files`, `file`,
   `file-name`, `file-size` and `file-remove`. Each storage recipe stores files behind its own
   `ATTACHMENTS` switch, off as shipped. Code that types a full `FeedbackStrings` object needs
   every string key this release adds, `noteTooLong` included. `AttachmentLimits` is exported from both entries. A folded draft keeps its files across
-  a page load, as it keeps its screenshots (SPEC §7).
+  a page load, as it keeps its screenshots (SPEC §7); a page with `attachments` off shows and
+  sends none of them, and keeps them for a later page that takes them.
 - AGENTS.md asks whether users may attach files, and turns them on only with a yes, the widget
   option and the recipe's switch together. A new safety rule serves an attached file only as a
   download, with its reason, and an update keeps the app's `ATTACHMENTS` switch. The Supabase
   recipe's admin screen opens a file with a signed URL that downloads it.
-- A kept draft that cannot come back, such as on a page whose `categories` or `attachments`
-  option is malformed, stays kept: `open()` rejects and `error` fires, and a page with valid
-  options brings it back. Before, the draft was deleted.
+- A kept draft that cannot come back stays kept for a page that can show it, and `error` fires,
+  also at page load, before anything was opened.
+  Before, a page whose `categories` or `attachments` option is malformed deleted it, and one whose
+  draft code would not load or whose kept screenshot would not decode made the button do nothing
+  at every click. Now the open takes a fresh screenshot instead, which takes the old draft's place
+  once folded, or kept by `destroy()` or a removed element, and the old one is then deleted; if
+  that write fails, the old one stays (SPEC §7). With malformed
+  options that capture fails too, so `open()` rejects and `error` fires a second time.
+- `open()` on a widget whose element is off the page does nothing and resolves, with no event.
+  Before, it took a screenshot, and asked for the screen with `capture.mode: "display"`, then
+  showed nothing; with a draft kept in this tab, it never settled.
+- A fold right before a page load keeps the fold before it when its screenshots can no longer
+  be read, as WebKit makes it when the load starts. Before, the whole draft was deleted. A fold the
+  device refuses to store still lets go of the earlier one, unless that is a draft that could not
+  come back.
+- A host that moves the element (removes it and puts it back in the same task) while the dialog
+  is open keeps a working dialog: Escape folds it and the focus stays inside. Before, it stayed
+  open but Escape did nothing. Put back in a later task, it is a removal, as before, and the kept
+  draft's bar now shows again, unless that draft already could not come back on this widget and
+  no other widget of the tag has held it since; before, it came back only on the next `open()`,
+  which with `trigger: "none"` left the user no way in.
+- A host that removes the element and makes the next widget in the same task, as a router can,
+  keeps the draft, open or folded. Before, the new widget took over first and the draft was
+  deleted.
 - A Save as PDF still being made when a Send succeeds now downloads once it is made; before, the
-  closing dialog dropped it without a word. Cancel, Discard and `close()` still drop it.
+  closing dialog dropped it without a word. Cancel, Discard and `close()` still drop it. If it
+  cannot be made, during the Send or after it, `error` fires, and the sent view, while still up, shows the PDF error and stays
+  until closed. A PDF saved while a kept draft's files are still checked now lists them.
 - The demo site takes attachments, and lists each file of a report with a link that downloads it
   under a stored name, never the user's. The README points to the option.
 
