@@ -137,6 +137,8 @@ export type Handlers = {
   options(): FeedbackOptions;
   /** Whether this widget keeps its draft across page loads: on, and the one its tag's draft is. */
   keeps(): boolean;
+  /** The id of a kept draft that could not come back: a draft this one keeps takes its place. */
+  unreturned(): string | null;
   /** Reads the page's look again: a draft can wait while the site changes its theme. */
   restyle(): void;
 };
@@ -291,6 +293,8 @@ export type Mounted = {
   reopen(): void;
   /** Picks black or white text again for the accent buttons shown, after the accent changed. */
   reink(): void;
+  /** Makes an open dialog modal again after the host element left the page and came back. */
+  moved(): void;
   /** Brings back, folded in the draft bar, the draft this tab kept before a page load. */
   revive(): Promise<boolean>;
   /** Lets the page scroll, or stops it; unmount lets it scroll. */
@@ -328,7 +332,17 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // Select alone has nothing to act on, so there is nothing to draw with.
   const drawing = choices.some((choice) => choice !== "select");
   const text = texts(settings.strings);
-  const lostText = (name: string) => text.attachNotKept.replaceAll("{file}", name);
+  // Isolated, so a name's direction marks keep to it: its own isolate marks or a paragraph end
+  // would close ours early. A function replacement, so a "$&" in the name is not a pattern.
+  const named = (message: string, name: string) =>
+    message.replaceAll("{file}", () => {
+      const held = [...name]
+        .filter((char) => char < "\u2066" || char > "\u2069")
+        .map((char) => ("\n\r\x1c\x1d\x1e\x85\u2029".includes(char) ? " " : char))
+        .join("");
+      return `\u2068${held}\u2069`;
+    });
+  const lostText = (name: string) => named(text.attachNotKept, name);
   const backdrop = element("dialog", "backdrop", {
     "aria-modal": "true",
     "aria-labelledby": "vf-title",
@@ -358,7 +372,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   let notice: HTMLElement | undefined;
   let bar: HTMLElement | undefined;
   let minimised = false;
-  let folding = false;
+  // Close events still to come from the widget's own close(): a fold, or a re-show after a move.
+  let folding = 0;
   // Set by each annotating view: the controls a send locks, and the button that sends.
   let locked: (HTMLButtonElement | HTMLTextAreaElement | HTMLSelectElement)[] = [];
   let inert: HTMLElement[] = [];
@@ -373,6 +388,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   let files: File[] = [];
   // Files a kept draft lost, named once it comes back; kept with it until the files change.
   let notKept: string[] = [];
+  // Kept files a page with attachments off holds aside: written with the draft, never sent.
+  let held: File[] = [];
   // Files a kept draft brought back, not yet listed while they are checked again.
   let pending: File[] = [];
   // Picks are checked one at a time, and Send waits for the last, so no file is half added.
@@ -406,6 +423,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       note?.value.trim() ||
         files.length ||
         pending.length ||
+        held.length ||
         picker?.selectedIndex ||
         taken.length > 1 ||
         taken.some((shot) => shot.annotator?.marks.length),
@@ -533,7 +551,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     shot.blob = keeping()
       ? import("./capture").then((capture) => capture.encode(clean, { type: "image/png" }))
       : undefined;
-    // A failed encode only means this screenshot is not kept across a page load.
+    // Caught so a failed encode is no unhandled rejection; store() then cannot keep the draft.
     shot.blob?.catch(() => {});
   }
 
@@ -606,7 +624,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     minimised = true;
     // Already closed when Chrome took the Escape itself; then no close event will come.
     if (backdrop.open) {
-      folding = true;
+      folding++;
       backdrop.close();
     }
     // Out of the page while folded: WebKit kept the hidden state a capture gave it, inside it.
@@ -653,11 +671,13 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     // A screenshot taken while this widget did not keep drafts has no copy to keep.
     if (!keeping() || over || !taken.length || taken.some((shot) => !shot.blob)) return false;
     const turn = ended;
+    let replaced: string | undefined;
     try {
       const held = sessionStorage.getItem(key);
+      replaced = held && held !== kept && held === handlers.unreturned() ? held : undefined;
       // A draft another widget of this tag kept, and left, is not overwritten: this one stays
-      // in memory only.
-      if (held && held !== kept) return false;
+      // in memory only. One that could not come back gives way to this one.
+      if (held && held !== kept && !replaced) return false;
       kept ??= [...crypto.getRandomValues(new Uint32Array(2))].join("-");
       // Set now, not once written: a widget made right after this one is gone must find it.
       sessionStorage.setItem(key, kept);
@@ -674,7 +694,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     writing = writing.then(async () => {
       // After the picks being checked, so a file picked just before the fold is kept too.
       await checking;
-      const attached = [...files];
+      const attached = [...files, ...held];
       try {
         const images: { image: Blob; marks: Mark[]; seen: Seen }[] = [];
         for (const { blob, ...shot } of shots) {
@@ -682,7 +702,11 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
           images.push({ ...shot, image: await blob });
         }
         const { keep, forget } = await import("./keep");
-        if (turn !== ended) return;
+        // Ended before it was written: the draft it gave way to goes too, as at a logout.
+        if (turn !== ended) {
+          if (replaced) await forget(replaced);
+          return;
+        }
         const saved = Date.now();
         // Files can fill the device's storage: then the draft is kept without them.
         const lost = [...notKept];
@@ -691,14 +715,49 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
           const all = [...lost, ...attached.map((file) => file.name)];
           return keep(id, { saved, ...draft, shots: images, files: [], lost: all });
         });
+        // A delete that fails leaves the old record to the day's sweep, never undoes this write.
+        if (replaced) await forget(replaced).catch(() => {});
         // Ended while it was written: discard() already let go of the key, so the record goes too.
         if (turn !== ended) await forget(id);
-      } catch {
+      } catch (error) {
+        // Its own data unreadable, as WebKit makes it when a page load starts: the fold kept
+        // before it is whole, so the tab keeps that one.
+        if (error instanceof DOMException && error.name === "NotReadableError") {
+          // Ended meanwhile, as at a logout's discardDraft(): the draft it was to replace goes too.
+          if (turn !== ended) {
+            if (replaced)
+              await import("./keep").then(({ forget }) => forget(replaced)).catch(() => {});
+            return;
+          }
+          let ours = false;
+          try {
+            ours = sessionStorage.getItem(key) === id;
+            if (replaced && ours) sessionStorage.setItem(key, replaced);
+          } catch {}
+          // Emptied meanwhile, as discardDraft() does after a destroy(): that one goes too.
+          if (replaced && !ours)
+            await import("./keep").then(({ forget }) => forget(replaced)).catch(() => {});
+          return;
+        }
         // Not kept this time: an earlier fold must not come back in its place, nor a later write
         // queued behind this one land under a key that is gone.
-        if (turn === ended) {
+        const live = turn === ended;
+        let ours = false;
+        try {
+          ours = live && sessionStorage.getItem(key) === id;
+        } catch {}
+        if (live) {
           ended++;
           unkeep();
+        }
+        // Still this draft's slot: the one it was to replace is whole, so the tab keeps it again.
+        // Ended or emptied meanwhile, as at a logout: that one goes too, before this write settles.
+        if (replaced && ours) {
+          try {
+            sessionStorage.setItem(key, replaced);
+          } catch {}
+        } else if (replaced) {
+          await import("./keep").then(({ forget }) => forget(replaced)).catch(() => {});
         }
       }
     });
@@ -805,9 +864,6 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     pdfError?.remove();
     annotator?.end();
     const font = getComputedStyle(panel).fontFamily;
-    const attached = files.length
-      ? [text.attachments, ...files.map((file) => `${file.name} (${megabytes(file.size)})`)]
-      : [];
     try {
       // Copied before the first await: a screenshot added, removed or marked while the PDF
       // builds must not change it.
@@ -821,6 +877,11 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         context.drawImage(image, 0, 0);
         return page;
       });
+      // Files a kept draft brought back are listed only once checked, as Send waits for them too.
+      await checking;
+      const attached = files.length
+        ? [text.attachments, ...files.map((file) => `${file.name} (${megabytes(file.size)})`)]
+        : [];
       // Two awaits, not Promise.all: size-limit then counts the capture library in this chunk.
       const capture = await import("./capture");
       const writer = await import("./pdf");
@@ -854,14 +915,29 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       // A download reads the URL after the click returns, so it is let go a little later.
       setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
       handlers.emit("saved");
-    } catch {
-      if (!mounted || !composer) return;
-      pdfError = element("p", "error", { role: "alert" });
-      pdfError.textContent = text.pdfError;
-      composer.after(pdfError);
+    } catch (error) {
+      if (mounted || delivered) unsaved(error);
     } finally {
       saving = false;
     }
+  }
+
+  // The error a shown pdfError stands for: a Send that succeeds after it must still tell it.
+  let pdfFault: unknown;
+  function unsaved(error: unknown): void {
+    // After a Send the draft is gone, so only the host can still tell the user.
+    if (delivered) handlers.emit("error", error);
+    if (!mounted) return;
+    pdfFault = error;
+    pdfError = element("p", "error", { role: "alert" });
+    pdfError.textContent = text.pdfError;
+    if (!delivered) {
+      composer?.after(pdfError);
+      return;
+    }
+    // The sent view closes itself; this message waits for the user instead.
+    clearTimeout(done);
+    panel.append(pdfError);
   }
 
   function show(view: View): void {
@@ -1115,7 +1191,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         const before = files.length;
         const type = typeOf(given.name);
         const say = (message: string, limit = "") =>
-          messages.push(message.replaceAll("{limit}", limit).replaceAll("{file}", given.name));
+          messages.push(named(message.replaceAll("{limit}", limit), given.name));
         const total = files.reduce((sum, file) => sum + file.size, given.size);
         let fits = Boolean(type);
         try {
@@ -1188,6 +1264,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   }
 
   function sent(): void {
+    const lost = pdfError?.isConnected === true;
     const status = element("p", "status", { role: "status", tabindex: "-1" });
     status.textContent = text.sent;
     panel.classList.remove("wide");
@@ -1196,6 +1273,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     panel.replaceChildren(header, status);
     status.focus();
     done = setTimeout(handlers.close, 500);
+    if (lost) unsaved(pdfFault);
     // A send that settles in microtasks ends inside the Try again click, which then reaches here.
     const shown = performance.now();
     backdrop.addEventListener("click", (event) => {
@@ -1254,10 +1332,10 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     onEscape();
   });
   // Folding into the draft bar closes the native dialog too. Its close event comes later, maybe
-  // after the draft opened again, so that one event is passed over, whenever it comes. Any other
+  // after the draft opened again, so each such event is passed over, whenever it comes. Any other
   // close is Escape that Chrome handled without a cancel event.
   const closed = () => {
-    if (folding) folding = false;
+    if (folding > 0) folding--;
     else onEscape();
   };
   backdrop.addEventListener("close", closed);
@@ -1352,6 +1430,14 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     },
     reopen,
     reink,
+    moved() {
+      // Leaving the page took it out of the top layer: open, but Escape and the focus trap are gone.
+      if (!mounted || minimised || !backdrop.open) return;
+      // Its close event is passed over, as a fold's is.
+      folding++;
+      backdrop.close();
+      backdrop.showModal();
+    },
     async revive() {
       reviving = true;
       try {
@@ -1380,10 +1466,11 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         if (!mounted) return false;
         kept = id;
         seen = draft.shots[0]?.seen ?? look();
-        // Before show(), which lists them; a page with attachments off takes none.
+        // Before show(), which lists them; a page with attachments off shows none, and keeps them.
         const on = attachmentLimits(settings.attachments);
         files = on ? draft.files : [];
-        notKept = on ? draft.lost : [...draft.lost, ...draft.files.map((file) => file.name)];
+        held = on ? [] : draft.files;
+        notKept = draft.lost;
         show({ image: images[0] ?? null });
         for (const image of images.slice(1)) add(image);
         showShot(0);
@@ -1399,7 +1486,6 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         return true;
       } catch (error) {
         // Found but not shown: it stays kept for a page that can show it, and the open fails.
-        if (!kept) return false;
         kept = undefined;
         throw error;
       } finally {

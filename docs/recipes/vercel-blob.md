@@ -8,9 +8,11 @@ through your own route, behind your own admin check. `report.context` comes from
 screen as the user saw it, with nothing masked (SPEC §7).
 
 Files the user attaches are off. To take them, set `ATTACHMENTS` at the top of the route to
-`FILES`, only together with the widget's `attachments` option, with the same limits; off, a report
+`FILES`, only together with the widget's `attachments` option, with the same limits:
+`attachments: { maxFiles: 10, maxBytes: 800_000, maxTotalBytes: 800_000 }`; off, a report
 with files is refused with 400. On, each file is a private blob in the same folder,
-`feedback/<id>/file-<n>` plus its type's ending, such as `file-0.png` or `file-1.log`, numbered
+`feedback/<id>/file-<n>` plus the ending its name has, lower-cased, which the server allows only
+when it fits the file's type, such as `file-0.png` or `file-1.log`, numbered
 from 0, with its content type, never under the user's file name. Each entry of `attachments` in
 `report.json` keeps the user's `name`, its `type` and `size`, and `file`, the stored name. The
 `GET` route serves a file only as a download, under that stored name.

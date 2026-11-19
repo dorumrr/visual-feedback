@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { confirmed, events, finish, type Mounted, mount, read, stored } from "./widget";
 
@@ -683,6 +684,124 @@ test("a fold that cannot be written lets go of the earlier one, so a load never 
   await expect(bar(page)).toHaveCount(0);
 });
 
+test("a fold whose own data cannot be read, as at a page load, keeps the fold before it", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("First fold");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("First fold");
+  await button(page, "Open").click();
+  await note(page).fill("Second fold");
+  // As WebKit does as a page load starts: the page's blob data can no longer be read.
+  await page.evaluate(() => {
+    Blob.prototype.arrayBuffer = () =>
+      Promise.reject(new DOMException("The I/O read operation failed.", "NotReadableError"));
+  });
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toBeVisible();
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toHaveLength(1);
+  expect(await storedNote(page)).toBe("First fold");
+  // On this page the newest fold is still there, in memory.
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Second fold");
+  await page.keyboard.press("Escape");
+  await load(page);
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("First fold");
+});
+
+test("discardDraft() during a replacing fold whose screenshots then cannot be read leaves nothing", async ({
+  page,
+}) => {
+  await keepBroken(page);
+  await trigger(page).click();
+  await expect(note(page)).toHaveValue("");
+  await note(page).fill("Fresh");
+  // The fold's screenshot read waits, then fails as at a page load.
+  await page.evaluate(() => {
+    const w = window as unknown as { fail: () => void };
+    const held = new Promise<never>((_, reject) => {
+      w.fail = () => reject(new DOMException("The I/O read operation failed.", "NotReadableError"));
+    });
+    Blob.prototype.arrayBuffer = () => held;
+  });
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toBeVisible();
+  // discardDraft() waits for the write it ends, so the read fails after it starts.
+  const discarding = discard(page);
+  await page.waitForTimeout(200);
+  await page.evaluate(() => (window as unknown as { fail: () => void }).fail());
+  await discarding;
+  await page.waitForTimeout(500);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  await expect(bar(page)).toHaveCount(0);
+});
+
+test("discardDraft() after destroy() kept a replacing draft whose screenshots then cannot be read leaves nothing", async ({
+  page,
+}) => {
+  await keepBroken(page);
+  await trigger(page).click();
+  await expect(note(page)).toHaveValue("");
+  await note(page).fill("Fresh");
+  await page.evaluate(() => {
+    const w = window as unknown as { fail: () => void };
+    const held = new Promise<never>((_, reject) => {
+      w.fail = () => reject(new DOMException("The I/O read operation failed.", "NotReadableError"));
+    });
+    Blob.prototype.arrayBuffer = () => held;
+  });
+  // As at a logout: the widget goes, keeping its draft, then the host ends the draft.
+  const discarding = page.evaluate(async () => {
+    (window as unknown as Mounted).vf.destroy();
+    const { discardDraft } = await import("/dist/index.mjs" as string);
+    await discardDraft();
+  });
+  await page.waitForTimeout(200);
+  await page.evaluate(() => (window as unknown as { fail: () => void }).fail());
+  await discarding;
+  await page.waitForTimeout(500);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+});
+
+test("discardDraft() during a replacing fold the device then refuses leaves nothing once it resolves", async ({
+  page,
+}) => {
+  await keepBroken(page);
+  await trigger(page).click();
+  await expect(note(page)).toHaveValue("");
+  await note(page).fill("Fresh");
+  // The fold's screenshot read waits, then the device refuses the write, as when full.
+  await page.evaluate(() => {
+    const w = window as unknown as { letGo: () => void };
+    const read = Blob.prototype.arrayBuffer;
+    const held = new Promise<void>((done) => {
+      w.letGo = done;
+    });
+    Blob.prototype.arrayBuffer = function () {
+      return held.then(() => read.call(this));
+    };
+    IDBObjectStore.prototype.put = () => {
+      throw new DOMException("full", "QuotaExceededError");
+    };
+  });
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toBeVisible();
+  const discarding = discard(page);
+  await page.waitForTimeout(200);
+  await page.evaluate(() => (window as unknown as { letGo: () => void }).letGo());
+  await discarding;
+  // Checked as soon as discardDraft() resolves: a host navigates away right then.
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+});
+
 test("a Send while an earlier fold is still being written keeps nothing on the device", async ({
   page,
 }) => {
@@ -759,6 +878,641 @@ test("close() after the dialog is in, while a load still reads the draft back, k
   await page.unroute("**/dist/keep-*.mjs");
   await load(page);
   await expect(bar(page)).toBeVisible();
+});
+
+test("a kept draft whose code will not load gives way to a fresh capture, and stays kept", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Kept but not readable");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Kept but not readable");
+  await page.reload();
+  // Late, so the error listener below is in place first.
+  await page.route("**/dist/keep-*.mjs", async (route) => {
+    await new Promise((done) => setTimeout(done, 500));
+    await route.abort().catch(() => {});
+  });
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted & { errors: number };
+    w.errors = 0;
+    w.vf.on("error", () => w.errors++);
+  });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await expect(note(page)).toHaveValue("");
+  expect(await page.evaluate(() => (window as unknown as { errors: number }).errors)).toBe(1);
+  expect(await storedNote(page)).toBe("Kept but not readable");
+  // Folded while the draft code still fails: the fresh draft is not written, so the old one stays.
+  await note(page).fill("Fresh");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(1200);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toHaveLength(1);
+  // Still on this page, in memory.
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Fresh");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(1200);
+  await page.unroute("**/dist/keep-*.mjs");
+  await load(page);
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Kept but not readable");
+});
+
+test("a kept draft whose screenshot will not decode gives way to a fresh capture, and stays kept", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Broken image");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Broken image");
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        const request = indexedDB.open("visual-feedback", 1);
+        request.onsuccess = () => {
+          const store = request.result.transaction("drafts", "readwrite").objectStore("drafts");
+          const cursors = store.openCursor();
+          cursors.onsuccess = () => {
+            const cursor = cursors.result;
+            if (!cursor) return done();
+            const value = cursor.value;
+            value.shots[0].image = new TextEncoder().encode("not an image").buffer;
+            cursor.update(value);
+            done();
+          };
+        };
+      }),
+  );
+  await page.reload();
+  // Late, so the error listener below is in place first.
+  await page.route("**/dist/keep-*.mjs", async (route) => {
+    await new Promise((done) => setTimeout(done, 500));
+    await route.continue().catch(() => {});
+  });
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted & { errors: number };
+    w.errors = 0;
+    w.vf.on("error", () => w.errors++);
+  });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await expect(note(page)).toHaveValue("");
+  expect(await page.evaluate(() => (window as unknown as { errors: number }).errors)).toBe(1);
+  expect(await storedNote(page)).toBe("Broken image");
+  await page.unroute("**/dist/keep-*.mjs");
+  // Folded, the fresh draft takes the slot the broken one held, and the broken one goes.
+  await note(page).fill("Fresh");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Fresh");
+  expect(await stored(page)).toBe(1);
+  await load(page);
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Fresh");
+});
+
+test("destroy() with a fresh capture open over a draft that could not come back keeps the fresh one", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Broken image");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Broken image");
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        const request = indexedDB.open("visual-feedback", 1);
+        request.onsuccess = () => {
+          const store = request.result.transaction("drafts", "readwrite").objectStore("drafts");
+          const cursors = store.openCursor();
+          cursors.onsuccess = () => {
+            const cursor = cursors.result;
+            if (!cursor) return done();
+            const value = cursor.value;
+            value.shots[0].image = new TextEncoder().encode("not an image").buffer;
+            cursor.update(value);
+            done();
+          };
+        };
+      }),
+  );
+  await load(page);
+  await trigger(page).click();
+  await expect(note(page)).toHaveValue("");
+  await note(page).fill("Routed");
+  // As a route change does: the widget goes with its dialog open.
+  await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  await expect.poll(() => storedNote(page)).toBe("Routed");
+  expect(await stored(page)).toBe(1);
+  await mount(page);
+  await page.evaluate(() => (window as unknown as Mounted).vf.open());
+  await expect(note(page)).toHaveValue("Routed");
+});
+
+test("a widget put back on the page tries again a draft it could not bring back once", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("First");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("First");
+  await page.reload();
+  // The first read of the draft fails, as a device can once.
+  await page.evaluate(() => {
+    const get = IDBObjectStore.prototype.get;
+    let once = true;
+    IDBObjectStore.prototype.get = function (key) {
+      if (once) {
+        once = false;
+        throw new DOMException("busy", "UnknownError");
+      }
+      return get.call(this, key);
+    };
+  });
+  await mount(page);
+  await page.waitForTimeout(500);
+  await expect(bar(page)).toHaveCount(0);
+  // Another widget of the tag brings it back, it is edited and folded, and that widget goes.
+  await page.evaluate(async () => {
+    const w = window as unknown as Mounted & { first: HTMLElement };
+    w.first = document.querySelector("visual-feedback") as HTMLElement;
+    w.first.remove();
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    w.vf = createFeedback({ onSubmit: async () => {} });
+  });
+  await button(page, "Open").click();
+  await note(page).fill("Edited");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Edited");
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted & { first: HTMLElement };
+    w.vf.destroy();
+    document.body.append(w.first);
+  });
+  // Put back, it shows the kept draft's bar again, the one the other widget edited.
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Edited");
+});
+
+/** Keeps a draft, then breaks its screenshot, so the next page cannot bring it back. */
+async function keepBroken(page: Page): Promise<void> {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Broken image");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Broken image");
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        const request = indexedDB.open("visual-feedback", 1);
+        request.onsuccess = () => {
+          const store = request.result.transaction("drafts", "readwrite").objectStore("drafts");
+          const cursors = store.openCursor();
+          cursors.onsuccess = () => {
+            const cursor = cursors.result;
+            if (!cursor) return done();
+            const value = cursor.value;
+            value.shots[0].image = new TextEncoder().encode("not an image").buffer;
+            cursor.update(value);
+            done();
+          };
+        };
+      }),
+  );
+  await load(page);
+}
+
+test("a fresh capture over a draft that could not come back takes its place after the element moves", async ({
+  page,
+}) => {
+  await keepBroken(page);
+  await trigger(page).click();
+  await expect(note(page)).toHaveValue("");
+  // As a host that re-renders does: the element leaves and comes back in one task.
+  await page.evaluate(() => {
+    const host = document.querySelector("visual-feedback") as HTMLElement;
+    host.remove();
+    document.body.append(host);
+  });
+  await note(page).fill("Fresh");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Fresh");
+  expect(await stored(page)).toBe(1);
+});
+
+test("Escape still folds an open dialog after the host moves its element", async ({ page }) => {
+  await mount(page);
+  const lock = () =>
+    page.evaluate(
+      () =>
+        `${document.documentElement.getAttribute("style")}|${document.body.getAttribute("style")}`,
+    );
+  const free = await lock();
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Moved");
+  const locked = await lock();
+  // Where the focus is, inside the widget: in its dialog, or on the draft bar.
+  const focused = () =>
+    page.evaluate(() => {
+      const active = document.querySelector("visual-feedback")?.shadowRoot?.activeElement;
+      if (!active) return "outside";
+      return active.closest("dialog") ? "dialog" : active.className;
+    });
+  // As a host that re-renders does: the element leaves and comes back in one task.
+  await page.evaluate(() => {
+    const host = document.querySelector("visual-feedback") as HTMLElement;
+    host.remove();
+    document.body.append(host);
+  });
+  expect(await focused()).toBe("dialog");
+  for (let tab = 0; tab < 12; tab++) {
+    await page.keyboard.press("Tab");
+    expect(await focused()).toBe("dialog");
+  }
+  expect(await lock()).toBe(locked);
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toBeVisible();
+  expect(await focused()).toMatch(/capture-view|reopen/);
+  // Folded, the page scrolls again: its own style is back.
+  expect(await lock()).toBe(free);
+  await expect.poll(() => storedNote(page)).toBe("Moved");
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Moved");
+});
+
+test("a widget with no trigger, put back on the page in a later task, shows its kept draft's bar", async ({
+  page,
+}) => {
+  await mount(page, { trigger: "none" });
+  await page.evaluate(() => (window as unknown as Mounted).vf.open());
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Back");
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toBeVisible();
+  await expect.poll(() => storedNote(page)).toBe("Back");
+  // As a host that takes the element away for a while: out, then back a task later.
+  await page.evaluate(async () => {
+    const host = document.querySelector("visual-feedback") as HTMLElement;
+    host.remove();
+    await new Promise((done) => setTimeout(done, 50));
+    document.body.append(host);
+  });
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Back");
+});
+
+test("a widget made in a container not yet in the page shows its kept draft's bar once attached", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Later");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Later");
+  await page.reload();
+  await page.evaluate(async () => {
+    const { createFeedback } = await import("/dist/index.mjs" as string);
+    const container = document.createElement("div");
+    const w = window as unknown as Mounted;
+    w.events = [];
+    w.vf = createFeedback({ onSubmit: async () => {}, container, trigger: "none" });
+    await new Promise((done) => setTimeout(done, 100));
+    document.body.append(container);
+  });
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Later");
+});
+
+test("open() in the same task that removes the element, with a draft folded, resolves and keeps it", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Folded");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Folded");
+  const result = await page.evaluate(async () => {
+    const w = window as unknown as Mounted;
+    document.querySelector("visual-feedback")?.remove();
+    try {
+      await w.vf.open();
+      return "resolved";
+    } catch (error) {
+      return `threw ${String(error)}`;
+    }
+  });
+  expect(result).toBe("resolved");
+  await page.waitForTimeout(300);
+  expect(await storedNote(page)).toBe("Folded");
+});
+
+test("a move in one task does not bring back a draft the host hid with close()", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.reload();
+  // The draft code arrives late, so close() lands while the page load brings the draft back.
+  await page.route("**/dist/keep-*.mjs", async (route) => {
+    await new Promise((done) => setTimeout(done, 600));
+    await route.continue().catch(() => {});
+  });
+  await mount(page);
+  await page.evaluate(() => (window as unknown as Mounted).vf.close());
+  await page.waitForTimeout(1000);
+  await expect(bar(page)).toHaveCount(0);
+  await page.unroute("**/dist/keep-*.mjs");
+  await page.evaluate(() => {
+    const host = document.querySelector("visual-feedback") as HTMLElement;
+    host.remove();
+    document.body.append(host);
+  });
+  await page.waitForTimeout(800);
+  await expect(bar(page)).toHaveCount(0);
+  expect(await events(page)).not.toContain("open");
+  expect(await stored(page)).toBe(1);
+});
+
+test("a draft that cannot come back is not tried again each time its element is put back", async ({
+  page,
+}) => {
+  await keepBroken(page);
+  await page.reload();
+  // Late, so the error listener below is in place first.
+  await page.route("**/dist/keep-*.mjs", async (route) => {
+    await new Promise((done) => setTimeout(done, 300));
+    await route.continue().catch(() => {});
+  });
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted & { errors: number };
+    w.errors = 0;
+    w.vf.on("error", () => w.errors++);
+  });
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { errors: number }).errors))
+    .toBe(1);
+  // As a host that re-mounts it on each render: out, and back a task later, five times.
+  await page.evaluate(async () => {
+    const host = document.querySelector("visual-feedback") as HTMLElement;
+    for (let time = 0; time < 5; time++) {
+      host.remove();
+      await new Promise((done) => setTimeout(done, 20));
+      document.body.append(host);
+      await new Promise((done) => setTimeout(done, 100));
+    }
+  });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as unknown as { errors: number }).errors)).toBe(1);
+  expect(await storedNote(page)).toBe("Broken image");
+});
+
+test("two moves in one task leave the dialog open, with nothing folded or ended by itself", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Twice");
+  await page.evaluate(() => {
+    const host = document.querySelector("visual-feedback") as HTMLElement;
+    const holder = document.createElement("div");
+    document.body.append(holder);
+    holder.append(host);
+    document.body.append(host);
+  });
+  await page.waitForTimeout(300);
+  await expect(dialog(page)).toBeVisible();
+  await expect(bar(page)).toHaveCount(0);
+  expect(await events(page)).not.toContain("close");
+  await expect(note(page)).toHaveValue("Twice");
+  // Still a working dialog: Escape folds it.
+  await note(page).focus();
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toBeVisible();
+  await expect.poll(() => storedNote(page)).toBe("Twice");
+});
+
+test("discardDraft() after destroy() kept a fresh capture whose write then fails leaves nothing", async ({
+  page,
+}) => {
+  await keepBroken(page);
+  await trigger(page).click();
+  await expect(note(page)).toHaveValue("");
+  await note(page).fill("Fresh");
+  // Every write fails from here, as on a full device.
+  await page.evaluate(() => {
+    IDBObjectStore.prototype.put = () => {
+      throw new DOMException("full", "QuotaExceededError");
+    };
+  });
+  await page.evaluate(async () => {
+    (window as unknown as Mounted).vf.destroy();
+    const { discardDraft } = await import("/dist/index.mjs" as string);
+    await discardDraft();
+  });
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  expect(await stored(page)).toBe(0);
+});
+
+test("a host that opens again from its error listener gets the fresh capture, not the broken draft again", async ({
+  page,
+}) => {
+  await keepBroken(page);
+  // Load-time return fails after the listener is in: the keep code arrives late.
+  await page.reload();
+  await page.route("**/dist/keep-*.mjs", async (route) => {
+    await new Promise((done) => setTimeout(done, 500));
+    await route.continue().catch(() => {});
+  });
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted & { errors: number };
+    w.errors = 0;
+    w.vf.on("error", () => {
+      w.errors++;
+      void w.vf.open().catch(() => {});
+    });
+  });
+  await expect(image(page)).toBeVisible();
+  await expect(note(page)).toHaveValue("");
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as unknown as { errors: number }).errors)).toBe(1);
+});
+
+test("a host that closes from its error listener stops the open that waited on a draft that could not come back", async ({
+  page,
+}) => {
+  await keepBroken(page);
+  await page.reload();
+  await page.route("**/dist/keep-*.mjs", async (route) => {
+    await new Promise((done) => setTimeout(done, 500));
+    await route.continue().catch(() => {});
+  });
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted;
+    w.vf.on("error", () => w.vf.close());
+    // Waits on the return still under way.
+    void w.vf.open().catch(() => {});
+  });
+  await page.waitForTimeout(1500);
+  await expect(dialog(page)).toHaveCount(0);
+  expect(await events(page)).not.toContain("open");
+});
+
+test("open() on a widget whose element is off the page settles while this tab keeps a draft", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page);
+  await expect(bar(page)).toBeVisible();
+  const settled = await page.evaluate(async () => {
+    const w = window as unknown as Mounted & { asked: number };
+    // Display capture, so a capture started off the page would ask for the screen.
+    w.asked = 0;
+    navigator.mediaDevices.getDisplayMedia = () => {
+      w.asked++;
+      return Promise.reject(new DOMException("denied", "NotAllowedError"));
+    };
+    w.vf.update({ capture: { mode: "display" } });
+    document.querySelector("visual-feedback")?.remove();
+    await new Promise((done) => setTimeout(done, 50));
+    return Promise.race([
+      w.vf.open().then(() => "settled"),
+      new Promise((done) => setTimeout(() => done("stuck"), 2000)),
+    ]);
+  });
+  expect(settled).toBe("settled");
+  expect(await page.evaluate(() => (window as unknown as { asked: number }).asked)).toBe(0);
+  expect(await stored(page)).toBe(1);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toHaveLength(1);
+  await expect(dialog(page)).toHaveCount(0);
+});
+
+test("a fresh draft that took the slot stays kept when the old record will not delete", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        const request = indexedDB.open("visual-feedback", 1);
+        request.onsuccess = () => {
+          const store = request.result.transaction("drafts", "readwrite").objectStore("drafts");
+          const cursors = store.openCursor();
+          cursors.onsuccess = () => {
+            const cursor = cursors.result;
+            if (!cursor) return done();
+            const value = cursor.value;
+            value.shots[0].image = new TextEncoder().encode("not an image").buffer;
+            cursor.update(value);
+            done();
+          };
+        };
+      }),
+  );
+  await load(page);
+  // The broken record's delete fails, as a device can.
+  await page.evaluate(() => {
+    const old = sessionStorage.getItem("visual-feedback:visual-feedback");
+    const remove = IDBObjectStore.prototype.delete;
+    IDBObjectStore.prototype.delete = function (key) {
+      if (key === old) throw new DOMException("refused", "UnknownError");
+      return remove.call(this, key);
+    };
+  });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Fresh");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedDraft(page).then(() => stored(page))).toBe(2);
+  await page.waitForTimeout(500);
+  await load(page);
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Fresh");
+});
+
+test("discardDraft() while the fresh draft is still written deletes the draft it replaces too", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        const request = indexedDB.open("visual-feedback", 1);
+        request.onsuccess = () => {
+          const store = request.result.transaction("drafts", "readwrite").objectStore("drafts");
+          const cursors = store.openCursor();
+          cursors.onsuccess = () => {
+            const cursor = cursors.result;
+            if (!cursor) return done();
+            const value = cursor.value;
+            value.shots[0].image = new TextEncoder().encode("not an image").buffer;
+            cursor.update(value);
+            done();
+          };
+        };
+      }),
+  );
+  await load(page);
+  // The fresh draft's own copy of its screenshot is held, so its write waits.
+  await page.evaluate(() => {
+    const w = window as unknown as { letGo: () => void };
+    const held = new Promise<void>((done) => {
+      w.letGo = done;
+    });
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+      if (type !== "image/png") return toBlob.call(this, callback, type, quality);
+      void held.then(() => toBlob.call(this, callback, type, quality));
+    };
+  });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  // discardDraft() waits for the write it ends, so the held encode is let go after it starts.
+  const discarding = discard(page);
+  await page.waitForTimeout(200);
+  await page.evaluate(() => (window as unknown as { letGo: () => void }).letGo());
+  await discarding;
+  await page.waitForTimeout(500);
+  expect(await stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
 });
 
 test("storage that throws at load leaves the widget working, with the draft in memory", async ({
@@ -913,6 +1667,35 @@ test("when the owner leaves, a widget already in the page takes over and opens t
   await expect(note(page)).toHaveValue("From the owner");
 });
 
+for (const fold of [true, false]) {
+  test(`a host that removes the element and makes the next widget in one task keeps the ${fold ? "folded" : "open"} draft`, async ({
+    page,
+  }) => {
+    await mount(page);
+    await trigger(page).click();
+    await expect(image(page)).toBeVisible();
+    await note(page).fill("Same task");
+    if (fold) {
+      await page.keyboard.press("Escape");
+      await expect.poll(() => storedNote(page)).toBe("Same task");
+    }
+    // As a router does: the old page's element goes and the new page's widget comes, in one task.
+    await page.evaluate(async () => {
+      const { createFeedback } = await import("/dist/index.mjs" as string);
+      document.querySelector("visual-feedback")?.remove();
+      (window as unknown as Mounted).vf = createFeedback({ onSubmit: async () => {} });
+    });
+    await expect.poll(() => storedNote(page)).toBe("Same task");
+    await page.evaluate(() => (window as unknown as Mounted).vf.open());
+    await expect(note(page)).toHaveValue("Same task");
+    // Kept on the device, not only by the new widget: a page load brings it back.
+    await page.keyboard.press("Escape");
+    await load(page);
+    await button(page, "Open").click();
+    await expect(note(page)).toHaveValue("Same task");
+  });
+}
+
 test('a draft: "memory" widget made first does not stop the next one from keeping its draft', async ({
   page,
 }) => {
@@ -926,6 +1709,36 @@ test('a draft: "memory" widget made first does not stop the next one from keepin
   await note(page).fill("Kept by the second");
   await page.keyboard.press("Escape");
   await expect.poll(() => storedNote(page)).toBe("Kept by the second");
+});
+
+test("a removed element after Send was handed to the host keeps nothing either", async ({
+  page,
+}) => {
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted;
+    w.hold = new Promise((resolve) => {
+      w.release = resolve;
+    });
+  });
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Under way");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => storedNote(page)).toBe("Under way");
+  await button(page, "Open").click();
+  await button(page, "Send").click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as Mounted).reports.length))
+    .toBe(1);
+  await page.evaluate(() => document.querySelector("visual-feedback")?.remove());
+  await expect.poll(() => events(page)).toEqual(["open", "close"]);
+  await expect.poll(() => stored(page)).toBe(0);
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
+  await page.reload();
+  await mount(page);
+  await expect(trigger(page)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Feedback draft" })).toHaveCount(0);
 });
 
 test("destroy() after Send was handed to the host keeps nothing, so the next widget cannot send it twice", async ({
@@ -1611,7 +2424,7 @@ test("Discard and discardDraft() leave no kept files on the device", async ({ pa
   }
 });
 
-test("a kept draft brought back on a page with attachments off takes no files", async ({
+test("a kept draft brought back on a page with attachments off keeps its files for a later page", async ({
   page,
 }) => {
   await mount(page, { attachments: true });
@@ -1621,19 +2434,42 @@ test("a kept draft brought back on a page with attachments off takes no files", 
     { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
   ]);
   await page.keyboard.press("Escape");
-  await expect.poll(() => stored(page)).toBe(1);
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["a.txt"]);
   await load(page);
   await expect(bar(page)).toBeVisible();
-  // Written again without them, so no later page with attachments on brings them back.
-  await expect.poll(async () => (await storedDraft(page))?.files).toEqual([]);
   await button(page, "Open").click();
-  await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "a.txt was not kept with the draft.",
-  );
+  await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveCount(0);
+  await note(page).fill("Attachments off now");
+  // Shown nowhere here, and nothing says it was not kept.
+  await expect(page.locator("visual-feedback").locator("[part~=file-name]")).toHaveCount(0);
+  await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveCount(0);
+  // Folded again here, the file stays with the draft.
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.note).toBe("Attachments off now");
+  expect((await storedDraft(page))?.files).toEqual(["a.txt"]);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(page.locator("visual-feedback").locator("[part~=file-name]")).toHaveText(["a.txt"]);
+});
+
+test("Send on a page with attachments off sends no kept file and keeps nothing", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["a.txt"]);
+  await load(page);
+  await button(page, "Open").click();
   await note(page).fill("Attachments off now");
   await button(page, "Send").click();
   await finish(page);
   expect(await sentFiles(page)).toEqual([]);
+  await expect.poll(() => stored(page)).toBe(0);
 });
 
 test("a file removed while the files a draft brought back are checked stays removed", async ({
@@ -1668,6 +2504,48 @@ test("a file removed while the files a draft brought back are checked stays remo
   await button(page, "Send").click();
   await finish(page);
   expect(await sentFiles(page)).toEqual([["b.txt", "text/plain", "2"]]);
+});
+
+test("Save as PDF while the files a draft brought back are checked lists them", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await note(page).fill("One line");
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["a.txt"]);
+  await page.reload();
+  await page.evaluate(() => {
+    const slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (this: Blob, ...args: Parameters<Blob["slice"]>) {
+      const part = slice.apply(this, args);
+      const read = part.arrayBuffer.bind(part);
+      part.arrayBuffer = () => new Promise((done) => setTimeout(() => done(read()), 2000));
+      return part;
+    };
+  });
+  await mount(page, { attachments: true });
+  await button(page, "Open").click();
+  // Still being checked: a checked file would show its size.
+  await expect(page.locator("visual-feedback").locator(".file-size")).toHaveCount(0);
+  const first = await image(page).evaluate((canvas: HTMLCanvasElement) => ({
+    width: canvas.width,
+    height: canvas.height,
+  }));
+  const saving = page.waitForEvent("download");
+  await button(page, "More send options").click();
+  await page.getByRole("menuitem", { name: "Save as PDF" }).click();
+  const bytes = readFileSync((await (await saving).path()) ?? "");
+  const height = Number(/\/Width \d+ \/Height (\d+) /.exec(bytes.toString("latin1"))?.[1]);
+  const scale = first.width / 1200;
+  const line = Math.round(Math.round(22 * scale) * 1.4);
+  const margin = Math.round(40 * scale);
+  // The note, the heading and the file: three lines above the screenshot.
+  expect(height).toBe(first.height + 2 * margin + 3 * line);
 });
 
 test("Cancel while the files a draft brought back are checked still asks before they are lost", async ({
@@ -1742,7 +2620,7 @@ test("a brought-back file a page refuses while the draft stays folded is named o
   await button(page, "Open").click();
   await expect(files(page)).toHaveText(["a.txt"]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "b.txt was not kept with the draft.",
+    "\u2068b.txt\u2069 was not kept with the draft.",
   );
 });
 
@@ -1753,14 +2631,23 @@ test("a pick that adds a file ends the not-kept notice", async ({ page }) => {
   await picker(page).setInputFiles([
     { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
   ]);
+  await expect(files(page)).toHaveText(["a.txt"]);
+  // Not readable at the fold, so the draft is kept without it.
+  await page.evaluate(() => {
+    const read = Blob.prototype.arrayBuffer;
+    Blob.prototype.arrayBuffer = function (this: Blob) {
+      if (this instanceof File && this.name === "a.txt") {
+        return Promise.reject(new DOMException("gone", "NotReadableError"));
+      }
+      return read.call(this);
+    };
+  });
   await page.keyboard.press("Escape");
-  await expect.poll(() => stored(page)).toBe(1);
-  await load(page);
   await expect.poll(async () => (await storedDraft(page))?.files).toEqual([]);
   await load(page, { attachments: true });
   await button(page, "Open").click();
   const told = page.locator("visual-feedback").locator(".composer [role=alert]");
-  await expect(told).toHaveText("a.txt was not kept with the draft.");
+  await expect(told).toHaveText("\u2068a.txt\u2069 was not kept with the draft.");
   await picker(page).setInputFiles([
     { name: "c.txt", mimeType: "text/plain", buffer: Buffer.from("3") },
   ]);
@@ -1791,7 +2678,7 @@ test("a Remove made while a pick is checked ends the not-kept notice", async ({ 
   await load(page, { attachments: true });
   await button(page, "Open").click();
   const told = page.locator("visual-feedback").locator(".composer [role=alert]");
-  await expect(told).toHaveText("gone.txt was not kept with the draft.");
+  await expect(told).toHaveText("\u2068gone.txt\u2069 was not kept with the draft.");
   // The next pick's check waits, so the Remove lands while it runs.
   await page.evaluate(() => {
     const slice = Blob.prototype.slice;
@@ -1809,29 +2696,7 @@ test("a Remove made while a pick is checked ends the not-kept notice", async ({ 
   await button(page, "Remove ok.txt").click();
   await expect(files(page)).toHaveText(["late.txt"]);
   await expect(told).toHaveText(
-    "a.svg is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be.",
-  );
-});
-
-test("a file a page with attachments off dropped is still named on a later page with them on", async ({
-  page,
-}) => {
-  await mount(page, { attachments: true });
-  await trigger(page).click();
-  await expect(image(page)).toBeVisible();
-  await picker(page).setInputFiles([
-    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
-  ]);
-  await page.keyboard.press("Escape");
-  await expect.poll(() => stored(page)).toBe(1);
-  await load(page);
-  await expect(bar(page)).toBeVisible();
-  await expect.poll(async () => (await storedDraft(page))?.files).toEqual([]);
-  await load(page, { attachments: true });
-  await button(page, "Open").click();
-  await expect(files(page)).toHaveCount(0);
-  await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "a.txt was not kept with the draft.",
+    "\u2068a.svg\u2069 is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be.",
   );
 });
 
@@ -1911,7 +2776,7 @@ test("kept files go through the limits of the page that brings them back", async
   await button(page, "Open").click();
   await expect(files(page)).toHaveText(["a.txt"]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "b.txt is not attached: the most is 1 files.",
+    "\u2068b.txt\u2069 is not attached: the most is 1 files.",
   );
   // Refused as a pick is: the next write keeps only what the page took.
   await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["a.txt"]);
@@ -1931,6 +2796,24 @@ test("Cancel asks first on a brought-back draft that only its files would lose",
   await load(page, { attachments: true });
   await button(page, "Open").click();
   await expect(files(page)).toHaveText(["a.txt"]);
+  await button(page, "Cancel").click();
+  await expect(page.getByText("Discard this feedback?")).toBeVisible();
+  await expect.poll(() => stored(page)).toBe(1);
+});
+
+test("Cancel asks first on a page with attachments off when only kept files would be lost", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page);
+  await button(page, "Open").click();
   await button(page, "Cancel").click();
   await expect(page.getByText("Discard this feedback?")).toBeVisible();
   await expect.poll(() => stored(page)).toBe(1);
@@ -2024,23 +2907,23 @@ test("a file that can no longer be read is left out of the kept draft, and the o
   await button(page, "Open").click();
   await expect(files(page)).toHaveText(["ok.txt"]);
   const told = page.locator("visual-feedback").locator(".composer [role=alert]");
-  await expect(told).toHaveText("gone.txt was not kept with the draft.");
+  await expect(told).toHaveText("\u2068gone.txt\u2069 was not kept with the draft.");
   // Told again after another load, until the user changes the files.
   await page.keyboard.press("Escape");
   await load(page, { attachments: true });
   await button(page, "Open").click();
-  await expect(told).toHaveText("gone.txt was not kept with the draft.");
+  await expect(told).toHaveText("\u2068gone.txt\u2069 was not kept with the draft.");
   // A pick the page refuses changes no file, so the name is still told.
   await picker(page).setInputFiles([
     { name: "a.svg", mimeType: "image/svg+xml", buffer: Buffer.from("<svg/>") },
   ]);
-  await expect(told).toContainText("gone.txt was not kept with the draft.");
-  await expect(told).toContainText("a.svg is not attached");
+  await expect(told).toContainText("\u2068gone.txt\u2069 was not kept with the draft.");
+  await expect(told).toContainText("\u2068a.svg\u2069 is not attached");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(500);
   await load(page, { attachments: true });
   await button(page, "Open").click();
-  await expect(told).toHaveText("gone.txt was not kept with the draft.");
+  await expect(told).toHaveText("\u2068gone.txt\u2069 was not kept with the draft.");
   await button(page, "Remove ok.txt").click();
   await expect(told).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -2092,6 +2975,6 @@ test("a draft whose files do not fit in storage is kept without them, screenshot
   await expect(image(page)).toBeVisible();
   await expect(files(page)).toHaveCount(0);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "big.txt was not kept with the draft.",
+    "\u2068big.txt\u2069 was not kept with the draft.",
   );
 });

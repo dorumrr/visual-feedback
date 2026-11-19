@@ -447,17 +447,25 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
   watched = document.body;
   if (watched) observer.observe(watched, { attributes: true });
   // Asked each time: when the owner's element leaves the page, the next widget to ask takes over.
+  // Owner when its element left: a widget made in the same task takes the tag before this one ends.
+  let left = false;
   const keeps = () => {
     if (options.draft === "memory") return false;
+    if (left) return true;
     if (!owners.get(tag)?.isConnected && host.isConnected) owners.set(tag, host);
     return owners.get(tag) === host;
   };
+  // A draft that failed to come back is not tried again here: the next open captures afresh.
+  let unreturned: string | null = null;
   // A draft this tab kept before a page load, or a route change, shows its bar again.
   restore();
 
   function restore(): boolean {
+    // Off the page, show() would stop at once and open() would start this again, without end.
+    if (!host.isConnected) return false;
     try {
-      if (!keeps() || !sessionStorage.getItem(`visual-feedback:${tag}`)) return false;
+      const id = keeps() ? sessionStorage.getItem(`visual-feedback:${tag}`) : null;
+      if (!id || id === unreturned) return false;
     } catch {
       return false;
     }
@@ -562,6 +570,7 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
           emit,
           options: () => options,
           keeps,
+          unreturned: () => unreturned,
           restyle: () => match(wrapper, options.theme),
         },
         options,
@@ -590,8 +599,15 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
         hide(false);
         teardown();
       }
+      // Before the event: a listener that opens again must get the fresh capture, not this again.
+      if (kept) {
+        try {
+          unreturned = sessionStorage.getItem(`visual-feedback:${tag}`);
+        } catch {}
+      }
       emit("error", error);
-      throw error;
+      if (!kept) throw error;
+      return;
     }
     state = "open";
     emit("open");
@@ -609,6 +625,8 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
 
   const widget: FeedbackWidget = {
     open() {
+      // Off the page nothing can show, so nothing is captured or reopened either.
+      if (!host.isConnected) return Promise.resolve();
       // A kept draft still coming back opens once it is back.
       if (state === "opening" && pending) {
         const mine = session;
@@ -627,6 +645,8 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
       return pending;
     },
     close() {
+      // Idle, an open() may still wait on a draft that could not come back: it is stopped too.
+      if (state === "idle") cancel();
       end();
     },
     destroy() {
@@ -675,10 +695,29 @@ export function createFeedback(options: FeedbackOptions = {}): FeedbackWidget {
   // The host app may remove the element (a route change) while the dialog is open: it closes,
   // and the draft stays kept. A move reconnects it before the microtask runs, so it keeps all.
   // Put back on the page: the page may have switched its theme while the element was off it.
-  (host as Hooked)[CONNECTED] = () => follow();
-  (host as Hooked)[DISCONNECTED] = () =>
+  // Set once a removal really took the element away, not by a move in one task; also when it
+  // was made in a container not yet in the page, so the first attach brings a kept draft back.
+  let away = !host.isConnected;
+  (host as Hooked)[CONNECTED] = () => {
+    dialog?.moved();
+    follow();
+    if (!away) return;
+    away = false;
+    if (state !== "idle") return;
+    // Another widget of the tag held it meanwhile, so may have brought that draft back: try again.
+    if (owners.get(tag) !== host) unreturned = null;
+    // Its bar went with it; a draft this tab still keeps shows it again, as at creation.
+    restore();
+  };
+  (host as Hooked)[DISCONNECTED] = () => {
+    const owned = keeps();
     queueMicrotask(() => {
-      if (!host.isConnected) end(true);
+      if (host.isConnected) return;
+      away = true;
+      left = owned;
+      end(true);
+      left = false;
     });
+  };
   return widget;
 }

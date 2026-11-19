@@ -403,8 +403,8 @@ it("with files on, each file is its own row with its bytes, and the report lists
   expect(row?.report).toEqual({
     ...report,
     attachments: [
-      { name: "Shot.PNG", type: "image/png", size: ATTACHED_PNG.length, storedName: "file-0.png" },
-      { name: "server.log", type: "text/plain", size: LOG.length, storedName: "file-1.log" },
+      { name: "Shot.PNG", type: "image/png", size: ATTACHED_PNG.length, file: "file-0.png" },
+      { name: "server.log", type: "text/plain", size: LOG.length, file: "file-1.log" },
     ],
   });
 });

@@ -167,34 +167,80 @@ test("each limit keeps the file out and says which limit it met", async ({ page 
   const alert = page.locator("visual-feedback").locator(".composer [role=alert]");
   await picker(page).setInputFiles([text("a.svg", "<svg/>", "image/svg+xml")]);
   await expect(alert).toHaveText(
-    "a.svg is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be.",
+    "\u2068a.svg\u2069 is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be.",
   );
   // An allowed type whose name the server would refuse: over 255 bytes.
   const long = `${"n".repeat(252)}.png`;
   await picker(page).setInputFiles([{ name: long, mimeType: "image/png", buffer: PNG }]);
   await expect(alert).toHaveText(
-    `${long} is not attached: its name is too long, is only an ending, or holds a character that is not allowed.`,
+    `\u2068${long}\u2069 is not attached: its name is too long, is only an ending, or holds a character that is not allowed.`,
   );
   // 256 bytes in 88 characters, and a bidi mark that would hide the real ending.
   for (const name of [`${"\u5408".repeat(84)}.png`, "photo\u202egnp.png", ".png"]) {
     await picker(page).setInputFiles([{ name, mimeType: "image/png", buffer: PNG }]);
     await expect(alert).toHaveText(
-      `${name} is not attached: its name is too long, is only an ending, or holds a character that is not allowed.`,
+      `\u2068${name}\u2069 is not attached: its name is too long, is only an ending, or holds a character that is not allowed.`,
     );
   }
   await picker(page).setInputFiles([text("big.txt", "12345678901")]);
-  await expect(alert).toHaveText("big.txt is not attached: the most for one file is 10 bytes.");
+  await expect(alert).toHaveText(
+    "\u2068big.txt\u2069 is not attached: the most for one file is 10 bytes.",
+  );
   // A name holding a placeholder is shown as picked.
   await picker(page).setInputFiles([text("{limit}.txt", "12345678901")]);
-  await expect(alert).toHaveText("{limit}.txt is not attached: the most for one file is 10 bytes.");
+  await expect(alert).toHaveText(
+    "\u2068{limit}.txt\u2069 is not attached: the most for one file is 10 bytes.",
+  );
+  // So is one holding a replacement pattern.
+  await picker(page).setInputFiles([text("x$&$'.txt", "12345678901")]);
+  await expect(alert).toHaveText(
+    "\u2068x$&$'.txt\u2069 is not attached: the most for one file is 10 bytes.",
+  );
   await picker(page).setInputFiles([text("a.txt", "12345678"), text("b.txt", "12345678")]);
   await expect(alert).toHaveText(
-    "b.txt is not attached: the most for all files together is 15 bytes.",
+    "\u2068b.txt\u2069 is not attached: the most for all files together is 15 bytes.",
   );
   await picker(page).setInputFiles([text("c.txt", "1"), text("d.txt", "2")]);
-  await expect(alert).toHaveText("d.txt is not attached: the most is 2 files.");
+  await expect(alert).toHaveText("\u2068d.txt\u2069 is not attached: the most is 2 files.");
   await expect(rows(page)).toHaveText(["a.txt", "c.txt"]);
 });
+
+// The second name closes an isolate of its own before its override.
+for (const [name, shown] of [
+  ["photo\u202egnp.png", "photo\u202egnp.png"],
+  // Only the isolate mark is taken out; the override stays, held inside the isolate.
+  ["a\u2069\u202etxt.png", "a\u202etxt.png"],
+  // A paragraph end would close the isolate too: it is shown as a space.
+  ["a\u2029\u202etxt.png", "a \u202etxt.png"],
+  // An opening isolate mark would take the closing one for itself.
+  ["\u05d0\u2067\u202etxt.png", "\u05d0\u202etxt.png"],
+] as const) {
+  test(`a refused name's bidi override does not reverse the words after it: ${JSON.stringify(name)}`, async ({
+    page,
+  }) => {
+    await open(page, {});
+    const alert = page.locator("visual-feedback").locator(".composer [role=alert]");
+    await picker(page).setInputFiles([{ name, mimeType: "image/png", buffer: PNG }]);
+    await expect(alert).toContainText("is not attached");
+    // Exact: toHaveText would read a paragraph end as the space it is shown as.
+    expect(await alert.evaluate((node) => node.textContent)).toBe(
+      `\u2068${shown}\u2069 is not attached: its name is too long, is only an ending, or holds a character that is not allowed.`,
+    );
+    // Where the browser draws the first and the last letter of "is not attached".
+    const drawn = await alert.evaluate((node) => {
+      const text = node.firstChild as Text;
+      const from = (text.data ?? "").indexOf("is not attached");
+      const left = (at: number) => {
+        const range = document.createRange();
+        range.setStart(text, at);
+        range.setEnd(text, at + 1);
+        return range.getBoundingClientRect().left;
+      };
+      return { first: left(from), last: left(from + "is not attached".length - 1) };
+    });
+    expect(drawn.first).toBeLessThan(drawn.last);
+  });
+}
 
 test("strings replace the attachment texts", async ({ page }) => {
   await open(page, {
@@ -215,7 +261,7 @@ test("strings replace the attachment texts", async ({ page }) => {
     text(`${"n".repeat(252)}.txt`, "4"),
   ]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    `X b.txt 1 X type c.exe X name ${"n".repeat(252)}.txt`,
+    `X \u2068b.txt\u2069 1 X type \u2068c.exe\u2069 X name \u2068${"n".repeat(252)}.txt\u2069`,
   );
   await expect(button(page, "X remove a.txt")).toBeVisible();
   await expect(page.getByRole("list", { name: "X attachments" })).toBeVisible();
@@ -347,11 +393,11 @@ test("strings replace the size refusals too", async ({ page }) => {
   });
   await picker(page).setInputFiles([text("a.txt", "123456")]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "X big a.txt 5 bytes",
+    "X big \u2068a.txt\u2069 5 bytes",
   );
   await picker(page).setInputFiles([text("b.txt", "1234"), text("c.txt", "1234")]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "X both c.txt 6 bytes",
+    "X both \u2068c.txt\u2069 6 bytes",
   );
 });
 
@@ -395,9 +441,9 @@ test("a file whose bytes are not what its name says is kept out, as the server w
   ]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
     [
-      "photo.jpg is not attached: it could not be read as the type its name says.",
-      "utf16.csv is not attached: it could not be read as the type its name says.",
-      "empty.png is not attached: it could not be read as the type its name says.",
+      "\u2068photo.jpg\u2069 is not attached: it could not be read as the type its name says.",
+      "\u2068utf16.csv\u2069 is not attached: it could not be read as the type its name says.",
+      "\u2068empty.png\u2069 is not attached: it could not be read as the type its name says.",
     ].join(" "),
   );
   await expect(rows(page)).toHaveText(["good.png"]);
@@ -460,7 +506,7 @@ test("strings.attachUnreadable replaces its text", async ({ page }) => {
   await open(page, { strings: { attachUnreadable: "X unreadable {file}" } });
   await picker(page).setInputFiles([{ name: "a.jpg", mimeType: "image/jpeg", buffer: PNG }]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "X unreadable a.jpg",
+    "X unreadable \u2068a.jpg\u2069",
   );
 });
 
@@ -502,7 +548,7 @@ test("a file that cannot be read is kept out, and later picks and Send still wor
   });
   await picker(page).setInputFiles([text("gone.txt", "1")]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "gone.txt is not attached: it could not be read as the type its name says.",
+    "\u2068gone.txt\u2069 is not attached: it could not be read as the type its name says.",
   );
   await picker(page).setInputFiles([text("ok.txt", "2")]);
   await expect(rows(page)).toHaveText(["ok.txt"]);

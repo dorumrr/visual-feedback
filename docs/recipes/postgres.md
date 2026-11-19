@@ -8,9 +8,10 @@ proof of who sent a report; `report.context` is not (docs/API.md).
 
 Files are off until you turn them on (step 3). Then each file the user attached becomes one row in
 `feedback_attachments`, by its `position` in `report.attachments`: the name, type and size it was
-sent with, its bytes in `file`, and `stored_name`, `file-<position>` with the ending its type
-allows, such as `file-0.png`. The user's file name is kept as data, never used as a key. The
-report's `attachments` list keeps `name`, `type`, `size` and `storedName`, without the files.
+sent with, its bytes in `file`, and `stored_name`, `file-<position>` with the ending its name
+has, lower-cased, which the server allows only when it fits the file's type, such as
+`file-0.png`. The user's file name is kept as data, never used as a key. The report's
+`attachments` list keeps `name`, `type`, `size` and `file`, the stored name, without the files.
 
 To keep images in a bucket instead (docs/recipes/s3.md):
 
@@ -24,6 +25,8 @@ To keep images in a bucket instead (docs/recipes/s3.md):
    `screenshot-<position>.png`, and `image/webp` is `screenshot-<position>.webp`.
 5. Read images back with that recipe's `GET`, its `canRead` replaced by the same admin check your
    screens use.
+
+Attached files stay in `feedback_attachments`; only the images move to the bucket.
 
 The images show the screen as the user saw it, with nothing masked (SPEC §7), so read the table only
 from your own admin screens.
@@ -116,7 +119,7 @@ export async function POST(request: Request): Promise<Response> {
     const files = (attachments ?? []).map(({ file, ...entry }, position) => {
       // The parser checked that the name ends as its type allows; only that ending is taken.
       const ending = entry.name.slice(entry.name.lastIndexOf(".")).toLowerCase();
-      return { file, entry: { ...entry, storedName: `file-${position}${ending}` } };
+      return { file, entry: { ...entry, file: `file-${position}${ending}` } };
     });
     // The report was parsed from JSON, so it is JSON; context is only typed as unknown values.
     const json = db().json({
@@ -139,7 +142,7 @@ export async function POST(request: Request): Promise<Response> {
         name: entry.name,
         type: entry.type,
         size: entry.size,
-        stored_name: entry.storedName,
+        stored_name: entry.file,
         file: new Uint8Array(await file.arrayBuffer()),
       })),
     );

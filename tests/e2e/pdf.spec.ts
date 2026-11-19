@@ -419,6 +419,183 @@ test("a PDF still building when Send goes out finishes and downloads after the d
   ).toBeNull();
 });
 
+/** Counts the host's error events from now on. */
+const countErrors = (page: Page) =>
+  page.evaluate(() => {
+    const w = window as unknown as Mounted & { errors: number };
+    w.errors = 0;
+    w.vf.on("error", () => w.errors++);
+  });
+const errors = (page: Page) =>
+  page.evaluate(() => (window as unknown as { errors: number }).errors);
+
+/** Makes the page's JPEG encodes wait for `letGo()`, then fail. */
+const holdThenFail = (page: Page) =>
+  page.evaluate(() => {
+    const w = window as unknown as { letGo: () => void };
+    const held = new Promise<void>((done) => {
+      w.letGo = done;
+    });
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+      if (type !== "image/jpeg") return toBlob.call(this, callback, type, quality);
+      void held.then(() => callback(null));
+    };
+  });
+
+test("a PDF that fails after a Send closed the dialog fires the error event", async ({ page }) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Sent while saving");
+  await holdThenFail(page);
+  await countErrors(page);
+  await more(page).click();
+  await save(page).click();
+  await button(page, "Send").click();
+  await expect(page.locator("visual-feedback").getByRole("dialog")).toHaveCount(0);
+  await letGo(page);
+  await expect.poll(() => errors(page)).toBe(1);
+  // Long enough for a second error, had one fired.
+  await page.waitForTimeout(500);
+  expect(await errors(page)).toBe(1);
+  expect(await events(page)).not.toContain("saved");
+});
+
+test("a PDF that fails while the sent view shows says so there, and the view stays", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted;
+    w.hold = new Promise((done) => {
+      w.release = done;
+    });
+  });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Sent while saving");
+  await holdThenFail(page);
+  await countErrors(page);
+  await more(page).click();
+  await save(page).click();
+  await button(page, "Send").click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as Mounted).reports.length))
+    .toBe(1);
+  // In the page, so the PDF fails in the sent view's first frame, well inside its 500 ms.
+  await page.evaluate(
+    () =>
+      new Promise<void>((settled) => {
+        const w = window as unknown as Mounted & { letGo: () => void };
+        const root = document.querySelector("visual-feedback")?.shadowRoot;
+        const look = () => {
+          if (!root?.querySelector(".status")) return requestAnimationFrame(look);
+          w.letGo();
+          settled();
+        };
+        w.release?.();
+        look();
+      }),
+  );
+  await expect(page.getByRole("alert")).toHaveText("Couldn't save the PDF.");
+  // Past the sent view's own close: the message stays until the user closes it.
+  await page.waitForTimeout(800);
+  await expect(page.getByRole("alert")).toHaveText("Couldn't save the PDF.");
+  await expect(page.getByText("Thanks, it's sent.")).toBeVisible();
+  await expect(note(page)).toHaveCount(0);
+  expect(await errors(page)).toBe(1);
+  await button(page, "Cancel").click();
+  await expect(dialog(page)).toHaveCount(0);
+});
+
+test("a PDF that fails while a Send is in flight is told again in the sent view once it succeeds", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted;
+    w.hold = new Promise((done) => {
+      w.release = done;
+    });
+  });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Sent while saving");
+  await holdThenFail(page);
+  await countErrors(page);
+  await more(page).click();
+  await save(page).click();
+  await button(page, "Send").click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as Mounted).reports.length))
+    .toBe(1);
+  await letGo(page);
+  await expect(page.getByRole("alert")).toHaveText("Couldn't save the PDF.");
+  expect(await errors(page)).toBe(0);
+  await page.evaluate(() => (window as unknown as Mounted).release?.());
+  await expect(page.getByText("Thanks, it's sent.")).toBeVisible();
+  await page.waitForTimeout(800);
+  await expect(page.getByRole("alert")).toHaveText("Couldn't save the PDF.");
+  await expect(page.getByText("Thanks, it's sent.")).toBeVisible();
+  expect(await errors(page)).toBe(1);
+});
+
+test("a PDF that fails while a Send is in flight, then a Send that fails: one error, for the send, and both messages", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted & { refuse: () => void };
+    w.hold = new Promise((_, refuse) => {
+      w.refuse = () => refuse(new Error("Server said no."));
+    });
+  });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await note(page).fill("Sent while saving");
+  await holdThenFail(page);
+  await countErrors(page);
+  await more(page).click();
+  await save(page).click();
+  await button(page, "Send").click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as Mounted).reports.length))
+    .toBe(1);
+  await letGo(page);
+  await expect(page.getByText("Couldn't save the PDF.")).toBeVisible();
+  await page.evaluate(() => (window as unknown as { refuse: () => void }).refuse());
+  await expect(page.getByText("Server said no.")).toBeVisible();
+  await expect(page.getByText("Couldn't save the PDF.")).toBeVisible();
+  expect(await errors(page)).toBe(1);
+});
+
+for (const end of ["remove", "destroy"] as const) {
+  test(`a PDF still building when Send goes out downloads after a ${end} of the element too`, async ({
+    page,
+  }) => {
+    await mount(page);
+    await trigger(page).click();
+    await expect(image(page)).toBeVisible();
+    await note(page).fill("Sent, then gone");
+    await holdJpeg(page);
+    await more(page).click();
+    await save(page).click();
+    await button(page, "Send").click();
+    await expect(page.locator("visual-feedback").getByRole("dialog")).toHaveCount(0);
+    await page.evaluate((end) => {
+      if (end === "destroy") (window as unknown as Mounted).vf.destroy();
+      else document.querySelector("visual-feedback")?.remove();
+    }, end);
+    expect(await page.locator("visual-feedback").count()).toBe(0);
+    const saving = page.waitForEvent("download", { timeout: 5000 });
+    await letGo(page);
+    expect((await saving).suggestedFilename()).toMatch(/^feedback-\d{4}-\d{2}-\d{2}\.pdf$/);
+    // destroy() removes the listeners; a removed element keeps them.
+    expect((await events(page)).includes("saved")).toBe(end === "remove");
+  });
+}
+
 test("close() while a send is in flight saves no PDF, though the send then goes out", async ({
   page,
 }) => {

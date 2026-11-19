@@ -42,7 +42,7 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   another screenshot of the page as it is now, the bar and the dialog left out, adds it, and opens
   the dialog on it; a capture that fails opens the dialog on the kept draft with the
   `captureError` text, where Esc keeps the draft again and Cancel discards it, after the same question when it would throw work away. "Open", and `open()`, open the dialog as it was. A full page load in the same tab, or a route
-  change that removes the widget and makes the next one, brings the draft back, folded in the bar, as it was when it was last folded: its screenshots, marks, note,
+  change that removes the widget and makes the next one, brings the draft back, folded in the bar, as it was when it was last folded (unless that fold could not be stored, §7): its screenshots, marks, note,
   category and files (§4). Undo starts after the marks it brought back. With `draft: "memory"`, a page load ends
   it.
 - **sending:** the note, the category and the tools are disabled, and the Send button shows
@@ -50,7 +50,7 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   draft. Until the send ends, Cancel, Keep as draft and Esc do nothing. A send that has not ended
   after 30 seconds fails, with the `timeout` text.
 - **sent:** the `sent` confirmation for half a second, or until a click anywhere on the overlay,
-  then idle.
+  then idle. With `pdfError` shown (§4) it stays until that click or Cancel.
 - **send error:** the message is the `timeout` text after 30 seconds, else the host's error, or
   else the `error` text. The note and
   the marks are kept, and "Try again" sends the same report. Cancel and Esc, after
@@ -106,8 +106,12 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   fires. While the menu is open, Esc closes the menu only, from Send and the menu button too, and
   puts the focus on the menu button; Tab closes it too. A PDF that cannot be made, a page the browser has no memory to draw
   included (as on iOS), shows the `pdfError` text, never a blank page, and
-  neither `saved` nor `error` fires, since nothing failed to send; one asked for while another is being made is ignored. One still
-  being made when a Send succeeds downloads once it is made, even after the dialog has closed; one the
+  neither `saved` nor `error` fires, since nothing failed to send; one asked for while another is being made is ignored. Files a
+  kept draft brought back are listed once they are checked, as Send waits for them too. One still
+  being made when a Send succeeds downloads once it is made, even after the dialog has closed, and
+  if it cannot be made, while that Send is under way or after it, `error` fires once the Send
+  succeeds, since the draft is gone, and the sent view, while still up, shows `pdfError` and stays
+  until the user closes it; one the
   dialog is gone before, by Cancel, Discard, `close()`, `discardDraft()`, `destroy()` or the element
   leaving the page, even after a Send that failed, is not saved.
 - **Attachments:** with `attachments` on, "Attach files" (`attach`) beside the category picks
@@ -123,10 +127,13 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   Cancel asks first when a file would be lost. It works after "Send without screenshot" too, and
   Save as PDF lists the files by name and size under the note. A fold and a page load keep
   them, with the exceptions §7 names. Brought back, they meet the page's limits again, as a pick
-  does: a page with `attachments` off drops them all, and a refused file is dropped, so a later
-  page does not bring it back. Each file the draft did not keep, by §7 or on a page with
-  `attachments` off, is named with `attachNotKept` when the draft comes back, and one a page's limits
-  refused is named so on the returns after its refusal, until the files change.
+  does, and a refused file is dropped, so a later page does not bring it back. A page with
+  `attachments` off shows none and sends none, but keeps them with the draft for a later page that
+  takes them; Send or Discard there ends them with the draft. Each file the draft did not keep, by
+  §7, is named with `attachNotKept` when the draft comes back, and one a page's limits
+  refused is named so on the returns after its refusal, until the files change. In each of these
+  texts the name stands between U+2068 and U+2069, its own isolate marks taken out and a
+  paragraph end in it shown as a space, so its direction marks cannot reorder the words around it.
 - **Screenshots:** a report holds up to 10. Each keeps its own marks and its own Undo; the tool
   chosen stays the same across them. The strip numbers them in the order they are sent: a click
   shows one, and its remove button, there only when there are two or more, takes one out. "Add
@@ -168,18 +175,26 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - No console logs, network logs, cookies or keystrokes are collected. Nothing is stored, with one
   exception: a draft folded in the draft bar is kept on this device for this tab, so a page load
   does not lose it. sessionStorage holds its id, and IndexedDB its screenshots with each one's
-  page facts (the whole URL: `redactUrl` applies only to the sent report), marks, note and category, and the attached files with their names and types. A file that can no longer be read, such as one moved since it was picked, is left out; if the files do not fit in the device's storage, the draft is kept without them. The name of each file left out, there or on a page with `attachments` off, is kept with the draft, so the dialog can name it when the draft comes back (§4). It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard,
-  `close()` or `discardDraft()`, which a host calls at a logout. `destroy()`, or the host removing the element, keeps it, open or folded, for the next
+  page facts (the whole URL: `redactUrl` applies only to the sent report), marks, note and category, and the attached files with their names and types. A file that can no longer be read, such as one moved since it was picked, is left out; if the files do not fit in the device's storage, the draft is kept without them. A fold whose screenshots can no longer be read, as WebKit makes it when a page load starts, keeps the fold before it; one the device refuses to store lets go of the fold before it too, unless that is a draft that could not come back (below), which stays. The name of each file left out there is kept with the draft, so the dialog can name it when the draft comes back (§4). It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard,
+  `close()` or `discardDraft()`, which a host calls at a logout, and at a `destroy()` or removal once
+  its Send was handed to the host. `destroy()`, or the host removing the element, keeps it, open or folded, for the next
   widget of that tag in this tab, unless its Send was already handed to the host; a click while
-  this tab keeps one opens it. One widget of a tag keeps a draft, the first whose element is in
+  this tab keeps one opens it. One that cannot come back, as when its code does not load or a
+  kept screenshot will not decode, fires `error` and stays kept: a page that can show it brings
+  it back, and one no page can read ends a day after it was last folded. On this page the next
+  open takes a fresh screenshot; once the user folds it, or a `destroy()` or removal keeps it, it
+  takes that draft's place, and that draft is deleted; if its write fails, as when the draft code
+  still does not load, that draft stays in its place, and the fresh one is kept in memory only. One widget of a tag keeps a draft, the first whose element is in
   the page; when that element leaves, the next widget of the tag to need it takes over, and never
-  writes over a draft still kept. Any other keeps its own in memory.
+  writes over a draft still kept, except one that could not come back, as above. Any other keeps
+  its own in memory.
   A `close()` made while a page load is still bringing it back hides it on
   that page and keeps it. A day after it was last folded or brought back, it no longer comes back,
-  and it is deleted the next time this site opens the dialog or keeps a draft, in any tab: nothing
-  of the widget runs on the device to delete it sooner. A tab the browser duplicates copies
-  sessionStorage, so the copy shares that draft. `draft: "memory"` keeps
-  it in memory only, and does not delete one an earlier page kept.
+  and it is deleted the next time a widget that keeps drafts, in any tab of this site, opens the
+  dialog or keeps a draft, or a page loads in the tab that kept it: nothing of the widget runs on
+  the device to delete it sooner. A tab the browser duplicates copies sessionStorage, so the copy
+  shares that draft.
+  `draft: "memory"` keeps it in memory only, and does not delete one an earlier page kept.
 - The query string and the hash of the URL are kept unless `redactUrl: true` is set.
 
 ## 8. Accessibility

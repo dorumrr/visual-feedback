@@ -544,7 +544,10 @@ it("Try again after the issue failed opens it, beside the files already committe
   const other: Attached[] = [[changed, "big.log", "text/plain"], attached[1] as Attached];
   expect((await withFiles.POST(postFiles(report, ...other))).status).toBe(204);
   expect(issues).toHaveLength(1);
-  expect(decode(files.get(`main:feedback/${report.id}/file-0.log`))).toEqual(Buffer.from(big));
+  // Buffer.equals: toEqual walks 1.5 MB one element at a time and can outlast the test timeout.
+  expect(decode(files.get(`main:feedback/${report.id}/file-0.log`)).equals(Buffer.from(big))).toBe(
+    true,
+  );
   const blob = `https://github.com/${REPO}/blob/main/feedback/${report.id}`;
   expect(issues[0]?.body).toContain(`[File 1](<${blob}/file-0.log>)`);
   expect(issues[0]?.body).toContain(`[File 2](<${blob}/file-1.png>)`);

@@ -9,10 +9,11 @@ and nobody but your server can write.
 
 Files the user attaches are off. To take them, set `ATTACHMENTS` at the top of the route to `true`,
 only together with the widget's `attachments` option; off, a report with files is refused with 400.
-On, each file goes into the same folder as `<id>/file-<n>` plus its type's ending, such as
-`file-0.png` or `file-1.log`, numbered from 0, with its content type, never under the user's file
-name. Each entry of `attachments` in `report` keeps the user's `name`, its `type` and `size`, and
-`file`, the stored name.
+On, each file goes into the same folder as `<id>/file-<n>` plus the ending its name has,
+lower-cased, which the server allows only when it fits the file's type, such as `file-0.png` or
+`file-1.log`, numbered from 0, with its content type, never under the user's file name. Each
+entry of `attachments` in `report` keeps the user's `name`, its `type` and `size`, and `file`, the
+stored name.
 
 `user_id` is the proof of who sent a report; `report.context` is not (docs/API.md). The images show
 the screen as the user saw it, with nothing masked (SPEC §7).
