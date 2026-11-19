@@ -28,6 +28,8 @@
 - A kept draft that cannot come back, such as on a page whose `categories` or `attachments`
   option is malformed, stays kept: `open()` rejects and `error` fires, and a page with valid
   options brings it back. Before, the draft was deleted.
+- A Save as PDF still being made when a Send succeeds now downloads once it is made; before, the
+  closing dialog dropped it without a word. Cancel, Discard and `close()` still drop it.
 - The demo site takes attachments, and lists each file of a report with a link that downloads it
   under a stored name, never the user's. The README points to the option.
 

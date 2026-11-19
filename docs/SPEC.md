@@ -106,7 +106,10 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   fires. While the menu is open, Esc closes the menu only, from Send and the menu button too, and
   puts the focus on the menu button; Tab closes it too. A PDF that cannot be made, a page the browser has no memory to draw
   included (as on iOS), shows the `pdfError` text, never a blank page, and
-  neither `saved` nor `error` fires, since nothing failed to send; one asked for while another is being made is ignored.
+  neither `saved` nor `error` fires, since nothing failed to send; one asked for while another is being made is ignored. One still
+  being made when a Send succeeds downloads once it is made, even after the dialog has closed; one the
+  dialog is gone before, by Cancel, Discard, `close()`, `discardDraft()`, `destroy()` or the element
+  leaving the page, even after a Send that failed, is not saved.
 - **Attachments:** with `attachments` on, "Attach files" (`attach`) beside the category picks
   files, and a list under the note shows each one's name and size with a remove button
   (`removeAttachment` and the name). A file's type comes from its name's ending, and only PNG,

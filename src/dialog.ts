@@ -752,6 +752,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // The report a send error keeps, so "Try again" sends the same one.
   let report: FeedbackReport | undefined;
   let mounted = true;
+  // Sent: a PDF the user asked for before it still saves once the dialog has closed.
+  let delivered = false;
 
   async function deliver(draft: Draft): Promise<void> {
     sending();
@@ -781,6 +783,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       submitted = true;
       handlers.emit("submit", report);
       await module.deliver(report, options);
+      // A close() while it was sent ended the draft first, and its PDF with it.
+      delivered = mounted;
       // Sent: a load during the short confirmation must not bring it back.
       discard();
       handlers.emit("sent", report);
@@ -833,7 +837,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         },
       );
       // Cancelled while it was built: nothing is saved.
-      if (!mounted) return;
+      if (!mounted && !delivered) return;
       const link = document.createElement("a");
       link.href = URL.createObjectURL(file);
       // The user's own date, not UTC: near midnight the two differ.
@@ -843,7 +847,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         .join("-");
       link.download = `feedback-${day}.pdf`;
       link.hidden = true;
-      panel.append(link);
+      (mounted ? panel : parent).append(link);
       link.click();
       link.remove();
       // A download reads the URL after the click returns, so it is let go a little later.

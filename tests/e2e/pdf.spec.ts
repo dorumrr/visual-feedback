@@ -390,6 +390,66 @@ test("a second Save while the first builds makes one file, and a fold meanwhile 
   expect(await events(page)).toEqual(["open", "saved"]);
 });
 
+test("a PDF still building when Send goes out finishes and downloads after the dialog closes", async ({
+  page,
+}) => {
+  await mount(page);
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.getByRole("textbox", { name: "Your note" }).fill("Sent while saving");
+  await holdJpeg(page);
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  await more(page).click();
+  await save(page).click();
+  await button(page, "Send").click();
+  await expect(page.locator("visual-feedback").getByRole("dialog")).toHaveCount(0);
+  const saving = page.waitForEvent("download");
+  await letGo(page);
+  expect((await saving).suggestedFilename()).toMatch(/^feedback-\d{4}-\d{2}-\d{2}\.pdf$/);
+  // Long enough for a second build, had one started.
+  await page.waitForTimeout(500);
+  expect(downloads).toBe(1);
+  expect((await events(page)).filter((event) => event === "saved")).toHaveLength(1);
+  // Nothing of the download is left on the page.
+  expect(
+    await page.evaluate(() =>
+      document.querySelector("visual-feedback")?.shadowRoot?.querySelector("a[download]"),
+    ),
+  ).toBeNull();
+});
+
+test("close() while a send is in flight saves no PDF, though the send then goes out", async ({
+  page,
+}) => {
+  await mount(page);
+  await page.evaluate(() => {
+    const w = window as unknown as Mounted & { release: () => void };
+    w.hold = new Promise((done) => {
+      w.release = done;
+    });
+  });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.getByRole("textbox", { name: "Your note" }).fill("Closed while sending");
+  await holdJpeg(page);
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  await more(page).click();
+  await save(page).click();
+  await button(page, "Send").click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as Mounted).reports.length))
+    .toBe(1);
+  await page.evaluate(() => (window as unknown as Mounted).vf.close());
+  await page.evaluate(() => (window as unknown as { release: () => void }).release());
+  await letGo(page);
+  await encoded(page, 1);
+  await page.waitForTimeout(500);
+  expect(downloads).toBe(0);
+  expect(await events(page)).not.toContain("saved");
+});
+
 test("Cancel while the PDF builds saves nothing and fires no saved event", async ({ page }) => {
   await mount(page);
   await trigger(page).click();
@@ -402,6 +462,8 @@ test("Cancel while the PDF builds saves nothing and fires no saved event", async
   await button(page, "Cancel").click();
   await letGo(page);
   await encoded(page, 1);
+  // Long enough for a download the cancelled build would make.
+  await page.waitForTimeout(500);
   expect(downloads).toBe(0);
   expect(await events(page)).toEqual(["open", "close"]);
 });
