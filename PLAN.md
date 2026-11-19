@@ -18,7 +18,7 @@ Tier: default  how hard each step is worked: low, medium or high, or default for
    [ ] E6  Recipe local stores attachments
    [ ] E7  Recipe S3 stores attachments and serves them as downloads
    [ ] E8  Recipe Postgres stores attachments            an existing install adds one table, only to opt in
-   [ ] E9  Recipe Supabase stores attachments
+   [x] E9  Recipe Supabase stores attachments
    [ ] E10 Recipe Vercel Blob stores attachments         Vercel refuses a body over 4.5 MB
    [ ] E11 Recipe GitHub Issues stores attachments       files stay in git history, said with its reason
    [ ] E12 AGENTS.md asks about attachments and gives its safety rule with the reason
