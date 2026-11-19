@@ -20,7 +20,7 @@ Tier: default  how hard each step is worked: low, medium or high, or default for
    [x] E8  Recipe Postgres stores attachments            an existing install adds one table, only to opt in
    [x] E9  Recipe Supabase stores attachments
    [ ] E10 Recipe Vercel Blob stores attachments         Vercel refuses a body over 4.5 MB
-   [ ] E11 Recipe GitHub Issues stores attachments       files stay in git history, said with its reason
+   [x] E11 Recipe GitHub Issues stores attachments       files stay in git history, said with its reason
    [ ] E12 AGENTS.md asks about attachments and gives its safety rule with the reason
    [ ] E13 Playground, README and CHANGELOG show 0.5.0
    [ ] E14 Clear PLAN.md once E1-E13 are done             Doru's instruction, 19 Nov
