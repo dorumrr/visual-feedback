@@ -10,6 +10,9 @@ export const TEXT_LIMIT = 280;
 /** The most screenshots one report holds, in the widget and on the server. */
 export const SCREENSHOT_LIMIT = 10;
 
+/** The most UTF-8 bytes of the report part, its images aside, the server accepts. */
+export const REPORT_LIMIT = 1_048_576;
+
 type Page = { url: string; title: string };
 type Viewport = { width: number; height: number; devicePixelRatio: number };
 type Scroll = { x: number; y: number };

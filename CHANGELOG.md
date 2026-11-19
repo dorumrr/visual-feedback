@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 (not released yet)
+
+- The note has no length limit; it was 2000 characters. With `endpoint`, a report whose part
+  without images is over 1 MiB, the most `parseFeedbackRequest` takes, is not sent: the new
+  `noteTooLong` text says so, `error` fires, and the dialog is back to editing (SPEC §4).
+  `onSubmit` has no cap.
+
 ## 0.4.3 (2026-10-16)
 
 - The GitHub Issues recipe assigns each issue to the logins in `GITHUB_FEEDBACK_ASSIGNEES`, up to

@@ -14,6 +14,7 @@ type Setup = {
   context?: "value" | "async" | "throw" | "array" | "slow";
   /** Event handlers that throw, as a host's buggy listener would. */
   throwIn?: ("submit" | "sent" | "error")[];
+  strings?: Record<string, string>;
 };
 
 type Page2 = {
@@ -72,6 +73,7 @@ async function create(page: Page, setup: Setup = {}): Promise<void> {
     }
     if (setup.requireNote !== undefined) options.requireNote = setup.requireNote;
     if (setup.redactUrl) options.redactUrl = true;
+    if (setup.strings) options.strings = setup.strings;
     if (setup.context === "value") options.context = () => ({ user: "u1" });
     if (setup.context === "async") options.context = async () => ({ user: "u2", plan: 3 });
     if (setup.context === "throw") {
@@ -108,6 +110,8 @@ type Received = {
   filename: string | undefined;
   headers: Record<string, string>;
   checked: ReturnType<typeof checkReport>;
+  /** The UTF-8 size of the report part, as the server measures it against its cap. */
+  reportBytes: number;
 };
 
 /** A fresh key on the test server's fake endpoint; `fail` posts answer 500 first. */
@@ -137,6 +141,7 @@ function endpoint(fail = 0): { url: string; received(page: Page): Promise<Receiv
             filename: part instanceof File ? part.name : undefined,
             headers,
             checked: checkReport(JSON.parse(String(form.get("report")))),
+            reportBytes: new Blob([String(form.get("report"))]).size,
           };
         }),
       );
@@ -495,12 +500,91 @@ test("with requireNote: false, an empty note is sent", async ({ page }) => {
   expect(notes).toEqual([""]);
 });
 
-test("the note stops at 2000 characters", async ({ page }) => {
+// 50,000 characters, among them emoji (two UTF-16 units each) and CJK (three UTF-8 bytes each).
+const LONG = "Total 合計 is wrong 🙂 ".repeat(2500);
+
+test("the note takes any length: a long one reaches onSubmit whole", async ({ page }) => {
   await opened(page, { submit: "ok" });
-  await expect(note(page)).toHaveAttribute("maxlength", "2000");
-  await note(page).focus();
-  await page.keyboard.insertText("a".repeat(2100));
-  expect((await note(page).inputValue()).length).toBe(2000);
+  await expect(note(page)).not.toHaveAttribute("maxlength");
+  await note(page).fill(LONG);
+  await sendButton(page).click();
+  await confirmed(page);
+  const notes = await page.evaluate(() => (window as unknown as Page2).reports.map((r) => r.note));
+  expect(notes).toEqual([LONG]);
+});
+
+test("endpoint: a long note reaches the server's parser whole", async ({ page }) => {
+  const api = endpoint();
+  await opened(page, { endpoint: api.url });
+  await note(page).fill(LONG);
+  await sendButton(page).click();
+  await confirmed(page);
+  const received = await api.received(page);
+  expect(received.map((got) => got.report.note)).toEqual([LONG]);
+});
+
+test("endpoint: a report part one byte over 1 MiB is not sent, says why, and a shorter note then sends", async ({
+  page,
+}) => {
+  const limit = 1_048_576;
+  const probe = endpoint();
+  await opened(page, { endpoint: probe.url });
+  await note(page).fill("x");
+  await sendButton(page).click();
+  await confirmed(page);
+  const [first] = (await probe.received(page)) as [Received];
+  // Everything in the part but the note; another report of this page only changes its id and time.
+  const rest = first.reportBytes - 1;
+  // Three-byte characters: well under 1 MiB in characters, over it in bytes.
+  const fill = (bytes: number) => "合".repeat(Math.floor(bytes / 3)) + "a".repeat(bytes % 3);
+  const api = endpoint();
+  await opened(page, { endpoint: api.url });
+  await note(page).fill(fill(limit - rest + 1));
+  await sendButton(page).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too long to send: the most is 1 MB of text. Shorten the note, then send again.",
+  );
+  await expect(note(page)).toBeEnabled();
+  await expect(note(page)).toBeFocused();
+  await expect(sendButton(page)).not.toHaveAttribute("aria-disabled");
+  await expect(page.getByText("Esc keeps it as a draft")).toBeVisible();
+  // No marks: Undo and Clear stay off, as before Send.
+  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Clear" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Draw" })).toBeEnabled();
+  expect(await log(page)).toEqual([
+    "open",
+    "error:The report is over the 1 MiB an endpoint accepts.",
+  ]);
+  expect(await api.received(page)).toEqual([]);
+  // Exactly at the cap: the parser takes it.
+  await note(page).fill(fill(limit - rest));
+  await sendButton(page).click();
+  await confirmed(page);
+  const received = await api.received(page);
+  expect(received.map((got) => got.reportBytes)).toEqual([limit]);
+  expect(received[0]?.report.note).toBe(fill(limit - rest));
+});
+
+test("strings.noteTooLong replaces the too-long message", async ({ page }) => {
+  const api = endpoint();
+  await opened(page, { endpoint: api.url, strings: { noteTooLong: "X noteTooLong" } });
+  await note(page).fill("合".repeat(400_000));
+  await sendButton(page).click();
+  await expect(page.getByRole("alert")).toHaveText("X noteTooLong");
+  expect(await api.received(page)).toEqual([]);
+});
+
+test("onSubmit: a note over 1 MiB has no cap and is handed over whole", async ({ page }) => {
+  await opened(page, { submit: "ok" });
+  const big = "合".repeat(400_000);
+  await note(page).fill(big);
+  await sendButton(page).click();
+  await confirmed(page);
+  const sizes = await page.evaluate(() =>
+    (window as unknown as Page2).reports.map((r) => new Blob([r.note]).size),
+  );
+  expect(sizes).toEqual([1_200_000]);
 });
 
 test("categories show a labelled picker and set report.category; without them there is none", async ({

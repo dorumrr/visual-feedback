@@ -10,7 +10,7 @@ Tier: default  how hard each step is worked: low, medium or high, or default for
    [x] Q5  Attachments: opt-in, 10 files, 15 MB each, safe types, all six recipes   done 19 Nov, Doru
 
    E. LONG NOTES AND ATTACHMENTS
-   [ ] E1  The note takes any length; a note over the server's cap says so before it sends
+   [x] E1  The note takes any length; a note over the server's cap says so before it sends
    [ ] E2  Save as PDF puts a long note over as many pages as it needs   ships with E1, never after it
    [ ] E3  The report type and parseFeedbackRequest carry attachments, only when the host opts in   BLOCKS E4, E6-E11
    [ ] E4  With attachments on, the user adds and removes files, sees each limit it meets, and they arrive   BLOCKS E5, E12

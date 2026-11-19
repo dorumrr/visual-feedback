@@ -1,5 +1,5 @@
 import type { Seen } from "./seen";
-import { checkReport, type FeedbackReport, type Mark } from "./shared/report";
+import { checkReport, type FeedbackReport, type Mark, REPORT_LIMIT } from "./shared/report";
 
 // getRandomValues, not randomUUID: randomUUID needs a secure context, and plain http must work.
 function uuid(): string {
@@ -81,6 +81,18 @@ export async function build(
   return { ...checked, screenshots };
 }
 
+/** The report part an endpoint receives: the report without its images, as JSON. */
+function part(report: FeedbackReport): string {
+  const screenshots = report.screenshots.map(({ image: _, ...shot }) => shot);
+  return JSON.stringify({ ...report, screenshots });
+}
+
+/** Whether the report part stays within what parseFeedbackRequest accepts; onSubmit has no cap. */
+export function fits(report: FeedbackReport, settings: Settings): boolean {
+  if (settings.onSubmit || !settings.endpoint) return true;
+  return new Blob([part(report)]).size <= REPORT_LIMIT;
+}
+
 /** How long a send may take before it fails as a TimeoutError. */
 const SEND_TIMEOUT = 30_000;
 
@@ -120,8 +132,7 @@ async function send(
   if (onSubmit) return host(() => onSubmit(report));
   if (!endpoint) throw new Error("Neither onSubmit nor endpoint is set.");
   const body = new FormData();
-  const screenshots = report.screenshots.map(({ image: _, ...shot }) => shot);
-  body.append("report", JSON.stringify({ ...report, screenshots }));
+  body.append("report", part(report));
   for (const [i, { image }] of report.screenshots.entries()) {
     const extension = image.type === "image/png" ? "png" : "webp";
     body.append(`image${i}`, image, `${report.id}-${i}.${extension}`);

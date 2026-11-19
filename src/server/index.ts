@@ -1,6 +1,7 @@
 import {
   checkReport,
   type FeedbackReport,
+  REPORT_LIMIT,
   type ReportFields,
   SCREENSHOT_LIMIT,
 } from "../shared/report";
@@ -8,8 +9,6 @@ import {
 export type { FeedbackReport, Mark, Screenshot } from "../shared/report";
 
 const DEFAULT_MAX_IMAGE_BYTES = 10_000_000;
-// The report part's own cap; the body may hold it beside the images.
-const REPORT_BYTES = 1_048_576;
 // Room for the multipart boundaries and part headers around every part.
 const FRAMING_BYTES = 65_536;
 const IMAGE_PART = /^image\d+$/;
@@ -76,7 +75,7 @@ export async function parseFeedbackRequest(
   if (!/^multipart\/form-data\s*;/i.test(contentType)) {
     throw new FeedbackRequestError(400, "The request is not multipart/form-data.");
   }
-  const body = await read(request, SCREENSHOT_LIMIT * maxImageBytes + REPORT_BYTES + FRAMING_BYTES);
+  const body = await read(request, SCREENSHOT_LIMIT * maxImageBytes + REPORT_LIMIT + FRAMING_BYTES);
   let form: FormData;
   try {
     form = await new Response(body, { headers: { "content-type": contentType } }).formData();
@@ -94,7 +93,7 @@ export async function parseFeedbackRequest(
       "The request has an image part named image; visual-feedback 0.2 sends image0, image1 and on.",
     );
   }
-  if (new Blob([json]).size > REPORT_BYTES) {
+  if (new Blob([json]).size > REPORT_LIMIT) {
     throw new FeedbackRequestError(413, "The report is too large.");
   }
   let fields: ReportFields;

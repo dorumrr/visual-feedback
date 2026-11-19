@@ -91,10 +91,13 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   shown screenshot. Undo takes back the last add, move, removal or Clear, one at a time.
 - **One colour** for the marks, `--vf-mark`, which defaults to a red that contrasts with most pages.
 - Pointer events, so mouse, pen and touch all work. While drawing, touch never scrolls the page.
-- **Note:** a textarea of 2000 characters at most, with a visible label (`noteLabel`). It is
+- **Note:** a textarea of any length, with a visible label (`noteLabel`). It is
   required unless `requireNote: false`: while it is empty or only spaces, Send is disabled, still
   focusable, with `noteRequired` as its tooltip, and the pointer on it turns the note's border red;
-  after a tap on a touch screen the border stays red until the note has text.
+  after a tap on a touch screen the border stays red until the note has text. With `endpoint`, a
+  report whose part without images is over 1 MiB in UTF-8, the most `parseFeedbackRequest`
+  takes, is not sent: `noteTooLong` shows, `error` fires, and the dialog is back to editing, so
+  the next Send takes the shorter note. `onSubmit` has no cap.
 - **Category:** shown only when `categories` is given, with a visible label (`categoryLabel`).
 - **Save as PDF:** Send is a split button; its caret ("More send options") opens a menu with "Save
   as PDF". It downloads `feedback-<date>.pdf`, dated by the user's clock and made in the browser:
@@ -245,3 +248,4 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | discardConfirm / keepEditing | Discard this feedback? / Keep editing |
 | moreSend / savePdf | More send options / Save as PDF |
 | pdfError | Couldn't save the PDF. |
+| noteTooLong | Too long to send: the most is 1 MB of text. Shorten the note, then send again. |

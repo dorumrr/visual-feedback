@@ -58,7 +58,8 @@ export type FeedbackStrings = Record<
   | "keepEditing"
   | "moreSend"
   | "savePdf"
-  | "pdfError",
+  | "pdfError"
+  | "noteTooLong",
   string
 >;
 

@@ -67,6 +67,7 @@ const ENGLISH: Texts = {
   moreSend: "More send options",
   savePdf: "Save as PDF",
   pdfError: "Couldn't save the PDF.",
+  noteTooLong: "Too long to send: the most is 1 MB of text. Shorten the note, then send again.",
 };
 
 // A key given as undefined, as an i18n lookup can return, keeps its English text.
@@ -237,8 +238,6 @@ function unlockScroll(): void {
 
 const FOCUSABLE = "button,textarea,input,select,a[href],[tabindex]:not([tabindex='-1'])";
 
-const NOTE_LIMIT = 2000;
-
 export type Mounted = {
   show(view: View): void;
   /**
@@ -325,6 +324,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   // Where a send error is shown: under the composer.
   let composer: HTMLElement | undefined;
   let failure: HTMLElement | undefined;
+  // The Esc hint and its footer: a send takes the hint away, and a refused one puts it back.
+  let hint: [HTMLElement, HTMLElement] | undefined;
   const root = () => parent.getRootNode() as ShadowRoot;
   // Where this tab keeps its draft's id: one per widget tag, as the loader reads it.
   const key = `visual-feedback:${root().host.localName}`;
@@ -709,6 +710,12 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       }
       // Closed before submit: nothing is sent.
       if (!mounted || !report) return;
+      if (!module.fits(report, options)) {
+        report = undefined;
+        handlers.emit("error", new RangeError("The report is over the 1 MiB an endpoint accepts."));
+        refused();
+        return;
+      }
       submitted = true;
       handlers.emit("submit", report);
       await module.deliver(report, options);
@@ -792,6 +799,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     draft = undefined;
     failure = undefined;
     composer = undefined;
+    hint = undefined;
     header.replaceChildren(title, cancel);
     if (view.error) {
       const message = element("p", "error", { role: "alert" });
@@ -812,7 +820,6 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     const field = element("textarea", "note", {
       id: "vf-note",
       placeholder: text.notePlaceholder,
-      maxlength: String(NOTE_LIMIT),
       rows: "4",
     });
     note = field;
@@ -903,9 +910,10 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     const footer = element("div", "footer");
     // Esc keeps a draft only when there is a screenshot to keep.
     if (image) {
-      const hint = element("p", "hint");
-      hint.textContent = text.escHint;
-      footer.append(hint);
+      const escHint = element("p", "hint");
+      escHint.textContent = text.escHint;
+      footer.append(escHint);
+      hint = [escHint, footer];
     }
     const more = iconButton("send-more", text.moreSend, ICONS.more, () =>
       menu(list.hidden === true),
@@ -995,6 +1003,25 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     backdrop.addEventListener("click", (event) => {
       if (event.timeStamp >= shown) handlers.close();
     });
+  }
+
+  // Too long to send: back to editing, so the next Send builds the report from the shorter note.
+  function refused(): void {
+    if (!primary || !composer) return;
+    draft = undefined;
+    for (const control of locked) control.disabled = false;
+    // Undo, Clear and Delete follow the marks, not the send.
+    refresh();
+    for (const item of inert) item.inert = false;
+    cancel.disabled = false;
+    if (hint) hint[1].prepend(hint[0]);
+    primary.removeAttribute("aria-disabled");
+    primary.textContent = text.send;
+    primary.append(icon(ICONS.send, "icon"));
+    failure = element("p", "error", { role: "alert" });
+    failure.textContent = text.noteTooLong;
+    composer.after(failure);
+    note?.focus();
   }
 
   function failed(message = text.error): void {

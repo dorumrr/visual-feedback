@@ -13,8 +13,8 @@ shape are the ones `@vercel/blob` 2.8.1 sends; if Vercel changes its API, compar
 ## Questions to ask
 
 1. Is there a Blob store with private access yet? If not, the developer creates one (section 1).
-2. Does the route run on Vercel? There, a report's screenshots together must stay under 4.5 MB
-   (section 1).
+2. Does the route run on Vercel? There, a report's screenshots and note together must stay under
+   4.5 MB (section 1).
 3. Who are the admins, and how does the app tell them from other users? The `GET` route's
    `canRead` needs it.
 
@@ -26,8 +26,8 @@ on the server. Never send it to the browser. Check it: open
 where the store id is the part of the token between `vercel_blob_rw_` and the next `_` (never the
 secret after it), and Vercel refuses it.
 
-Vercel refuses a request body over 4.5 MB, all screenshots of a report together, with 413, and the
-widget then shows its send error. The route takes images up to 3 MB each; a smaller
+Vercel refuses a request body over 4.5 MB, all screenshots and the note of a report together, with
+413, and the widget then shows its send error. The route takes images up to 3 MB each; a smaller
 `capture.maxWidth` (docs/API.md) keeps several screenshots under the limit.
 
 ## 2. The route
