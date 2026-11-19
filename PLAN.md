@@ -14,7 +14,7 @@ Tier: default  how hard each step is worked: low, medium or high, or default for
    [x] E2  Save as PDF puts a long note over as many pages as it needs   ships with E1, never after it
    [x] E3  The report type and parseFeedbackRequest carry attachments, only when the host opts in   BLOCKS E4, E6-E11
    [x] E4  With attachments on, the user adds and removes files, sees each limit it meets, and they arrive   BLOCKS E5, E12
-   [ ] E5  A kept draft brings its attachments back after a fold and a page load
+   [x] E5  A kept draft brings its attachments back after a fold and a page load
    [x] E6  Recipe local stores attachments
    [x] E7  Recipe S3 stores attachments and serves them as downloads
    [x] E8  Recipe Postgres stores attachments            an existing install adds one table, only to opt in

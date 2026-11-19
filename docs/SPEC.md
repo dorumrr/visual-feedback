@@ -31,7 +31,7 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   header in place of adding a row; on a landscape screen under 500 px high, the note and Send go
   beside the image.
   Esc and the header's Keep as draft fold it into the draft; the header's close button (Cancel)
-  discards it. When that would throw away a note, a mark, a second screenshot or a chosen category,
+  discards it. When that would throw away a note, a mark, a second screenshot, a chosen category or a file,
   Cancel first asks `discardConfirm`, with "Discard", `minimise` (before Send, with a screenshot) and
   `keepEditing`, which has the focus; Keep editing, and Esc on the question, take the question back
   and put the focus on Cancel. Without a screenshot ("Send without screenshot"), Esc cancels,
@@ -42,8 +42,8 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   another screenshot of the page as it is now, the bar and the dialog left out, adds it, and opens
   the dialog on it; a capture that fails opens the dialog on the kept draft with the
   `captureError` text, where Esc keeps the draft again and Cancel discards it, after the same question when it would throw work away. "Open", and `open()`, open the dialog as it was. A full page load in the same tab, or a route
-  change that removes the widget and makes the next one, brings the draft back, folded in the bar, as it was when it was last folded: its screenshots, marks, note and
-  category. Undo starts after the marks it brought back. With `draft: "memory"`, a page load ends
+  change that removes the widget and makes the next one, brings the draft back, folded in the bar, as it was when it was last folded: its screenshots, marks, note,
+  category and files (§4). Undo starts after the marks it brought back. With `draft: "memory"`, a page load ends
   it.
 - **sending:** the note, the category and the tools are disabled, and the Send button shows
   progress. The Esc hint goes, as it is absent with no screenshot: from Send on, Esc keeps no
@@ -116,8 +116,10 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   A file whose bytes are not the type its ending gives, as the server checks them, is kept out
   with `attachUnreadable`.
   Cancel asks first when a file would be lost. It works after "Send without screenshot" too, and
-  Save as PDF lists the files by name and size under the note. A fold keeps them; a page load
-  does not.
+  Save as PDF lists the files by name and size under the note. A fold and a page load keep
+  them, with the exceptions §7 names. Brought back, they meet the page's limits again, as a pick
+  does: a page with `attachments` off drops them all, and a refused file is dropped, so a later
+  page does not bring it back.
 - **Screenshots:** a report holds up to 10. Each keeps its own marks and its own Undo; the tool
   chosen stays the same across them. The strip numbers them in the order they are sent: a click
   shows one, and its remove button, there only when there are two or more, takes one out. "Add
@@ -159,7 +161,7 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - No console logs, network logs, cookies or keystrokes are collected. Nothing is stored, with one
   exception: a draft folded in the draft bar is kept on this device for this tab, so a page load
   does not lose it. sessionStorage holds its id, and IndexedDB its screenshots with each one's
-  page facts (the whole URL: `redactUrl` applies only to the sent report), marks, note and category. It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard,
+  page facts (the whole URL: `redactUrl` applies only to the sent report), marks, note and category, and the attached files with their names and types. A file that can no longer be read, such as one moved since it was picked, is left out; if the files do not fit in the device's storage, the draft is kept without them. It is deleted when the draft ends: the moment Send succeeds, or at Cancel, Discard,
   `close()` or `discardDraft()`, which a host calls at a logout. `destroy()`, or the host removing the element, keeps it, open or folded, for the next
   widget of that tag in this tab, unless its Send was already handed to the host; a click while
   this tab keeps one opens it. One widget of a tag keeps a draft, the first whose element is in

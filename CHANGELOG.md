@@ -18,7 +18,8 @@
   strings `attach`, `attachments`, `removeAttachment`, `attachTooMany`, `attachTooBig`,
   `attachTooBigTogether`, `attachType` and `attachUnreadable`; new parts `attach`, `attach-input`, `files`, `file`,
   `file-name`, `file-size` and `file-remove`. Each storage recipe stores files behind its own
-  `ATTACHMENTS` switch, off as shipped. `AttachmentLimits` is exported from both entries.
+  `ATTACHMENTS` switch, off as shipped. `AttachmentLimits` is exported from both entries. A folded draft keeps its files across
+  a page load, as it keeps its screenshots (SPEC §7).
 
 ## 0.4.3 (2026-10-16)
 

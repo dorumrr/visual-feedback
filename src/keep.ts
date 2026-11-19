@@ -7,11 +7,14 @@ export type Kept = {
   note: string;
   category: string | undefined;
   shots: { image: Blob; marks: Mark[]; seen: Seen }[];
+  files: File[];
 };
 
 // Bytes, not Blobs: WebKit cannot store a Blob in a private window's IndexedDB.
-type Stored = Omit<Kept, "shots"> & {
+type Stored = Omit<Kept, "shots" | "files"> & {
   shots: { image: ArrayBuffer; type: string; marks: Mark[]; seen: Seen }[];
+  // A draft kept before attachments has none.
+  files?: { bytes: ArrayBuffer; name: string; type: string }[];
 };
 
 /** A draft older than this is gone: the tab that kept it was most likely closed. */
@@ -68,7 +71,13 @@ export async function keep(id: string, draft: Kept): Promise<unknown> {
   for (const { image, ...shot } of draft.shots) {
     shots.push({ ...shot, image: await image.arrayBuffer(), type: image.type });
   }
-  const stored: Stored = { ...draft, shots };
+  const files = [];
+  for (const file of draft.files) {
+    // Moved or changed on disk since the pick: that file alone is left out.
+    const bytes = await file.arrayBuffer().catch(() => undefined);
+    if (bytes) files.push({ bytes, name: file.name, type: file.type });
+  }
+  const stored: Stored = { ...draft, shots, files };
   return run("readwrite", (store) => {
     store.put(stored, id);
     sweepIn(store);
@@ -83,7 +92,10 @@ export async function read(id: string): Promise<Kept | undefined> {
     ...shot,
     image: new Blob([image], { type }),
   }));
-  return { ...stored, shots };
+  const files = (stored.files ?? []).map(
+    ({ bytes, name, type }) => new File([bytes], name, { type }),
+  );
+  return { ...stored, shots, files };
 }
 
 export function forget(id: string): Promise<unknown> {

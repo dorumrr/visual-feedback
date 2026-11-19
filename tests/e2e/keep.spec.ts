@@ -28,20 +28,29 @@ async function stroke(page: Page, y = 0.5): Promise<void> {
   await page.mouse.up();
 }
 
-/** The one draft the device holds: its note, and how many screenshots it keeps. */
+/** The one draft the device holds: its note, how many screenshots it keeps, and its file names. */
 const storedDraft = (page: Page) =>
   page.evaluate(
     () =>
-      new Promise<{ note: string; shots: number } | undefined>((resolve) => {
-        const request = indexedDB.open("visual-feedback", 1);
-        request.onsuccess = () => {
-          const cursors = request.result.transaction("drafts").objectStore("drafts").openCursor();
-          cursors.onsuccess = () => {
-            const value = cursors.result?.value;
-            resolve(value && { note: value.note, shots: value.shots.length });
+      new Promise<{ note: string; shots: number; files: string[]; saved: number } | undefined>(
+        (resolve) => {
+          const request = indexedDB.open("visual-feedback", 1);
+          request.onsuccess = () => {
+            const cursors = request.result.transaction("drafts").objectStore("drafts").openCursor();
+            cursors.onsuccess = () => {
+              const value = cursors.result?.value;
+              resolve(
+                value && {
+                  note: value.note,
+                  shots: value.shots.length,
+                  files: (value.files ?? []).map((file: { name: string }) => file.name),
+                  saved: value.saved,
+                },
+              );
+            };
           };
-        };
-      }),
+        },
+      ),
   );
 const storedNote = async (page: Page) => (await storedDraft(page))?.note;
 
@@ -321,20 +330,26 @@ test("destroy(), as at a route change, keeps a folded draft for the next widget 
 test("destroy() with the dialog open keeps the draft as it is, marks and note included", async ({
   page,
 }) => {
-  await mount(page);
+  await mount(page, { attachments: true });
   await trigger(page).click();
   await expect(image(page)).toBeVisible();
   await stroke(page);
   await note(page).fill("Never folded");
+  await picker(page).setInputFiles([
+    { name: "open.txt", mimeType: "text/plain", buffer: Buffer.from("open") },
+  ]);
+  await expect(files(page)).toHaveText(["open.txt"]);
   await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
   // Straight away, as a route's next component would: the write may still be under way.
-  await mount(page);
+  await mount(page, { attachments: true });
   await expect(bar(page)).toBeVisible();
   await button(page, "Open").click();
   await expect(note(page)).toHaveValue("Never folded");
+  await expect(files(page)).toHaveText(["open.txt"]);
   await button(page, "Send").click();
   await finish(page);
   expect((await sent(page)).screenshots.map((shot) => shot.marks.length)).toEqual([1]);
+  expect(await sentFiles(page)).toEqual([["open.txt", "text/plain", "open"]]);
   await expect.poll(() => stored(page)).toBe(0);
   expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([]);
 });
@@ -1437,4 +1452,375 @@ test("a brought-back draft whose marks are all cleared closes on Cancel without 
   await button(page, "Cancel").click();
   await expect(page.getByRole("group", { name: "Discard this feedback?" })).toHaveCount(0);
   await expect(dialog(page)).toHaveCount(0);
+});
+
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+  "base64",
+);
+const picker = (page: Page) => page.locator("visual-feedback").locator("input.attach-input");
+const files = (page: Page) => page.locator("visual-feedback").locator(".file-name");
+
+/** The attachments of the last report onSubmit got, by name, type and text or size. */
+const sentFiles = (page: Page) =>
+  page.evaluate(async () => {
+    const report = (
+      window as unknown as { reports: { attachments?: { file: Blob; name: string }[] }[] }
+    ).reports.at(-1);
+    return Promise.all(
+      (report?.attachments ?? []).map(async ({ file, name }) => [
+        name,
+        file.type,
+        file.type === "text/plain"
+          ? await file.text()
+          : btoa(String.fromCharCode(...new Uint8Array(await file.arrayBuffer()))),
+      ]),
+    );
+  });
+
+test("attached files come back after a page load, by name, type and bytes, and are sent", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "steps.txt", mimeType: "text/plain", buffer: Buffer.from("step 1\n") },
+    { name: "bill.png", mimeType: "image/png", buffer: PNG },
+  ]);
+  await expect(files(page)).toHaveText(["steps.txt", "bill.png"]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page, { attachments: true });
+  await expect(bar(page)).toBeVisible();
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["steps.txt", "bill.png"]);
+  await note(page).fill("Back after a load");
+  await button(page, "Send").click();
+  await finish(page);
+  expect(await sentFiles(page)).toEqual([
+    ["steps.txt", "text/plain", "step 1\n"],
+    ["bill.png", "image/png", PNG.toString("base64")],
+  ]);
+  await expect.poll(() => stored(page)).toBe(0);
+});
+
+test("a file removed after a load stays removed, and a file added then comes back, after a second load", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+    { name: "b.txt", mimeType: "text/plain", buffer: Buffer.from("2") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["a.txt", "b.txt"]);
+  await button(page, "Remove a.txt").click();
+  await picker(page).setInputFiles([
+    { name: "c.txt", mimeType: "text/plain", buffer: Buffer.from("3") },
+  ]);
+  await expect(files(page)).toHaveText(["b.txt", "c.txt"]);
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["b.txt", "c.txt"]);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["b.txt", "c.txt"]);
+  await note(page).fill("Second load");
+  await button(page, "Send").click();
+  await finish(page);
+  expect(await sentFiles(page)).toEqual([
+    ["b.txt", "text/plain", "2"],
+    ["c.txt", "text/plain", "3"],
+  ]);
+});
+
+test("a draft kept by 0.4, with no files in it, comes back as before, with none", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  // What 0.4 wrote: the same record with no files key at all.
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        const request = indexedDB.open("visual-feedback", 1);
+        request.onsuccess = () => {
+          const store = request.result.transaction("drafts", "readwrite").objectStore("drafts");
+          const cursors = store.openCursor();
+          cursors.onsuccess = () => {
+            const cursor = cursors.result;
+            if (!cursor) return;
+            const { files: _, ...old } = cursor.value;
+            cursor.update(old);
+          };
+          store.transaction.oncomplete = () => done();
+        };
+      }),
+  );
+  const keys = await page.evaluate(
+    () =>
+      new Promise<string[]>((done) => {
+        const request = indexedDB.open("visual-feedback", 1);
+        request.onsuccess = () => {
+          const cursors = request.result.transaction("drafts").objectStore("drafts").openCursor();
+          cursors.onsuccess = () => done(Object.keys(cursors.result?.value ?? {}));
+        };
+      }),
+  );
+  expect(keys).not.toContain("files");
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(note(page)).toBeVisible();
+  await expect(files(page)).toHaveCount(0);
+  await note(page).fill("Old draft");
+  await button(page, "Send").click();
+  await finish(page);
+  expect(await sentFiles(page)).toEqual([]);
+});
+
+test("Discard and discardDraft() leave no kept files on the device", async ({ page }) => {
+  for (const end of ["Discard", "discardDraft"] as const) {
+    await mount(page, { attachments: true });
+    await trigger(page).click();
+    await expect(image(page)).toBeVisible();
+    await picker(page).setInputFiles([
+      { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+    ]);
+    await page.keyboard.press("Escape");
+    await expect.poll(() => stored(page)).toBe(1);
+    if (end === "Discard") await button(page, "Discard").click();
+    else {
+      await page.evaluate(async () => {
+        const { discardDraft } = await import("/dist/index.mjs" as string);
+        await discardDraft();
+      });
+    }
+    await expect.poll(() => stored(page), end).toBe(0);
+    await page.evaluate(() => (window as unknown as Mounted).vf.destroy());
+  }
+});
+
+test("a kept draft brought back on a page with attachments off takes no files", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page);
+  await expect(bar(page)).toBeVisible();
+  // Written again without them, so no later page with attachments on brings them back.
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual([]);
+  await button(page, "Open").click();
+  await note(page).fill("Attachments off now");
+  await button(page, "Send").click();
+  await finish(page);
+  expect(await sentFiles(page)).toEqual([]);
+});
+
+test("a fold made while a picked file is still being checked keeps that file", async ({ page }) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.evaluate(() => {
+    const slice = Blob.prototype.slice;
+    Blob.prototype.slice = function (this: Blob, ...args: Parameters<Blob["slice"]>) {
+      const part = slice.apply(this, args);
+      const read = part.arrayBuffer.bind(part);
+      part.arrayBuffer = () => new Promise((done) => setTimeout(() => done(read()), 500));
+      return part;
+    };
+  });
+  await picker(page).setInputFiles([
+    { name: "slow.txt", mimeType: "text/plain", buffer: Buffer.from("slow") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect(bar(page)).toBeVisible();
+  await expect.poll(() => stored(page)).toBe(1);
+  await page.waitForTimeout(800);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["slow.txt"]);
+});
+
+test("kept files go through the limits of the page that brings them back", async ({ page }) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+    { name: "b.txt", mimeType: "text/plain", buffer: Buffer.from("2") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page, { attachments: { maxFiles: 1 } });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["a.txt"]);
+  await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
+    "b.txt is not attached: the most is 1 files.",
+  );
+  // Refused as a pick is: the next write keeps only what the page took.
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["a.txt"]);
+});
+
+test("Cancel asks first on a brought-back draft that only its files would lose", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["a.txt"]);
+  await button(page, "Cancel").click();
+  await expect(page.getByText("Discard this feedback?")).toBeVisible();
+  await expect.poll(() => stored(page)).toBe(1);
+});
+
+test("a brought-back draft with nothing to lose closes on Cancel without asking, attachments on", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual([]);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(image(page)).toBeVisible();
+  await button(page, "Cancel").click();
+  await expect(page.getByRole("group", { name: "Discard this feedback?" })).toHaveCount(0);
+  await expect(dialog(page)).toHaveCount(0);
+});
+
+test("a brought-back file removed again leaves nothing to lose: Cancel closes without asking", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["a.txt"]);
+  await button(page, "Remove a.txt").click();
+  await expect(files(page)).toHaveCount(0);
+  await button(page, "Cancel").click();
+  await expect(page.getByRole("group", { name: "Discard this feedback?" })).toHaveCount(0);
+  await expect(dialog(page)).toHaveCount(0);
+  await expect.poll(() => stored(page)).toBe(0);
+});
+
+test("files come back after two loads in a row with the draft never opened between them", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") },
+    { name: "b.txt", mimeType: "text/plain", buffer: Buffer.from("2") },
+  ]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  const saved = (await storedDraft(page))?.saved;
+  await load(page, { attachments: true });
+  await expect(bar(page)).toBeVisible();
+  // The load-time write of the unopened draft must carry its files.
+  await expect.poll(async () => (await storedDraft(page))?.saved).not.toBe(saved);
+  expect((await storedDraft(page))?.files).toEqual(["a.txt", "b.txt"]);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["a.txt", "b.txt"]);
+});
+
+test("a file that can no longer be read is left out of the kept draft, and the others are kept", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await picker(page).setInputFiles([
+    { name: "ok.txt", mimeType: "text/plain", buffer: Buffer.from("ok") },
+    { name: "gone.txt", mimeType: "text/plain", buffer: Buffer.from("gone") },
+  ]);
+  await expect(files(page)).toHaveText(["ok.txt", "gone.txt"]);
+  await page.evaluate(() => {
+    const read = Blob.prototype.arrayBuffer;
+    Blob.prototype.arrayBuffer = function (this: Blob) {
+      // As a file moved or changed on disk after the pick.
+      if (this instanceof File && this.name === "gone.txt") {
+        return Promise.reject(new DOMException("gone", "NotReadableError"));
+      }
+      return read.call(this);
+    };
+  });
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await storedDraft(page))?.files).toEqual(["ok.txt"]);
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(files(page)).toHaveText(["ok.txt"]);
+});
+
+test("a draft whose files do not fit in storage is kept without them, screenshots and note intact", async ({
+  page,
+}) => {
+  await mount(page, { attachments: true });
+  await trigger(page).click();
+  await expect(image(page)).toBeVisible();
+  await page.evaluate(() => {
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (
+      this: IDBObjectStore,
+      value: { files?: unknown[] },
+      key,
+    ) {
+      const request = put.call(this, value, key);
+      // As a full device does: the put is taken, then its transaction aborts.
+      if (value?.files?.length) setTimeout(() => this.transaction.abort());
+      return request;
+    };
+  });
+  await note(page).fill("Kept without the file");
+  await picker(page).setInputFiles([
+    { name: "big.txt", mimeType: "text/plain", buffer: Buffer.from("big") },
+  ]);
+  await expect(files(page)).toHaveText(["big.txt"]);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => stored(page)).toBe(1);
+  await expect.poll(() => storedNote(page)).toBe("Kept without the file");
+  expect(await storedDraft(page)).toMatchObject({
+    note: "Kept without the file",
+    shots: 1,
+    files: [],
+  });
+  await load(page, { attachments: true });
+  await button(page, "Open").click();
+  await expect(note(page)).toHaveValue("Kept without the file");
+  await expect(image(page)).toBeVisible();
+  await expect(files(page)).toHaveCount(0);
 });

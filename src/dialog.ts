@@ -661,15 +661,23 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     }));
     const draft = { note: note?.value ?? "", category: picker?.value };
     writing = writing.then(async () => {
+      // After the picks being checked, so a file picked just before the fold is kept too.
+      await checking;
+      const attached = [...files];
       try {
-        const images = [];
+        const images: { image: Blob; marks: Mark[]; seen: Seen }[] = [];
         for (const { blob, ...shot } of shots) {
           if (!blob) throw new Error("not kept");
           images.push({ ...shot, image: await blob });
         }
         const { keep, forget } = await import("./keep");
         if (turn !== ended) return;
-        await keep(id, { saved: Date.now(), ...draft, shots: images });
+        const saved = Date.now();
+        // Files can fill the device's storage: then the draft is kept without them.
+        await keep(id, { saved, ...draft, shots: images, files: attached }).catch((error) => {
+          if (!attached.length) throw error;
+          return keep(id, { saved, ...draft, shots: images, files: [] });
+        });
         // Ended while it was written: discard() already let go of the key, so the record goes too.
         if (turn !== ended) await forget(id);
       } catch {
@@ -1111,6 +1119,10 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     };
     render();
     locked.push(attach);
+    // Files a kept draft brought back meet this page's limits, as a pick does.
+    const brought = files;
+    files = [];
+    if (brought.length) checking = checking.then(() => take(brought)).catch(() => {});
     return [attach, pick, list];
   }
 
@@ -1324,6 +1336,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         if (!mounted) return false;
         kept = id;
         seen = draft.shots[0]?.seen ?? look();
+        // Before show(), which lists them; a page with attachments off takes none.
+        files = attachmentLimits(settings.attachments) ? draft.files : [];
         show({ image: images[0] ?? null });
         for (const image of images.slice(1)) add(image);
         showShot(0);
