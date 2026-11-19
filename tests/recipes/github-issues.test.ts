@@ -113,10 +113,16 @@ async function fake(input: RequestInfo | URL, init: RequestInit = {}): Promise<R
 }
 
 let route: Route;
+let withFiles: Route;
 const saved = { ...process.env };
 
 beforeAll(async () => {
-  route = await load<Route>(block("ts"), { "visual-feedback/server": SERVER });
+  const imports = { "visual-feedback/server": SERVER };
+  route = await load<Route>(block("ts"), imports);
+  // The same route with its one switch flipped, as a host turns attachments on.
+  const off = "const ATTACHMENTS = false;";
+  expect(block("ts").split(off).length).toBe(2);
+  withFiles = await load<Route>(block("ts").replace(off, "const ATTACHMENTS = true;"), imports);
   globalThis.fetch = fake as typeof fetch;
 });
 
@@ -165,6 +171,21 @@ function post(report: Record<string, unknown>, image?: Uint8Array, type = "image
 
 const decode = (content: string | undefined) => Buffer.from(content ?? "", "base64");
 
+const LOG = new TextEncoder().encode("step 1\nstep 2\n");
+type Attached = [bytes: Uint8Array, name: string, type: string];
+
+// A report with one PNG screenshot and the given files, as the widget sends them.
+function postFiles(report: Record<string, unknown>, ...attached: Attached[]): Request {
+  const attachments = attached.map(([bytes, name, type]) => ({ name, type, size: bytes.length }));
+  const form = new FormData();
+  form.append("report", JSON.stringify({ ...report, attachments }));
+  form.append("image0", new Blob([PNG as Uint8Array<ArrayBuffer>], { type: "image/png" }), "x");
+  for (const [i, [bytes, name, type]] of attached.entries()) {
+    form.append(`file${i}`, new Blob([bytes as Uint8Array<ArrayBuffer>], { type }), name);
+  }
+  return new Request("http://localhost/api/feedback", { method: "POST", body: form });
+}
+
 for (const [layout, branch] of [
   ["a dedicated private repo, on its default branch", undefined],
   ["the code repo, on the orphan branch", "visual-feedback"],
@@ -205,10 +226,135 @@ for (const [layout, branch] of [
     if (branch) process.env.GITHUB_FEEDBACK_BRANCH = branch;
     repo = { ...repo, private: false };
     expect((await route.POST(post(valid(), PNG))).status).toBe(503);
+    // With attachments on, a public repo gets no file either.
+    expect(
+      (await withFiles.POST(postFiles(valid(), [LOG, "steps.log", "text/plain"]))).status,
+    ).toBe(503);
     expect(files.size).toBe(0);
     expect(issues).toEqual([]);
   });
+
+  it(`in ${layout}, with ATTACHMENTS false, as the recipe ships, a report with files is refused and GitHub is not asked`, async () => {
+    if (branch) process.env.GITHUB_FEEDBACK_BRANCH = branch;
+    const response = await route.POST(postFiles(valid(), [LOG, "steps.log", "text/plain"]));
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe("This endpoint takes no attachments.");
+    expect(requests).toEqual([]);
+    // The control: the same files go through once the switch is on.
+    expect(
+      (await withFiles.POST(postFiles(valid(), [LOG, "steps.log", "text/plain"]))).status,
+    ).toBe(204);
+  });
+
+  it(`in ${layout}, with ATTACHMENTS true, each file is committed beside the images, linked in the issue and listed in report.json`, async () => {
+    if (branch) process.env.GITHUB_FEEDBACK_BRANCH = branch;
+    const ref = branch ?? "main";
+    const report = valid();
+    const attached: Attached[] = [
+      [PNG, "Bill 12.PNG", "image/png"],
+      [LOG, "steps.log", "text/plain"],
+    ];
+    expect((await withFiles.POST(postFiles(report, ...attached))).status).toBe(204);
+    const at = (name: string) => `${ref}:feedback/${report.id}/${name}`;
+    expect([...files.keys()].sort()).toEqual(
+      ["file-0.png", "file-1.log", "report.json", "screenshot-0.png"].map(at),
+    );
+    expect(decode(files.get(at("file-0.png")))).toEqual(Buffer.from(PNG));
+    expect(decode(files.get(at("file-1.log")))).toEqual(Buffer.from(LOG));
+    // Each file is committed before the issue opens, and report.json last.
+    const writes = requests.filter((r) => !r.startsWith("GET ")).map((r) => r.split("/").pop());
+    expect(writes).toEqual([
+      "screenshot-0.png",
+      "file-0.png",
+      "file-1.log",
+      "issues",
+      "report.json",
+    ]);
+    const blob = `https://github.com/${REPO}/blob/${ref}/feedback/${report.id}`;
+    const body = issues[0]?.body ?? "";
+    expect(body).toContain(
+      `**Files:**\n\n[File 1](<${blob}/file-0.png>)\n\`\`\`text\nBill 12.PNG\n\`\`\`\n\n` +
+        `[File 2](<${blob}/file-1.log>)\n\`\`\`text\nsteps.log\n\`\`\``,
+    );
+    // Linked, never shown inline: the only images in the issue are the screenshots.
+    expect(body.match(/!\[/g)).toHaveLength(1);
+    const marker = JSON.parse(String(decode(files.get(at("report.json")))));
+    expect(marker.attachments).toEqual([
+      { name: "Bill 12.PNG", type: "image/png", size: PNG.length, file: "file-0.png" },
+      { name: "steps.log", type: "text/plain", size: LOG.length, file: "file-1.log" },
+    ]);
+    expect(marker.issue).toBe(1);
+    // A resend in this layout opens nothing and replaces nothing.
+    const before = new Map(files);
+    const forged: Attached = [Uint8Array.of(...PNG, 0), "Bill 12.PNG", "image/png"];
+    expect((await withFiles.POST(postFiles(report, forged))).status).toBe(204);
+    expect(issues).toHaveLength(1);
+    expect(files).toEqual(before);
+  });
+
+  it(`in ${layout}, a report with no files makes exactly the same commits and issue with ATTACHMENTS true or false`, async () => {
+    if (branch) process.env.GITHUB_FEEDBACK_BRANCH = branch;
+    const ref = branch ?? "main";
+    const report: Record<string, unknown> = { ...valid(), category: "bug" };
+    const sent = async (one: Route) => {
+      expect((await one.POST(post(report, PNG))).status).toBe(204);
+      const made = {
+        files: new Map(files),
+        issues: structuredClone(issues),
+        requests: [...requests],
+      };
+      files.clear();
+      issues.length = 0;
+      requests.length = 0;
+      return made;
+    };
+    const off = await sent(route);
+    expect([...off.files.keys()].sort()).toEqual([
+      `${ref}:feedback/${report.id}/report.json`,
+      `${ref}:feedback/${report.id}/screenshot-0.png`,
+    ]);
+    expect(
+      JSON.parse(String(decode(off.files.get(`${ref}:feedback/${report.id}/report.json`)))),
+    ).not.toHaveProperty("attachments");
+    expect(off.issues[0]?.body).not.toContain("**Files:**");
+    expect(await sent(withFiles)).toEqual(off);
+    // An empty list of files, as a widget may send, is the same as none once files are on.
+    const empty = { ...report, attachments: [] };
+    expect((await withFiles.POST(post(empty, PNG))).status).toBe(204);
+    expect(issues[0]?.body).toBe(off.issues[0]?.body);
+    expect(files.get(`${ref}:feedback/${report.id}/report.json`)).toBe(
+      off.files.get(`${ref}:feedback/${report.id}/report.json`),
+    );
+  });
 }
+
+it("an attached file's name never becomes a path, and shows in the issue only as text", async () => {
+  const report = valid();
+  const odd = ["report.json.png", "screenshot-0.png", "..png", "Ping @everyone ```\n.md"];
+  const types = ["image/png", "image/png", "image/png", "text/markdown"];
+  // A name with a line break is the server's to refuse; it is the only one here it refuses.
+  const refused = await withFiles.POST(postFiles(report, [LOG, odd[3] ?? "", "text/markdown"]));
+  expect(refused.status).toBe(400);
+  expect(requests).toEqual([]);
+  const names = ["report.json.png", "screenshot-0.png", "..png", "Ping @everyone ```.md"];
+  const attached = names.map(
+    (name, i): Attached => [types[i] === "image/png" ? PNG : LOG, name, String(types[i])],
+  );
+  expect((await withFiles.POST(postFiles(report, ...attached))).status).toBe(204);
+  expect([...files.keys()].sort()).toEqual(
+    ["file-0.png", "file-1.png", "file-2.png", "file-3.md", "report.json", "screenshot-0.png"].map(
+      (name) => `main:feedback/${report.id}/${name}`,
+    ),
+  );
+  // The screenshot a name copies is the real one, not the file.
+  expect(decode(files.get(`main:feedback/${report.id}/screenshot-0.png`))).toEqual(
+    Buffer.from(PNG),
+  );
+  const marker = JSON.parse(String(decode(files.get(`main:feedback/${report.id}/report.json`))));
+  expect(marker.attachments.map((entry: { name: string }) => entry.name)).toEqual(names);
+  // In a fence longer than any run of backticks in it, so GitHub renders it as text.
+  expect(issues[0]?.body).toContain("\n````text\nPing @everyone ```.md\n````");
+});
 
 it("a WebP report is committed and linked as screenshot-0.webp", async () => {
   const report = valid();
@@ -330,6 +476,12 @@ it("the longest report of every field at once still opens an issue GitHub accept
     ...shot,
     page: { ...(shot?.page as object), url: `https://example.test/${i}/${"a".repeat(2_500)}` },
   }));
+  // Ten files, each with the longest name the server takes, of backticks.
+  const attachments = Array.from({ length: 10 }, () => ({
+    name: `${"`".repeat(251)}.txt`,
+    type: "text/plain",
+    size: LOG.length,
+  }));
   const form = new FormData();
   form.append(
     "report",
@@ -342,17 +494,22 @@ it("the longest report of every field at once still opens an issue GitHub accept
       timeZone: "`".repeat(500),
       note: "`".repeat(30_000),
       context: { log: "`".repeat(20_000), emoji: "😀".repeat(5_000) },
+      attachments,
     }),
   );
   for (const i of screenshots.keys()) {
     form.append(`image${i}`, new Blob([PNG], { type: "image/png" }), "x");
   }
+  for (const i of attachments.keys()) {
+    form.append(`file${i}`, new Blob([LOG], { type: "text/plain" }), "x");
+  }
   const request = new Request("http://localhost/api/feedback", { method: "POST", body: form });
-  expect((await route.POST(request)).status).toBe(204);
+  expect((await withFiles.POST(request)).status).toBe(204);
   const [issue] = issues as [Issue];
   expect(issue.body.length).toBeLessThanOrEqual(65_536);
-  // Every screenshot is still in it.
+  // Every screenshot and every file is still in it.
   expect(issue.body.match(/!\[Screenshot \d+\]/g)).toHaveLength(10);
+  expect(issue.body.match(/\[File \d+\]\(<[^>]+\/file-\d\.txt>\)/g)).toHaveLength(10);
 });
 
 it("a branch name with # is encoded in the image link", async () => {
@@ -361,6 +518,41 @@ it("a branch name with # is encoded in the image link", async () => {
   const report = valid();
   await route.POST(post(report, PNG));
   expect(issues[0]?.body).toContain(`/blob/fb%231/feedback/${report.id}/screenshot-0.png?raw=true`);
+  // An attached file's link is encoded the same way.
+  const next = { ...valid(), id: crypto.randomUUID() };
+  await withFiles.POST(postFiles(next, [LOG, "steps.log", "text/plain"]));
+  expect(issues[1]?.body).toContain(
+    `(<https://github.com/${REPO}/blob/fb%231/feedback/${next.id}/file-0.log>)`,
+  );
+});
+
+it("Try again after the issue failed opens it, beside the files already committed, one over 1 MB", async () => {
+  const big = new Uint8Array(1_500_000).fill(0x61);
+  const report = valid();
+  const attached: Attached[] = [
+    [big, "big.log", "text/plain"],
+    [PNG, "b.png", "image/png"],
+  ];
+  failIssue = true;
+  await expect(withFiles.POST(postFiles(report, ...attached))).rejects.toThrow(/500 for the issue/);
+  expect(files.has(`main:feedback/${report.id}/file-0.log`)).toBe(true);
+  expect(files.has(`main:feedback/${report.id}/report.json`)).toBe(false);
+  failIssue = false;
+  // A different file under the same id must not replace the one already committed.
+  const changed = big.slice();
+  changed[0] = 0x62;
+  const other: Attached[] = [[changed, "big.log", "text/plain"], attached[1] as Attached];
+  expect((await withFiles.POST(postFiles(report, ...other))).status).toBe(204);
+  expect(issues).toHaveLength(1);
+  expect(decode(files.get(`main:feedback/${report.id}/file-0.log`))).toEqual(Buffer.from(big));
+  const blob = `https://github.com/${REPO}/blob/main/feedback/${report.id}`;
+  expect(issues[0]?.body).toContain(`[File 1](<${blob}/file-0.log>)`);
+  expect(issues[0]?.body).toContain(`[File 2](<${blob}/file-1.png>)`);
+  const marker = JSON.parse(String(decode(files.get(`main:feedback/${report.id}/report.json`))));
+  expect(marker.attachments).toEqual([
+    { name: "big.log", type: "text/plain", size: big.length, file: "file-0.log" },
+    { name: "b.png", type: "image/png", size: PNG.length, file: "file-1.png" },
+  ]);
 });
 
 it("Try again after the issue failed works with an image over 1 MB", async () => {
@@ -579,6 +771,18 @@ it("the token goes only in the authorization header, never into an issue or a fi
     ...[...files.values()].map((f) => String(decode(f))),
   ];
   expect(everything.join("\n")).not.toContain(TOKEN);
+});
+
+it("the recipe says attachments are off, to turn them on only with the widget's option, and why", () => {
+  const text = doc.replace(/\s+/g, " ");
+  expect(text).toContain("only together with the widget's `attachments` option");
+  expect(text).toContain(
+    "it stays in git history, and reachable by its SHA even after you delete it",
+  );
+  expect(text).toContain(
+    "deleting a file or a branch does not remove its images, attached files or reports",
+  );
+  expect(block("ts")).toContain("parseFeedbackRequest(request, { attachments: ATTACHMENTS })");
 });
 
 it("the recipe tells the widget to send PNG and shows how to make the orphan branch", () => {

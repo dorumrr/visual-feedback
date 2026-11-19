@@ -9,6 +9,16 @@ set to its GitHub link and `issue` to the issue number: a resend that finds it o
 issue. The route checks on every send that the repo
 is private, and refuses otherwise. It uses `fetch` and GitHub's REST API, so it needs no package.
 
+Files the user attaches are off. To take them, set `ATTACHMENTS` at the top of the route to `true`,
+only together with the widget's `attachments` option; off, a report with files is refused with 400.
+Think before you do: each file is committed to the repo, so it stays in git history, and reachable
+by its SHA even after you delete it (section 1). On, each file is committed beside the images as
+`feedback/<id>/file-<n>` plus the ending its name has, lower-cased, which the server allows only
+when it fits the file's type: `file-0.png`, `file-1.log` and on, numbered from 0. The user's file
+name is never used as a path, and the issue links to each file without showing it.
+Each entry of `attachments` in `report.json` keeps the user's `name`, its `type` and `size`, and
+`file`, the stored name.
+
 `report.context` comes from the browser (docs/API.md): the issue shows it as data, never as proof
 of who sent the report. The images show the screen as the user saw it, with nothing masked
 (SPEC §7). Only people with access to the repo see them. GitHub shows an image in an issue through
@@ -62,8 +72,8 @@ git switch -
 the code repo's clones, and making the code repo public later exposes nothing. Images are committed
 to its default branch.
 
-In both layouts, deleting a file or a branch does not remove its images or reports: commits stay reachable by
-their SHA on GitHub until GitHub Support purges them. A later option, once it works with a
+In both layouts, deleting a file or a branch does not remove its images, attached files or
+reports: commits stay reachable by their SHA on GitHub until GitHub Support purges them. A later option, once it works with a
 fine-grained token, is GitHub's own issue-attachment upload, which keeps images out of git history;
 it is undocumented, so this recipe does not use it.
 
@@ -104,6 +114,9 @@ import {
   FeedbackRequestError,
   parseFeedbackRequest,
 } from "visual-feedback/server";
+
+// Set to true only together with the widget's attachments option: a committed file stays in git.
+const ATTACHMENTS = false;
 
 function github() {
   const { GITHUB_FEEDBACK_REPO: repo, GITHUB_FEEDBACK_TOKEN: token } = process.env;
@@ -166,12 +179,21 @@ function shots(report: FeedbackReport, imageUrls: string[], share: number): stri
     .join("\n\n");
 }
 
-function issueBody(report: FeedbackReport, imageUrls: string[], unassigned: string[]): string {
+// Each attached file is a link to it, never shown inline; its name is the user's text.
+function files(report: FeedbackReport, fileUrls: string[], share: number): string {
+  return (report.attachments ?? [])
+    .map(({ name }, i) => `[File ${i + 1}](<${fileUrls[i]}>)\n${fenced(name, 300 * share)}`)
+    .join("\n\n");
+}
+
+type Links = { imageUrls: string[]; fileUrls: string[] };
+
+function issueBody(report: FeedbackReport, links: Links, unassigned: string[]): string {
   // A fence can be as long as its text, so a report of backticks can pass GitHub's limit at the
   // usual cuts: they shrink until it fits. At a tenth, the longest report is far under it.
   let body = "";
   for (const share of [1, 0.5, 0.25, 0.1]) {
-    body = bodyAt(report, imageUrls, unassigned, share);
+    body = bodyAt(report, links, unassigned, share);
     if (body.length <= 65_536) break;
   }
   return body;
@@ -179,7 +201,7 @@ function issueBody(report: FeedbackReport, imageUrls: string[], unassigned: stri
 
 function bodyAt(
   report: FeedbackReport,
-  imageUrls: string[],
+  { imageUrls, fileUrls }: Links,
   unassigned: string[],
   share: number,
 ): string {
@@ -190,6 +212,7 @@ function bodyAt(
     fenced(report.note || "(no note)", 10_000 * share),
     // The angle brackets keep a ( or ) in a branch name from ending the link.
     shots(report, imageUrls, share) || "No screenshot.",
+    ...(fileUrls.length ? [`**Files:**\n\n${files(report, fileUrls, share)}`] : []),
     `**Page:**\n${fenced(page.url, 2_000 * share)}`,
     `**Browser:**\n${fenced(`${userAgent}\n${screen}, ${language}, ${timeZone}`, 1_000 * share)}`,
     `**Sent:** ${createdAt}, report \`${id}\``,
@@ -202,7 +225,7 @@ function bodyAt(
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const { report } = await parseFeedbackRequest(request);
+    const { report } = await parseFeedbackRequest(request, { attachments: ATTACHMENTS });
     const api = github();
     const wanted = assignees();
     const repo = await api("GET", "");
@@ -236,12 +259,21 @@ export async function POST(request: Request): Promise<Response> {
         throw new Error(`GitHub answered ${commit.status} for ${name}.`);
       }
     };
+    const link = (name: string) =>
+      `https://github.com/${repo.json.full_name}/blob/${branch.split("/").map(encodeURIComponent).join("/")}/${folder}/${name}`;
     const imageUrls: string[] = [];
     for (const [i, { image }] of report.screenshots.entries()) {
       const name = `screenshot-${i}.${image.type === "image/png" ? "png" : "webp"}`;
       await put(name, new Uint8Array(await image.arrayBuffer()));
-      const path = `${branch.split("/").map(encodeURIComponent).join("/")}/${folder}/${name}`;
-      imageUrls.push(`https://github.com/${repo.json.full_name}/blob/${path}?raw=true`);
+      imageUrls.push(`${link(name)}?raw=true`);
+    }
+    // The server checked that each name ends as its type does, so this is one of a known few.
+    const fileName = (given: string, i: number) =>
+      `file-${i}${given.slice(given.lastIndexOf(".")).toLowerCase()}`;
+    const fileUrls: string[] = [];
+    for (const [i, { file, name: given }] of (report.attachments ?? []).entries()) {
+      await put(fileName(given, i), new Uint8Array(await file.arrayBuffer()));
+      fileUrls.push(link(fileName(given, i)));
     }
     // GitHub refuses a label name over 50 characters, and one that is only space.
     const category = cut(report.category?.replace(/\s+/g, " ").trim() ?? "", 49);
@@ -257,13 +289,21 @@ export async function POST(request: Request): Promise<Response> {
     }
     const issue = await api("POST", "/issues", {
       title,
-      body: issueBody(report, imageUrls, unassigned),
+      body: issueBody(report, { imageUrls, fileUrls }, unassigned),
       labels: ["feedback", ...(category ? [category] : [])],
       ...(assigned.length ? { assignees: assigned } : {}),
     });
     if (issue.status !== 201) throw new Error(`GitHub answered ${issue.status} for the issue.`);
     const screenshots = report.screenshots.map((shot, i) => ({ ...shot, image: imageUrls[i] }));
-    const json = JSON.stringify({ ...report, screenshots, issue: issue.json.number }, null, 2);
+    const attachments = report.attachments?.map(({ file: _, ...entry }, i) => ({
+      ...entry,
+      file: fileName(entry.name, i),
+    }));
+    const json = JSON.stringify(
+      { ...report, screenshots, ...(attachments && { attachments }), issue: issue.json.number },
+      null,
+      2,
+    );
     await put("report.json", new TextEncoder().encode(json));
     return new Response(null, { status: 204 });
   } catch (error) {
