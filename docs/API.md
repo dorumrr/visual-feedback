@@ -163,7 +163,10 @@ const { report } = await parseFeedbackRequest(request, { maxImageBytes: 5_000_00
   `maxFiles` above 10, a `maxBytes` above `15_000_000`, or a limit that is not a count or a number
   of bytes, throws a `RangeError`; a `maxTotalBytes` above `maxFiles` times `maxBytes` adds nothing.
 - If any check fails, it throws a `FeedbackRequestError` that carries a `status` (400 or 413), and
-  a message that names the check. A `maxImageBytes` that is not a number of bytes is a mistake in
-  the host's code: it throws a `RangeError`.
+  a message that names the check. `maxImageBytes` is a number of bytes, 0 or more; `Infinity`
+  lifts the image limit and the body limit with it, so any body is read into memory. A value that
+  is not 0 or more, such as a negative number or `NaN`, is a mistake in the host's code: it throws
+  a `RangeError`. The check does not look at the type, so a string such as `"5"` is taken as its
+  number, and a `BigInt` throws a `TypeError`.
 - Storing the report, and checking who sent it, is the host's job. `report.context` comes from the
   browser, so it is never proof of who sent it: take the user from your own session.

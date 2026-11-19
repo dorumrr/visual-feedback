@@ -7,7 +7,8 @@ on:
 permissions:
   contents: read
 
-# The static half of npm run check. The browser half runs locally: npm run release offers it first.
+# The static half of npm run check. The browser half runs locally: npm run release asks first whether
+# to run it, and runs it after the last yes, before it changes anything.
 jobs:
   static:
     runs-on: ubuntu-latest
