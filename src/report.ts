@@ -73,7 +73,7 @@ export async function build(
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     context,
   };
-  const checked = checkReport(report);
+  const { attachments: _, ...checked } = checkReport(report);
   const screenshots = checked.screenshots.map((shot, i) => ({
     ...shot,
     image: (shots[i] as Shot).image,

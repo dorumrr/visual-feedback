@@ -84,6 +84,7 @@ type FeedbackReport = {
   note: string;
   category?: string;                // the chosen category's id; absent without `categories`
   screenshots: Screenshot[];        // at most 10; empty after "Send without screenshot"
+  attachments?: Attachment[];       // at most 10; absent when the report carries no files
   page: { url: string; title: string };
   viewport: { width: number; height: number; devicePixelRatio: number };
   scroll: { x: number; y: number };
@@ -98,6 +99,12 @@ type Screenshot = {
   page: { url: string; title: string };  // the page as it was when this screenshot was taken
   viewport: { width: number; height: number; devicePixelRatio: number };
   scroll: { x: number; y: number };
+};
+type Attachment = {
+  file: Blob;                       // on the server, typed from its own bytes
+  name: string;                     // the user's file name, never a path; ends as its type does
+  type: string;                     // one of the safe types under parseFeedbackRequest
+  size: number;                     // bytes
 };
 type Mark =
   | { tool: "pen"; points: [number, number][] }
@@ -131,7 +138,8 @@ const { report } = await parseFeedbackRequest(request, { maxImageBytes: 5_000_00
   `Date.prototype.toISOString()` writes (UTC, with milliseconds). Fields that `FeedbackReport`
   does not define, and `__proto__` keys at any depth, are dropped.
 - In the report's text, `context` included, NUL characters are removed and half surrogate pairs (a
-  cut emoji) become U+FFFD, so any store, Postgres `jsonb` included, can keep it.
+  cut emoji) become U+FFFD, so any store, Postgres `jsonb` included, can keep it. An attachment's
+  name is the exception: one with a NUL is refused, below.
 - A report holds at most 10 screenshots, and screenshot `n` needs exactly one image part,
   `image<n>`. An image part with no screenshot is refused, and so is a part named `image`, which
   visual-feedback 0.1 sent.
@@ -140,8 +148,21 @@ const { report } = await parseFeedbackRequest(request, { maxImageBytes: 5_000_00
   the whole body at most 10 times `maxImageBytes` plus 1 MiB plus 64 KiB for the multipart
   framing; a larger body is refused while it streams in.
 - `report.screenshots[n].image` is the checked image of part `image<n>`, typed from its bytes.
-- If any check fails, it throws a `FeedbackRequestError` that carries a `status` (400 or 413). A
-  `maxImageBytes` that is not a number of bytes is a mistake in the host's code: it throws a
-  `RangeError`.
+- Attachments are off unless `limits.attachments` is `true`, or a plain object `{ maxFiles,
+  maxBytes, maxTotalBytes }`; any other value but `false`, or a key not among those three, throws a
+  `RangeError`. At most and by default 10 files and `15_000_000` bytes each, with no total beyond
+  those two. Off, a request with an `attachments` field or a `file<n>` part is refused with 400, and
+  the body limit is as above. On, attachment `n` needs exactly one file part, `file<n>`, of the size
+  it gives, and a part with no attachment is refused; the body limit grows by the total. Each file
+  must be one of these types, its name ending as the type does, and its bytes must show that type:
+  PNG, JPEG, WebP, GIF, PDF (by magic bytes), or `text/plain` (`.txt`, `.log`), `text/csv`,
+  `text/markdown` (`.md`) and `application/json` (UTF-8 with no NUL, and not starting as one of the
+  types above). A name over 255 bytes in UTF-8, a path, or one holding a control or bidi control
+  character, is refused. `report.attachments[n].file` is the checked file, typed from its bytes. A
+  `maxFiles` above 10, a `maxBytes` above `15_000_000`, or a limit that is not a count or a number
+  of bytes, throws a `RangeError`; a `maxTotalBytes` above `maxFiles` times `maxBytes` adds nothing.
+- If any check fails, it throws a `FeedbackRequestError` that carries a `status` (400 or 413), and
+  a message that names the check. A `maxImageBytes` that is not a number of bytes is a mistake in
+  the host's code: it throws a `RangeError`.
 - Storing the report, and checking who sent it, is the host's job. `report.context` comes from the
   browser, so it is never proof of who sent it: take the user from your own session.

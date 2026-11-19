@@ -952,3 +952,489 @@ add("FeedbackRequestError is an Error with its name and status", async () => {
   assert.equal(error.status, 413);
   assert.equal(error.message, "too large");
 });
+
+// Attachments: a file part beside the report, with its name, type and size in the report.
+const PDF = new TextEncoder().encode("%PDF-1.4\n%âã\n1 0 obj\nendobj\n");
+const TEXT = new TextEncoder().encode("step 1: open the bill\nstep 2: it shows £0\n");
+const file = (data: Uint8Array, name: string, type = ""): [Blob, string] => [
+  new Blob([data as Uint8Array<ArrayBuffer>], { type }),
+  name,
+];
+const entry = (name: string, type: string, data: Uint8Array) => ({ name, type, size: data.length });
+const withFiles = (...files: Report[]): Report => ({ ...bare(), attachments: files });
+const parse = (parts: [string, Part][], attachments?: unknown) =>
+  parseFeedbackRequest(
+    request(parts),
+    attachments === undefined ? {} : { attachments: attachments as true },
+  );
+
+add("with attachments on, each file comes back as a Blob typed from its bytes", async () => {
+  const sent = withFiles(
+    entry("bill.png", "image/png", PNG),
+    entry("Invoice 12.PDF", "application/pdf", PDF),
+    entry("steps.log", "text/plain", TEXT),
+  );
+  const { report } = await parse(
+    [
+      ["report", JSON.stringify(sent)],
+      ["file0", file(PNG, "x", "application/octet-stream")],
+      ["file1", file(PDF, "x")],
+      ["file2", file(TEXT, "x", "image/png")],
+    ],
+    true,
+  );
+  const files = report.attachments ?? [];
+  assert.deepEqual(
+    files.map(({ file: _, ...rest }) => rest),
+    sent.attachments,
+  );
+  assert.deepEqual(
+    files.map(({ file }) => file.type),
+    ["image/png", "application/pdf", "text/plain"],
+  );
+  assert.deepEqual(new Uint8Array(await (files[2]?.file as Blob).arrayBuffer()), TEXT);
+});
+
+add("a report with no attachments field keeps none, with attachments on or off", async () => {
+  for (const on of [undefined, true]) {
+    const { report } = await parse([["report", JSON.stringify(bare())]], on);
+    assert.equal(Object.hasOwn(report, "attachments"), false);
+  }
+});
+
+add("with attachments off, the default, a report with files is refused with 400", async () => {
+  const sent = withFiles(entry("bill.png", "image/png", PNG));
+  await refused(
+    parse([
+      ["report", JSON.stringify(sent)],
+      ["file0", file(PNG, "bill.png")],
+    ]),
+    400,
+    /takes no attachments/,
+  );
+  await refused(parse([["report", JSON.stringify(sent)]]), 400, /takes no attachments/);
+  await refused(
+    parse([
+      ["report", JSON.stringify(bare())],
+      ["file0", file(PNG, "bill.png")],
+    ]),
+    400,
+    /takes no attachments/,
+  );
+});
+
+add("attachments on raises the body limit by the files' total, and only then", async () => {
+  const limit = 10 * 1_000 + 1_048_576 + 65_536;
+  const declared = (length: number, attachments?: { maxFiles: number; maxBytes: number }) =>
+    parseFeedbackRequest(
+      new Request("https://example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "multipart/form-data; boundary=x",
+          "content-length": String(length),
+        },
+        body: "not multipart",
+      }),
+      attachments ? { maxImageBytes: 1_000, attachments } : { maxImageBytes: 1_000 },
+    );
+  await refused(declared(limit + 1), 413, /request/);
+  const files = { maxFiles: 2, maxBytes: 500 };
+  await refused(declared(limit + 1_000), 413, /request/);
+  await refused(declared(limit + 1_000, files), 400, /multipart/);
+  await refused(declared(limit + 1_001, files), 413, /request/);
+});
+
+add("more files than maxFiles, or than 10, are refused with 400", async () => {
+  const two = withFiles(...Array.from({ length: 3 }, () => entry("a.png", "image/png", PNG)));
+  const parts: [string, Part][] = [0, 1, 2].map((i) => [`file${i}`, file(PNG, "a.png")]);
+  await refused(
+    parse([["report", JSON.stringify(two)], ...parts], { maxFiles: 2 }),
+    400,
+    /more than 2 attachments/,
+  );
+  const eleven = withFiles(...Array.from({ length: 11 }, () => entry("a.png", "image/png", PNG)));
+  await refused(parse([["report", JSON.stringify(eleven)]], true), 400, /report\.attachments /);
+});
+
+add(
+  "a file over maxBytes, or files over maxTotalBytes together, are refused with 413",
+  async () => {
+    const one = withFiles(entry("s.txt", "text/plain", TEXT));
+    await refused(
+      parse(
+        [
+          ["report", JSON.stringify(one)],
+          ["file0", file(TEXT, "s.txt")],
+        ],
+        { maxBytes: TEXT.length - 1 },
+      ),
+      413,
+      /file0 part is too large/,
+    );
+    const both = withFiles(entry("a.txt", "text/plain", TEXT), entry("b.txt", "text/plain", TEXT));
+    await refused(
+      parse(
+        [
+          ["report", JSON.stringify(both)],
+          ["file0", file(TEXT, "a.txt")],
+          ["file1", file(TEXT, "b.txt")],
+        ],
+        { maxTotalBytes: 2 * TEXT.length - 1 },
+      ),
+      413,
+      /too large together/,
+    );
+  },
+);
+
+add("bytes that are not the type they claim are refused with 400, whatever the name", async () => {
+  const html = new TextEncoder().encode("<html><script>alert(1)</script></html>");
+  const lies: [string, string, Uint8Array][] = [
+    ["a.png", "image/png", html],
+    ["a.pdf", "application/pdf", PNG],
+    ["a.jpg", "image/jpeg", WEBP],
+    ["a.gif", "image/gif", html],
+    ["a.txt", "text/plain", PNG],
+    ["a.txt", "text/plain", new Uint8Array([0x61, 0x00, 0x62])],
+    ["a.csv", "text/csv", new Uint8Array([0x61, 0xff, 0x62])],
+    ["a.log", "text/plain", PDF],
+  ];
+  for (const [name, type, data] of lies) {
+    await refused(
+      parse(
+        [
+          ["report", JSON.stringify(withFiles(entry(name, type, data)))],
+          ["file0", file(data, name, type)],
+        ],
+        true,
+      ),
+      400,
+      /file0 part is not the/,
+    );
+  }
+});
+
+add("a type off the safe list, or a name that does not end in its type, is refused", async () => {
+  const shapes: [string, string][] = [
+    ["a.svg", "image/svg+xml"],
+    ["a.html", "text/html"],
+    ["a.zip", "application/zip"],
+    ["a.exe", "image/png"],
+    ["a.png.html", "image/png"],
+    [".png", "image/png"],
+    ["../a.png", "image/png"],
+    ["a\\b.png", "image/png"],
+    ["a\nb.png", "image/png"],
+    ["..", "image/png"],
+    [`${"a".repeat(252)}.png`, "image/png"],
+    [`${"合".repeat(84)}.png`, "image/png"],
+    ["a\u202egnp.exe.png", "image/png"],
+    ["a\u0085b.png", "image/png"],
+    ["a\u2067b.png", "image/png"],
+    ["a\u200fb.png", "image/png"],
+    ["a\u061cb.png", "image/png"],
+    ["dir/a.png", "image/png"],
+    ["a\u0000b.png", "image/png"],
+  ];
+  for (const [name, type] of shapes) {
+    await refused(
+      parse([["report", JSON.stringify(withFiles(entry(name, type, PNG)))]], true),
+      400,
+      /report\.attachments\[0\]\./,
+    );
+  }
+});
+
+add(
+  "a missing, doubled, text-only, stray or wrong-size file part is refused with 400",
+  async () => {
+    const one = JSON.stringify(withFiles(entry("a.png", "image/png", PNG)));
+    const cases: [[string, Part][], RegExp][] = [
+      [[], /one file0 part/],
+      [
+        [
+          ["file0", file(PNG, "a.png")],
+          ["file0", file(PNG, "a.png")],
+        ],
+        /one file0 part/,
+      ],
+      [[["file0", "not a file"]], /one file0 part/],
+      [
+        [
+          ["file0", file(PNG, "a.png")],
+          ["file1", file(PNG, "a.png")],
+        ],
+        /file1, with no attachment/,
+      ],
+      [
+        [
+          ["file0", file(PNG, "a.png")],
+          ["file00", file(PNG, "a.png")],
+        ],
+        /file00, with no attachment/,
+      ],
+      [[["file0", file(new Uint8Array([...PNG, 0]), "a.png")]], /not the size/],
+    ];
+    for (const [parts, message] of cases) {
+      await refused(parse([["report", one], ...parts], true), 400, message);
+    }
+  },
+);
+
+add(
+  "attachment limits that are not counts or bytes, or above 10 and 15 MB, are host errors",
+  async () => {
+    const bad = [
+      { maxFiles: 11 },
+      { maxFiles: 1.5 },
+      { maxFiles: -1 },
+      { maxBytes: 15_000_001 },
+      { maxBytes: Number.NaN },
+      { maxTotalBytes: -1 },
+      { maxFiles: "10" },
+      { maxBytes: null },
+      { maxTotalBytes: null },
+      { maxBytes: "500" },
+      { maxTotalBytes: "300" },
+      { maxTotalBytes: Number.NaN },
+      { maxFiles: null },
+      { maxFiles: 3n },
+      { maxBytes: 1_000n },
+    ];
+    for (const attachments of bad) {
+      await assert.rejects(parse([["report", JSON.stringify(bare())]], attachments), RangeError);
+    }
+  },
+);
+
+add("every safe type is taken, by the bytes and the name ending it has", async () => {
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  const gif = new TextEncoder().encode("GIF89a\x01\x00\x01\x00");
+  const text = (value: string) => new TextEncoder().encode(value);
+  const safe: [string, string, Uint8Array][] = [
+    ["a.png", "image/png", PNG],
+    ["a.JPG", "image/jpeg", jpeg],
+    ["a.jpeg", "image/jpeg", jpeg],
+    ["a.webp", "image/webp", WEBP],
+    ["a.gif", "image/gif", gif],
+    ["a.pdf", "application/pdf", PDF],
+    ["a.txt", "text/plain", text("plain")],
+    ["a.log", "text/plain", text("log line")],
+    ["a.csv", "text/csv", text("a,b\n1,2\n")],
+    ["a.md", "text/markdown", text("# Steps\n")],
+    ["a.json", "application/json", text('{"a":1}')],
+  ];
+  // Ten at most in one report: the eleventh goes in a request of its own.
+  for (const group of [safe.slice(0, 10), safe.slice(10)]) {
+    const { report: got } = await parse(
+      [
+        ["report", JSON.stringify(withFiles(...group.map(([n, t, d]) => entry(n, t, d))))],
+        ...group.map(([name, , data], i): [string, Part] => [`file${i}`, file(data, name)]),
+      ],
+      true,
+    );
+    assert.deepEqual(
+      got.attachments?.map(({ file }) => file.type),
+      group.map(([, type]) => type),
+    );
+  }
+});
+
+add("with attachments off, even an empty attachments list is refused", () =>
+  refused(
+    parse([["report", JSON.stringify({ ...bare(), attachments: [] })]]),
+    400,
+    /takes no attachments/,
+  ),
+);
+
+add(
+  "the body limit grows by maxTotalBytes when it is the smaller, and by 150 MB for true",
+  async () => {
+    const limit = 10 * 1_000 + 1_048_576 + 65_536;
+    const declared = (length: number, attachments: true | Record<string, number>) =>
+      parseFeedbackRequest(
+        new Request("https://example.test/", {
+          method: "POST",
+          headers: {
+            "content-type": "multipart/form-data; boundary=x",
+            "content-length": String(length),
+          },
+          body: "not multipart",
+        }),
+        { maxImageBytes: 1_000, attachments },
+      );
+    const capped = { maxFiles: 2, maxBytes: 500, maxTotalBytes: 300 };
+    await refused(declared(limit + 300, capped), 400, /multipart/);
+    await refused(declared(limit + 301, capped), 413, /request/);
+    await refused(declared(limit + 150_000_000, true), 400, /multipart/);
+    await refused(declared(limit + 150_000_001, true), 413, /request/);
+  },
+);
+
+add(
+  "a maxTotalBytes over maxFiles x maxBytes adds no more, and a partial limit keeps the rest",
+  async () => {
+    const limit = 10 * 1_000 + 1_048_576 + 65_536;
+    const declared = (length: number, attachments: Record<string, number>) =>
+      parseFeedbackRequest(
+        new Request("https://example.test/", {
+          method: "POST",
+          headers: {
+            "content-type": "multipart/form-data; boundary=x",
+            "content-length": String(length),
+          },
+          body: "not multipart",
+        }),
+        { maxImageBytes: 1_000, attachments },
+      );
+    const wide = { maxFiles: 2, maxBytes: 500, maxTotalBytes: 30_000_000 };
+    await refused(declared(limit + 1_000, wide), 400, /multipart/);
+    await refused(declared(limit + 1_001, wide), 413, /request/);
+    // maxFiles alone: each file may still be 15 MB.
+    await refused(declared(limit + 30_000_000, { maxFiles: 2 }), 400, /multipart/);
+    await refused(declared(limit + 30_000_001, { maxFiles: 2 }), 413, /request/);
+  },
+);
+
+add("a name of exactly 255 bytes in UTF-8 is taken", async () => {
+  const name = `${"合".repeat(83)}${"a".repeat(2)}.png`;
+  assert.equal(new TextEncoder().encode(name).length, 255);
+  const { report } = await parse(
+    [
+      ["report", JSON.stringify(withFiles(entry(name, "image/png", PNG)))],
+      ["file0", file(PNG, "x")],
+    ],
+    true,
+  );
+  assert.equal(report.attachments?.[0]?.name, name);
+});
+
+add("an attachments option that is not true, false or an object is a host error", async () => {
+  for (const attachments of ["false", "0", 1, 0, null, [], ""]) {
+    await assert.rejects(parse([["report", JSON.stringify(bare())]], attachments), RangeError);
+  }
+  // false is off, as a missing option is.
+  await refused(
+    parse([["report", JSON.stringify(withFiles(entry("a.png", "image/png", PNG)))]], false),
+    400,
+    /takes no attachments/,
+  );
+});
+
+add("limits that are not a plain object, or hold an unknown key, are a host error", async () => {
+  class Limits {
+    maxFiles = 1;
+  }
+  const odd: unknown[] = [
+    new Map([["maxFiles", 0]]),
+    new Boolean(false),
+    new String("false"),
+    new Date(0),
+    new Limits(),
+    { maxfiles: 2 },
+    { maxFiles: 2, total: 5 },
+  ];
+  for (const attachments of odd) {
+    await assert.rejects(parse([["report", JSON.stringify(bare())]], attachments), RangeError);
+  }
+  // A plain object with no prototype is still a plain object.
+  const bareLimits = Object.assign(Object.create(null), { maxFiles: 1 });
+  const { report } = await parse([["report", JSON.stringify(bare())]], bareLimits);
+  assert.equal(Object.hasOwn(report, "attachments"), false);
+});
+
+add("with attachments on, a file part in a report that declares none is refused", async () => {
+  for (const report of [bare(), { ...bare(), attachments: [] }]) {
+    await refused(
+      parse(
+        [
+          ["report", JSON.stringify(report)],
+          ["file0", file(PNG, "a.png")],
+        ],
+        true,
+      ),
+      400,
+      /file0, with no attachment/,
+    );
+  }
+});
+
+add("a negative maxBytes is a host error", () =>
+  assert.rejects(parse([["report", JSON.stringify(bare())]], { maxBytes: -1 }), RangeError),
+);
+
+add("half a surrogate pair in a name becomes U+FFFD, as in all report text", async () => {
+  const { report } = await parse(
+    [
+      ["report", JSON.stringify(withFiles(entry("a\ud83d.png", "image/png", PNG)))],
+      ["file0", file(PNG, "x")],
+    ],
+    true,
+  );
+  assert.equal(report.attachments?.[0]?.name, "a�.png");
+});
+
+add("a safe ending of another safe type is refused: a.pdf sent as a PNG", async () => {
+  for (const [name, type] of [
+    ["a.pdf", "image/png"],
+    ["a.md", "text/plain"],
+    ["a.png", "image/jpeg"],
+  ]) {
+    await refused(
+      parse(
+        [["report", JSON.stringify(withFiles(entry(name as string, type as string, PNG)))]],
+        true,
+      ),
+      400,
+      /report\.attachments\[0\]\.name/,
+    );
+  }
+});
+
+add("with attachments on, an empty attachments list comes back absent", async () => {
+  const { report } = await parse(
+    [["report", JSON.stringify({ ...bare(), attachments: [] })]],
+    true,
+  );
+  assert.equal(Object.hasOwn(report, "attachments"), false);
+});
+
+add("a file exactly at maxBytes, and files exactly at maxTotalBytes, are taken", async () => {
+  const both = withFiles(entry("a.txt", "text/plain", TEXT), entry("b.txt", "text/plain", TEXT));
+  const { report } = await parse(
+    [
+      ["report", JSON.stringify(both)],
+      ["file0", file(TEXT, "a.txt")],
+      ["file1", file(TEXT, "b.txt")],
+    ],
+    { maxBytes: TEXT.length, maxTotalBytes: 2 * TEXT.length },
+  );
+  assert.equal(report.attachments?.length, 2);
+});
+
+add("an Exif JPEG, a GIF87a, an empty text file and a large image are taken", async () => {
+  const exif = new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10]);
+  const gif87 = new TextEncoder().encode("GIF87a\x01\x00");
+  const empty = new Uint8Array(0);
+  // Bigger than maxImageBytes: that limit is for screenshots, never for attachments.
+  const big = new Uint8Array(2_000);
+  big.set(PNG);
+  const files: [string, string, Uint8Array][] = [
+    ["a.jpg", "image/jpeg", exif],
+    ["a.gif", "image/gif", gif87],
+    ["a.txt", "text/plain", empty],
+    ["a.png", "image/png", big],
+  ];
+  const { report } = await parseFeedbackRequest(
+    request([
+      ["report", JSON.stringify(withFiles(...files.map(([n, t, d]) => entry(n, t, d))))],
+      ...files.map(([name, , data], i): [string, Part] => [`file${i}`, file(data, name)]),
+    ]),
+    { maxImageBytes: 1_000, attachments: true },
+  );
+  assert.deepEqual(
+    report.attachments?.map(({ size, file }) => [size, file.type]),
+    files.map(([, type, data]) => [data.length, type]),
+  );
+});

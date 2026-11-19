@@ -8,6 +8,10 @@
   `onSubmit` has no cap.
 - Save as PDF puts a long note over as many A4-tall pages as it needs, the first screenshot under
   its last line. A note of a few thousand lines made no PDF before.
+- `parseFeedbackRequest` takes attachments when the host passes `attachments` in its limits: up
+  to 10 files of 15 MB each, of safe types checked by their bytes, returned as
+  `report.attachments`. Without it, nothing changes, and a request with files is refused with
+  400. The report and server types export `Attachment`.
 
 ## 0.4.3 (2026-10-16)
 

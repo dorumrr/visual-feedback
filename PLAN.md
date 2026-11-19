@@ -12,7 +12,7 @@ Tier: default  how hard each step is worked: low, medium or high, or default for
    E. LONG NOTES AND ATTACHMENTS
    [x] E1  The note takes any length; a note over the server's cap says so before it sends
    [x] E2  Save as PDF puts a long note over as many pages as it needs   ships with E1, never after it
-   [ ] E3  The report type and parseFeedbackRequest carry attachments, only when the host opts in   BLOCKS E4, E6-E11
+   [x] E3  The report type and parseFeedbackRequest carry attachments, only when the host opts in   BLOCKS E4, E6-E11
    [ ] E4  With attachments on, the user adds and removes files, sees each limit it meets, and they arrive   BLOCKS E5, E12
    [ ] E5  A kept draft brings its attachments back after a fold and a page load
    [ ] E6  Recipe local stores attachments

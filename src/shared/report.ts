@@ -13,6 +13,31 @@ export const SCREENSHOT_LIMIT = 10;
 /** The most UTF-8 bytes of the report part, its images aside, the server accepts. */
 export const REPORT_LIMIT = 1_048_576;
 
+/** The most files one report holds, and the most bytes each, wherever a host sets lower ones. */
+export const ATTACHMENT_LIMIT = 10;
+export const ATTACHMENT_BYTES = 15_000_000;
+
+/** The file types a report may carry, by type, with the name endings each may have. */
+export const ATTACHMENT_TYPES: Readonly<Record<string, readonly string[]>> = {
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/webp": [".webp"],
+  "image/gif": [".gif"],
+  "application/pdf": [".pdf"],
+  "text/plain": [".txt", ".log"],
+  "text/csv": [".csv"],
+  "text/markdown": [".md"],
+  "application/json": [".json"],
+};
+
+/** The types above that have no magic bytes: their files must be UTF-8 text. */
+export const TEXT_TYPES: readonly string[] = [
+  "text/plain",
+  "text/csv",
+  "text/markdown",
+  "application/json",
+];
+
 type Page = { url: string; title: string };
 type Viewport = { width: number; height: number; devicePixelRatio: number };
 type Scroll = { x: number; y: number };
@@ -25,12 +50,20 @@ export type Screenshot = {
   scroll: Scroll;
 };
 
+export type Attachment = {
+  file: Blob;
+  name: string;
+  type: string;
+  size: number;
+};
+
 export type FeedbackReport = {
   id: string;
   createdAt: string;
   note: string;
   category?: string;
   screenshots: Screenshot[];
+  attachments?: Attachment[];
   page: Page;
   viewport: Viewport;
   scroll: Scroll;
@@ -127,9 +160,10 @@ function mark(value: unknown, path: string): Mark {
   return fail(`${path}.tool`);
 }
 
-/** A report as JSON carries it: each screenshot without its image. */
-export type ReportFields = Omit<FeedbackReport, "screenshots"> & {
+/** A report as JSON carries it: each screenshot without its image, each attachment without its file. */
+export type ReportFields = Omit<FeedbackReport, "screenshots" | "attachments"> & {
   screenshots: Omit<Screenshot, "image">[];
+  attachments?: Omit<Attachment, "file">[];
 };
 
 function facts(fields: Fields, path: string): Pick<Screenshot, "page" | "viewport" | "scroll"> {
@@ -146,6 +180,43 @@ function facts(fields: Fields, path: string): Pick<Screenshot, "page" | "viewpor
     },
     scroll: { x: number(scroll.x, `${at}scroll.x`), y: number(scroll.y, `${at}scroll.y`) },
   };
+}
+
+// A path could leave a store's folder; a control or bidi character could disguise the name's ending.
+const unsafeName = (name: string) =>
+  name === "." ||
+  name === ".." ||
+  [...name].some(
+    (char) =>
+      char === "/" ||
+      char === "\\" ||
+      char < " " ||
+      (char >= "\u007f" && char <= "\u009f") ||
+      char === "\u061c" ||
+      char === "\u200e" ||
+      char === "\u200f" ||
+      (char >= "\u202a" && char <= "\u202e") ||
+      (char >= "\u2066" && char <= "\u2069"),
+  );
+
+function attachment(value: unknown, path: string): Omit<Attachment, "file"> {
+  const fields = object(value, path);
+  if (fields.file !== undefined && fields.file !== null) fail(`${path}.file`);
+  // Checked before NULs are dropped, so a name with one is refused, not changed.
+  if (typeof fields.name === "string" && unsafeName(fields.name)) fail(`${path}.name`);
+  const name = string(fields.name, `${path}.name`);
+  const type = string(fields.type, `${path}.type`);
+  const endings = Object.hasOwn(ATTACHMENT_TYPES, type) ? ATTACHMENT_TYPES[type] : undefined;
+  const lower = name.toLowerCase();
+  if (!name || new TextEncoder().encode(name).length > 255 || unsafeName(name))
+    fail(`${path}.name`);
+  if (!endings) fail(`${path}.type`);
+  if (!endings.some((ending) => lower.endsWith(ending) && lower.length > ending.length)) {
+    fail(`${path}.name`);
+  }
+  const size = number(fields.size, `${path}.size`);
+  if (!Number.isInteger(size) || size < 0) fail(`${path}.size`);
+  return { name, type, size };
 }
 
 function screenshot(value: unknown, path: string): Omit<Screenshot, "image"> {
@@ -175,12 +246,19 @@ export function checkReport(value: unknown): ReportFields {
   if (!valid || new Date(time).toISOString() !== createdAt) fail("createdAt");
   const shots = fields.screenshots;
   if (!Array.isArray(shots) || shots.length > SCREENSHOT_LIMIT) fail("screenshots");
+  const files = fields.attachments;
+  if (files !== undefined && (!Array.isArray(files) || files.length > ATTACHMENT_LIMIT)) {
+    fail("attachments");
+  }
   return {
     id: fields.id,
     createdAt,
     note: string(fields.note, "note"),
     ...(fields.category === undefined ? {} : { category: string(fields.category, "category") }),
     screenshots: shots.map((item, i) => screenshot(item, `screenshots[${i}]`)),
+    ...(files === undefined
+      ? {}
+      : { attachments: files.map((item, i) => attachment(item, `attachments[${i}]`)) }),
     ...facts(fields, ""),
     userAgent: string(fields.userAgent, "userAgent"),
     language: string(fields.language, "language"),
