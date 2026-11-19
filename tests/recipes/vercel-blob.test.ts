@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
+import { ATTACHMENT_TYPES, REPORT_LIMIT, SCREENSHOT_LIMIT } from "../../src/shared/report";
 import { PNG, valid, WEBP } from "../server/sample";
 import { recipe, SERVER } from "./doc";
 
@@ -62,6 +63,7 @@ async function fake(input: RequestInfo | URL, init: RequestInit = {}): Promise<R
 
 let route: Route;
 let admin: Route;
+let withFiles: Route;
 const saved = process.env.BLOB_READ_WRITE_TOKEN;
 
 beforeAll(async () => {
@@ -75,6 +77,11 @@ beforeAll(async () => {
     '  return _request.headers.get("x-test-admin") === "yes";\n}',
   );
   admin = await load<Route>(filled, { "visual-feedback/server": SERVER });
+  // Files on, as the doc says to set them with the widget's attachments option.
+  const off = "const ATTACHMENTS: typeof FILES | false = false;";
+  expect(filled.split(off)).toHaveLength(2);
+  const on = filled.replace(off, "const ATTACHMENTS: typeof FILES | false = FILES;");
+  withFiles = await load<Route>(on, { "visual-feedback/server": SERVER });
   globalThis.fetch = fake as typeof fetch;
 });
 
@@ -295,5 +302,249 @@ it("the read host comes from the store id in the token, not a fixed store", asyn
   expect((await route.POST(post(report, PNG))).status).toBe(204);
   expect(requests[0]).toBe(
     `GET https://otherstore.private.blob.vercel-storage.com/${at(report.id, "report.json")}`,
+  );
+});
+
+// Vercel refuses a request body over 4.5 MB.
+const VERCEL_BODY = 4_500_000;
+const IMAGE_BYTES = 250_000;
+const LOG = new TextEncoder().encode("TypeError: x is undefined\n");
+type File = { name: string; type: string; bytes: Uint8Array };
+const files: File[] = [
+  { name: "Screen shot.png", type: "image/png", bytes: PNG },
+  { name: "Crash Report.LOG", type: "text/plain", bytes: LOG },
+];
+
+const padded = (bytes: Uint8Array, size: number) => {
+  const out = new Uint8Array(size);
+  out.set(bytes);
+  return out;
+};
+
+/** A report with its PNG screenshots and its files, as the widget sends them. */
+function postWith(report: Report, images: Uint8Array[], list: File[], pad = 0): Request {
+  const form = new FormData();
+  const attachments = list.map(({ name, type, bytes }) => ({ name, type, size: bytes.length }));
+  form.append("report", JSON.stringify(list.length ? { ...report, attachments } : report));
+  for (const [i, bytes] of images.entries()) {
+    form.append(
+      `image${i}`,
+      new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "image/png" }),
+      "x",
+    );
+  }
+  for (const [i, { type, bytes }] of list.entries()) {
+    form.append(`file${i}`, new Blob([bytes as Uint8Array<ArrayBuffer>], { type }), "x");
+  }
+  if (pad) form.append("pad", "p".repeat(pad));
+  return new Request("http://localhost/api/feedback", { method: "POST", body: form });
+}
+
+const bodySize = async (request: Request) => (await request.clone().arrayBuffer()).byteLength;
+
+/** The largest report the route takes with files on: 10 screenshots, 10 files, a 1 MiB report. */
+function atLimits(): { report: Report; images: Uint8Array[]; list: File[] } {
+  const [shot] = valid().screenshots as Report[];
+  const report: Report = { ...valid(), screenshots: Array.from({ length: 10 }, () => shot) };
+  const list = Array.from({ length: 10 }, (_, i) => ({
+    name: `log-${i}.log`,
+    type: "text/plain",
+    bytes: new TextEncoder().encode("a".repeat(80_000)),
+  }));
+  const attachments = list.map(({ name, type, bytes }) => ({ name, type, size: bytes.length }));
+  const base = new Blob([JSON.stringify({ ...report, note: "", attachments })]).size;
+  const note = "n".repeat(1_048_576 - base);
+  const images = Array.from({ length: 10 }, () => padded(PNG, IMAGE_BYTES));
+  return { report: { ...report, note }, images, list };
+}
+
+it("the limits the test uses are the ones the doc's route sets", () => {
+  const source = block("ts");
+  expect(source).toContain(
+    "const FILES = { maxFiles: 10, maxBytes: 800_000, maxTotalBytes: 800_000 };",
+  );
+  expect(source).toContain("const maxImageBytes = ATTACHMENTS ? 250_000 : 3_000_000;");
+  // The server's own body cap with these limits, multipart framing included, as the doc gives it.
+  const cap = SCREENSHOT_LIMIT * IMAGE_BYTES + 800_000 + REPORT_LIMIT + 65_536;
+  expect(cap).toBe(4_414_112);
+  expect(cap).toBeLessThan(VERCEL_BODY);
+  expect(doc).toContain("make 4,414,112 bytes");
+  expect(VERCEL_BODY - REPORT_LIMIT - 65_536).toBe(3_385_888);
+  expect(doc).toContain("must stay at 3,385,888 bytes or less");
+});
+
+it("as shipped, attachments are off: a report with files is refused, and Vercel is not asked", async () => {
+  for (const shipped of [route, admin]) {
+    const response = await shipped.POST(postWith(valid(), [PNG], files));
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe("This endpoint takes no attachments.");
+  }
+  expect(requests).toEqual([]);
+});
+
+it("with files on, a report at every limit, 10 screenshots included, is under 4.5 MB and stored", async () => {
+  const { report, images, list } = atLimits();
+  const request = postWith(report, images, list);
+  expect(await bodySize(request)).toBeLessThan(VERCEL_BODY);
+  expect((await withFiles.POST(request)).status).toBe(204);
+  const stored = JSON.parse(String(blobs.get(at(report.id, "report.json"))?.body));
+  expect(stored.note).toBe(report.note);
+  expect(stored.attachments).toHaveLength(10);
+  expect(blobs.size).toBe(21);
+  expect(blobs.get(at(report.id, "file-9.log"))?.body).toHaveLength(80_000);
+});
+
+it("with files on, the route takes a body of 4,414,112 bytes and refuses one byte more, with a reason", async () => {
+  const { report, images, list } = atLimits();
+  // A padding part the parser ignores, sized so the whole body is exactly the given size.
+  const sized = async (size: number) => {
+    const overhead = (await bodySize(postWith(report, images, list, 1))) - 1;
+    const request = postWith(report, images, list, size - overhead);
+    expect(await bodySize(request)).toBe(size);
+    return request;
+  };
+  for (const size of [4_414_113, VERCEL_BODY + 1]) {
+    const response = await withFiles.POST(await sized(size));
+    expect(response.status, String(size)).toBe(413);
+    expect(await response.text()).toBe("The request is too large.");
+  }
+  expect(requests).toEqual([]);
+  // The control: at the cap exactly, the body is taken.
+  expect((await withFiles.POST(await sized(4_414_112))).status).toBe(204);
+});
+
+it("with files on, a report over any byte limit is refused by the route, with a reason", async () => {
+  const big = (size: number): File => ({
+    name: "big.log",
+    type: "text/plain",
+    bytes: new TextEncoder().encode("b".repeat(size)),
+  });
+  for (const [request, reason] of [
+    [postWith(valid(), [padded(PNG, IMAGE_BYTES + 1)], []), "The image is too large."],
+    [postWith({ ...valid(), note: "n".repeat(1_048_576) }, [PNG], []), "The report is too large."],
+    [postWith(valid(), [PNG], [big(800_001)]), "The file0 part is too large."],
+    [
+      postWith(valid(), [PNG], [big(400_001), big(400_000)]),
+      "The attachments are too large together.",
+    ],
+  ] as const) {
+    const response = await withFiles.POST(request);
+    expect(response.status, reason).toBe(413);
+    expect(await response.text()).toBe(reason);
+  }
+  expect(requests).toEqual([]);
+  // More files than the limit is a count, not a size: 400.
+  const eleven = Array.from({ length: 11 }, (_, i) => ({ ...files[1], name: `log-${i}.log` }));
+  expect((await withFiles.POST(postWith(valid(), [PNG], eleven as File[]))).status).toBe(400);
+  expect(requests).toEqual([]);
+  // The control: at each limit exactly, the same report is stored.
+  const fits = postWith(valid(), [padded(PNG, IMAGE_BYTES)], [big(400_000), big(400_000)]);
+  expect((await withFiles.POST(fits)).status).toBe(204);
+});
+
+it("with files on, each file is stored under the report's folder by its index, and read back as a download", async () => {
+  const report = valid();
+  expect((await withFiles.POST(postWith(report, [PNG], files))).status).toBe(204);
+  // The files before report.json, so it never lacks them, each named by index, not by the user.
+  expect(requests).toEqual([
+    `GET ${STORE}${at(report.id, "report.json")}`,
+    `PUT ${API}?pathname=${encodeURIComponent(at(report.id, "screenshot-0.png"))}`,
+    `PUT ${API}?pathname=${encodeURIComponent(at(report.id, "file-0.png"))}`,
+    `PUT ${API}?pathname=${encodeURIComponent(at(report.id, "file-1.log"))}`,
+    `PUT ${API}?pathname=${encodeURIComponent(at(report.id, "report.json"))}`,
+  ]);
+  expect(blobs.get(at(report.id, "file-0.png"))).toEqual({
+    body: Buffer.from(PNG),
+    type: "image/png",
+  });
+  expect(blobs.get(at(report.id, "file-1.log"))).toEqual({
+    body: Buffer.from(LOG),
+    type: "text/plain",
+  });
+  const stored = JSON.parse(String(blobs.get(at(report.id, "report.json"))?.body));
+  expect(stored).toEqual({
+    ...named(report, "screenshot-0.png"),
+    attachments: [
+      { name: "Screen shot.png", type: "image/png", size: PNG.length, file: "file-0.png" },
+      { name: "Crash Report.LOG", type: "text/plain", size: LOG.length, file: "file-1.log" },
+    ],
+  });
+  for (const [file, type, bytes] of [
+    ["file-0.png", "image/png", PNG],
+    ["file-1.log", "text/plain", LOG],
+  ] as const) {
+    const response = await admin.GET(get(String(report.id), file));
+    expect(response.status, file).toBe(200);
+    expect(response.headers.get("content-type")).toBe(type);
+    expect(response.headers.get("content-disposition")).toBe(`attachment; filename="${file}"`);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  }
+  // A screenshot is still shown, not downloaded.
+  const shot = await admin.GET(get(String(report.id), "screenshot-0.png"));
+  expect(shot.headers.get("content-disposition")).toBeNull();
+});
+
+it("with files on, a report without files is stored exactly as with them off", async () => {
+  const report = valid();
+  expect((await withFiles.POST(post(report, PNG))).status).toBe(204);
+  expect(requests).toEqual([
+    `GET ${STORE}${at(report.id, "report.json")}`,
+    `PUT ${API}?pathname=${encodeURIComponent(at(report.id, "screenshot-0.png"))}`,
+    `PUT ${API}?pathname=${encodeURIComponent(at(report.id, "report.json"))}`,
+  ]);
+  const stored = JSON.parse(String(blobs.get(at(report.id, "report.json"))?.body));
+  expect(stored).toEqual(named(report, "screenshot-0.png"));
+});
+
+it("a read of a file name the route never stores is refused before Vercel is asked", async () => {
+  const id = String(valid().id);
+  for (const file of [
+    "file-0.exe",
+    "file-0.PNG",
+    "file-10.png",
+    "file-0",
+    "file-0.png.html",
+    "Screen%20shot.png",
+    "file-0.svg",
+  ]) {
+    expect((await admin.GET(get(id, file))).status, file).toBe(400);
+  }
+  expect(requests).toEqual([]);
+  // The control: a file of every type the server takes is a name the read reaches Vercel with.
+  const endings = Object.values(ATTACHMENT_TYPES).flat();
+  for (const ending of endings) {
+    expect((await admin.GET(get(id, `file-9${ending}`))).status, ending).toBe(404);
+  }
+  expect(requests).toHaveLength(endings.length);
+});
+
+it("with files on, a request that reuses an id cannot replace a stored file", async () => {
+  const report = valid();
+  await withFiles.POST(postWith(report, [PNG], files));
+  const other = new TextEncoder().encode("replaced\n");
+  const resend = [files[0], { name: "Crash Report.LOG", type: "text/plain", bytes: other }];
+  requests.length = 0;
+  expect((await withFiles.POST(postWith(report, [PNG], resend as File[]))).status).toBe(204);
+  expect(requests).toEqual([`GET ${STORE}${at(report.id, "report.json")}`]);
+  expect(blobs.get(at(report.id, "file-1.log"))?.body).toEqual(Buffer.from(LOG));
+});
+
+it("with files on, Try again after a failed file write stores the report and every file", async () => {
+  const report = valid();
+  failPath = at(report.id, "file-1.log");
+  await expect(withFiles.POST(postWith(report, [PNG], files))).rejects.toThrow(
+    /500 for file-1\.log/,
+  );
+  // No report.json without its files, and the files written so far stay for the retry to replace.
+  expect(blobs.has(at(report.id, "report.json"))).toBe(false);
+  expect(blobs.has(at(report.id, "file-0.png"))).toBe(true);
+  failPath = "";
+  expect((await withFiles.POST(postWith(report, [PNG], files))).status).toBe(204);
+  expect([...blobs.keys()].sort()).toEqual(
+    ["file-0.png", "file-1.log", "report.json", "screenshot-0.png"].map((name) =>
+      at(report.id, name),
+    ),
   );
 });
