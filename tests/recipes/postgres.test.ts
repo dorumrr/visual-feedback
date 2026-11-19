@@ -1,5 +1,6 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, beforeEach, expect, it } from "vitest";
+import { ATTACHMENT_TYPES } from "../../src/shared/report";
 import { PNG, valid, WEBP } from "../server/sample";
 import { recipe, SERVER } from "./doc";
 
@@ -20,6 +21,7 @@ const { store } = (await import(FAKE)) as typeof import("./fake-postgres");
 const URL_SET = "postgres://user@db.test/feedback";
 let route: Route;
 let signedIn: Route;
+let withFiles: Route;
 const saved = process.env.DATABASE_URL;
 
 beforeAll(async () => {
@@ -32,6 +34,10 @@ beforeAll(async () => {
   expect(source.split(stub)).toHaveLength(2);
   const filled = source.replace(stub, '  return _request.headers.get("x-test-user");\n}');
   signedIn = await load<Route>(filled, imports);
+  // The host turns files on as step 3 says: the one constant, flipped.
+  const off = "const ATTACHMENTS = false;";
+  expect(filled.split(off)).toHaveLength(2);
+  withFiles = await load<Route>(filled.replace(off, "const ATTACHMENTS = true;"), imports);
 });
 
 afterAll(() => {
@@ -43,7 +49,9 @@ afterAll(() => {
 beforeEach(() => {
   store.reports = [];
   store.shots = [];
+  store.files = [];
   store.refuseShots = false;
+  store.refuseFiles = false;
 });
 
 function post(
@@ -68,6 +76,39 @@ async function rows(): Promise<Row[]> {
 
 async function shots() {
   return [...store.shots].sort(
+    (a, b) => a.report_id.localeCompare(b.report_id) || a.position - b.position,
+  );
+}
+
+const LOG = new TextEncoder().encode("line one\nline two\n");
+// Other bytes than the screenshot's, so a route that stores the image as a file is caught.
+const ATTACHED_PNG = Uint8Array.of(...PNG, 0);
+
+// A report with a PNG and a log attached, as the widget sends them.
+function postFiles(
+  report: Record<string, unknown>,
+  files = [
+    { name: "Shot.PNG", type: "image/png", bytes: ATTACHED_PNG },
+    { name: "server.log", type: "text/plain", bytes: LOG },
+  ],
+) {
+  const user = "user-7";
+  const form = new FormData();
+  const attachments = files.map(({ name, type, bytes }) => ({ name, type, size: bytes.length }));
+  form.append("report", JSON.stringify({ ...report, attachments }));
+  form.append("image0", new Blob([PNG], { type: "image/png" }), "x");
+  for (const [i, { name, type, bytes }] of files.entries()) {
+    form.append(`file${i}`, new Blob([bytes as Uint8Array<ArrayBuffer>], { type }), name);
+  }
+  return new Request("http://localhost/api/feedback", {
+    method: "POST",
+    body: form,
+    headers: { "x-test-user": user },
+  });
+}
+
+async function files() {
+  return [...store.files].sort(
     (a, b) => a.report_id.localeCompare(b.report_id) || a.position - b.position,
   );
 }
@@ -317,4 +358,154 @@ it("the fake keeps Postgres's rules the recipe relies on, so it cannot pass a ro
     stale = tx;
   });
   await expect(insert(stale as Tx, "f", "x")).rejects.toThrow(/ended/);
+});
+
+it("files are off as the recipe ships: a report with files gets 400, and nothing is written", async () => {
+  expect(block("ts")).toContain("const ATTACHMENTS = false;");
+  expect(block("ts")).toContain("parseFeedbackRequest(request, { attachments: ATTACHMENTS })");
+  expect((await signedIn.POST(postFiles(valid()))).status).toBe(400);
+  expect(await rows()).toEqual([]);
+  expect(await shots()).toEqual([]);
+  expect(await files()).toEqual([]);
+});
+
+it("with files on, each file is its own row with its bytes, and the report lists them without the files", async () => {
+  const report = valid();
+  expect((await withFiles.POST(postFiles(report))).status).toBe(204);
+  const [row, ...rest] = await rows();
+  expect(rest).toEqual([]);
+  expect(await shots()).toHaveLength(1);
+  const stored = await files();
+  expect(stored.map(({ file: _, ...facts }) => facts)).toEqual([
+    {
+      report_id: report.id,
+      position: 0,
+      name: "Shot.PNG",
+      type: "image/png",
+      size: ATTACHED_PNG.length,
+      stored_name: "file-0.png",
+    },
+    {
+      report_id: report.id,
+      position: 1,
+      name: "server.log",
+      type: "text/plain",
+      size: LOG.length,
+      stored_name: "file-1.log",
+    },
+  ]);
+  expect(new Uint8Array(stored[0]?.file ?? [])).toEqual(ATTACHED_PNG);
+  expect(new Uint8Array(stored[1]?.file ?? [])).toEqual(LOG);
+  // Each stored name ends as its type allows, never as the user named it.
+  for (const { stored_name, type } of stored) {
+    expect(ATTACHMENT_TYPES[type]?.some((ending) => stored_name.endsWith(ending))).toBe(true);
+  }
+  expect(row?.report).toEqual({
+    ...report,
+    attachments: [
+      { name: "Shot.PNG", type: "image/png", size: ATTACHED_PNG.length, storedName: "file-0.png" },
+      { name: "server.log", type: "text/plain", size: LOG.length, storedName: "file-1.log" },
+    ],
+  });
+});
+
+it("sending the same report with files again writes nothing twice", async () => {
+  const report = valid();
+  expect((await withFiles.POST(postFiles(report))).status).toBe(204);
+  const first = await files();
+  expect(first).toHaveLength(2);
+  expect((await withFiles.POST(postFiles({ ...report, note: "changed" }))).status).toBe(204);
+  expect(await rows()).toHaveLength(1);
+  expect((await rows())[0]?.report.note).toBe(report.note);
+  expect(await shots()).toHaveLength(1);
+  expect(await files()).toEqual(first);
+});
+
+it("with files on, a report with none writes the same rows as with files off", async () => {
+  const report = valid();
+  expect((await signedIn.POST(post(report, "user-7", PNG))).status).toBe(204);
+  const today = { reports: await rows(), shots: await shots() };
+  store.reports = [];
+  store.shots = [];
+  expect((await withFiles.POST(post(report, "user-7", PNG))).status).toBe(204);
+  expect({ reports: await rows(), shots: await shots() }).toEqual(today);
+  expect(today.reports[0]?.report).not.toHaveProperty("attachments");
+  expect(await files()).toEqual([]);
+  // An empty list, as a widget may send it, is the same as none.
+  store.reports = [];
+  store.shots = [];
+  expect((await withFiles.POST(postFiles(report, []))).status).toBe(204);
+  expect({ reports: await rows(), shots: await shots() }).toEqual(today);
+  expect(await files()).toEqual([]);
+});
+
+it("with files on, a file whose bytes are not its type gets 400, and nothing is written", async () => {
+  const spoofed = [{ name: "Shot.png", type: "image/png", bytes: LOG }];
+  expect((await withFiles.POST(postFiles(valid(), spoofed))).status).toBe(400);
+  expect(await rows()).toEqual([]);
+  expect(await shots()).toEqual([]);
+  expect(await files()).toEqual([]);
+});
+
+it("when a file cannot be stored, the report and its screenshots are not kept either", async () => {
+  store.refuseFiles = true;
+  await expect(withFiles.POST(postFiles(valid()))).rejects.toThrow(/refused/);
+  expect(await rows()).toEqual([]);
+  expect(await shots()).toEqual([]);
+  expect(await files()).toEqual([]);
+  store.refuseFiles = false;
+  expect((await withFiles.POST(postFiles(valid()))).status).toBe(204);
+  expect(await files()).toHaveLength(2);
+});
+
+it("the SQL block makes the files table, its last statement, which is all an older install runs", () => {
+  const sql = block("sql").replace(/\s+/g, " ").trim();
+  const statements = sql
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  expect(statements.at(-1)).toBe(
+    "create table feedback_attachments ( report_id uuid not null references feedback_reports (id) on delete cascade, position integer not null, name text not null, type text not null, size integer not null, stored_name text not null, file bytea not null, primary key (report_id, position) )",
+  );
+  const text = doc.replace(/\s+/g, " ");
+  expect(text).toContain(
+    "A new install made the `feedback_attachments` table in step 1. An install made before files runs only that one statement from step 1,",
+  );
+  expect(text).toContain("together with the widget's `attachments` option");
+  expect(text).toContain("keep `ATTACHMENTS` as the app set it.");
+  expect(text).toContain(
+    "replaces its route with step 2's, keeping what the app changed, such as its `currentUser`, the bucket PUT or `prepare: false`: an older route has no `ATTACHMENTS` and stores no files.",
+  );
+});
+
+it("the fake refuses a file row with no report, a repeated position or other columns", async () => {
+  type Tx = ((s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown>) &
+    ((rows: unknown[]) => unknown);
+  const client = (await import(FAKE)).default(URL_SET);
+  const row = {
+    report_id: "r",
+    position: 0,
+    name: "a.png",
+    type: "image/png",
+    size: 1,
+    stored_name: "file-0.png",
+    file: new Uint8Array([1]),
+  };
+  const report = (tx: Tx) =>
+    tx`insert into feedback_reports (id, user_id, created_at, report) values (${"r"}, ${"u"}, ${"2026-01-01T00:00:00.000Z"}, ${client.json({})}) on conflict (id) do nothing returning id`;
+  for (const [rowsIn, error, withReport] of [
+    [[row], /foreign key/, false],
+    [[row, row], /duplicate key/, true],
+    [[{ ...row, extra: 1 }], /columns/, true],
+    [[], /at least one row/, true],
+  ] as const) {
+    await expect(
+      client.begin(async (tx: Tx) => {
+        if (withReport) await report(tx);
+        await tx`insert into feedback_attachments ${tx([...rowsIn])}`;
+      }),
+    ).rejects.toThrow(error);
+  }
+  expect(store.reports).toEqual([]);
+  expect(store.files).toEqual([]);
 });
