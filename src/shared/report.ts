@@ -199,7 +199,8 @@ const unsafeName = (name: string) =>
       (char >= "\u2066" && char <= "\u2069"),
   );
 
-function attachment(value: unknown, path: string): Omit<Attachment, "file"> {
+/** One attachment as JSON carries it, without its file; throws a TypeError when it is refused. */
+export function checkAttachment(value: unknown, path = "attachments[0]"): Omit<Attachment, "file"> {
   const fields = object(value, path);
   if (fields.file !== undefined && fields.file !== null) fail(`${path}.file`);
   // Checked before NULs are dropped, so a name with one is refused, not changed.
@@ -217,6 +218,72 @@ function attachment(value: unknown, path: string): Omit<Attachment, "file"> {
   const size = number(fields.size, `${path}.size`);
   if (!Number.isInteger(size) || size < 0) fail(`${path}.size`);
   return { name, type, size };
+}
+
+const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** A screenshot's type from its magic bytes: PNG or WebP, else null. */
+export function imageType(bytes: Uint8Array): string | null {
+  if (PNG.every((byte, i) => bytes[i] === byte)) return "image/png";
+  const header = String.fromCharCode(...bytes.subarray(0, 12));
+  if (header.startsWith("RIFF") && header.slice(8, 12) === "WEBP") return "image/webp";
+  return null;
+}
+
+/** The type a file's own bytes show, or null for none a report may carry. */
+export async function fileType(file: Blob, claimed: string): Promise<string | null> {
+  const bytes = new Uint8Array(
+    await file.slice(0, TEXT_TYPES.includes(claimed) ? file.size : 12).arrayBuffer(),
+  );
+  const image = imageType(bytes);
+  if (image) return image;
+  const header = String.fromCharCode(...bytes.subarray(0, 6));
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (header === "GIF87a" || header === "GIF89a") return "image/gif";
+  if (header.startsWith("%PDF-")) return "application/pdf";
+  // Text has no magic bytes: it is text when it is all UTF-8, with no NUL in it.
+  if (!TEXT_TYPES.includes(claimed) || bytes.includes(0)) return null;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+  return claimed;
+}
+
+/** A host's limits for attachments; each key left out takes the most there is. */
+export type AttachmentLimits = { maxFiles?: number; maxBytes?: number; maxTotalBytes?: number };
+const LIMIT_KEYS = ["maxFiles", "maxBytes", "maxTotalBytes"];
+
+/** The limits in force, or undefined when attachments are off; a host's mistake throws a RangeError. */
+export function attachmentLimits(given: boolean | AttachmentLimits | undefined) {
+  if (given === undefined || given === false) return undefined;
+  // A string such as "false" from a config file, or a Map or a typo in a key, must not turn them on.
+  if (given !== true) {
+    const proto = typeof given === "object" && given !== null && Object.getPrototypeOf(given);
+    if (proto !== Object.prototype && proto !== null) {
+      throw new RangeError("attachments must be true, false or a plain object of limits.");
+    }
+    const unknown = Object.keys(given).find((key) => !LIMIT_KEYS.includes(key));
+    if (unknown) throw new RangeError(`attachments has no limit named ${unknown}.`);
+  }
+  const { maxFiles = ATTACHMENT_LIMIT, maxBytes = ATTACHMENT_BYTES } = given === true ? {} : given;
+  if (!Number.isInteger(maxFiles) || maxFiles < 0 || maxFiles > ATTACHMENT_LIMIT) {
+    throw new RangeError(
+      `attachments.maxFiles must be a whole number from 0 to ${ATTACHMENT_LIMIT}.`,
+    );
+  }
+  if (typeof maxBytes !== "number" || !(maxBytes >= 0 && maxBytes <= ATTACHMENT_BYTES)) {
+    throw new RangeError(
+      `attachments.maxBytes must be a number of bytes up to ${ATTACHMENT_BYTES}.`,
+    );
+  }
+  // Only after both are numbers: a BigInt would throw a TypeError when multiplied.
+  const maxTotalBytes =
+    given === true || given.maxTotalBytes === undefined ? maxFiles * maxBytes : given.maxTotalBytes;
+  if (typeof maxTotalBytes !== "number" || !(maxTotalBytes >= 0))
+    throw new RangeError("attachments.maxTotalBytes must be a number of bytes.");
+  return { maxFiles, maxBytes, maxTotalBytes: Math.min(maxTotalBytes, maxFiles * maxBytes) };
 }
 
 function screenshot(value: unknown, path: string): Omit<Screenshot, "image"> {
@@ -258,7 +325,7 @@ export function checkReport(value: unknown): ReportFields {
     screenshots: shots.map((item, i) => screenshot(item, `screenshots[${i}]`)),
     ...(files === undefined
       ? {}
-      : { attachments: files.map((item, i) => attachment(item, `attachments[${i}]`)) }),
+      : { attachments: files.map((item, i) => checkAttachment(item, `attachments[${i}]`)) }),
     ...facts(fields, ""),
     userAgent: string(fields.userAgent, "userAgent"),
     language: string(fields.language, "language"),

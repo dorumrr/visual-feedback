@@ -1,0 +1,359 @@
+{
+  "chromium": {
+    "withShot": [
+      "add",
+      "backdrop",
+      "body",
+      "cancel",
+      "clear",
+      "composer",
+      "dialog",
+      "divider",
+      "footer",
+      "header",
+      "hint",
+      "icon",
+      "image",
+      "label",
+      "menu",
+      "minimise",
+      "note",
+      "remove",
+      "save-pdf",
+      "send",
+      "send-more",
+      "side",
+      "split",
+      "stage",
+      "strip",
+      "thumb",
+      "thumb-image",
+      "thumb-number",
+      "thumb-pick",
+      "title",
+      "tool",
+      "tool-active",
+      "toolbar",
+      "trigger",
+      "trigger-icon",
+      "trigger-text",
+      "trigger-tooltip",
+      "trigger-tooltip-text",
+      "undo"
+    ],
+    "withoutShot": [
+      "backdrop",
+      "cancel",
+      "composer",
+      "dialog",
+      "footer",
+      "header",
+      "icon",
+      "label",
+      "menu",
+      "note",
+      "save-pdf",
+      "send",
+      "send-more",
+      "side",
+      "split",
+      "title",
+      "trigger",
+      "trigger-icon",
+      "trigger-text",
+      "trigger-tooltip",
+      "trigger-tooltip-text"
+    ],
+    "sent": [
+      {
+        "name": "report",
+        "headers": ["Content-Disposition: form-data; name=\"report\""],
+        "report": {
+          "id": "string",
+          "createdAt": "string",
+          "note": "string",
+          "screenshots": [
+            {
+              "marks": [],
+              "page": {
+                "url": "string",
+                "title": "string"
+              },
+              "viewport": {
+                "width": "number",
+                "height": "number",
+                "devicePixelRatio": "number"
+              },
+              "scroll": {
+                "x": "number",
+                "y": "number"
+              }
+            }
+          ],
+          "page": {
+            "url": "string",
+            "title": "string"
+          },
+          "viewport": {
+            "width": "number",
+            "height": "number",
+            "devicePixelRatio": "number"
+          },
+          "scroll": {
+            "x": "number",
+            "y": "number"
+          },
+          "userAgent": "string",
+          "language": "string",
+          "timeZone": "string",
+          "context": {}
+        }
+      },
+      {
+        "name": "image0",
+        "headers": [
+          "Content-Disposition: form-data; name=\"image0\"; filename=\"ID-0.webp\"",
+          "Content-Type: image/webp"
+        ]
+      }
+    ]
+  },
+  "firefox": {
+    "withShot": [
+      "add",
+      "backdrop",
+      "body",
+      "cancel",
+      "clear",
+      "composer",
+      "dialog",
+      "divider",
+      "footer",
+      "header",
+      "hint",
+      "icon",
+      "image",
+      "label",
+      "menu",
+      "minimise",
+      "note",
+      "remove",
+      "save-pdf",
+      "send",
+      "send-more",
+      "side",
+      "split",
+      "stage",
+      "strip",
+      "thumb",
+      "thumb-image",
+      "thumb-number",
+      "thumb-pick",
+      "title",
+      "tool",
+      "tool-active",
+      "toolbar",
+      "trigger",
+      "trigger-icon",
+      "trigger-text",
+      "trigger-tooltip",
+      "trigger-tooltip-text",
+      "undo"
+    ],
+    "withoutShot": [
+      "backdrop",
+      "cancel",
+      "composer",
+      "dialog",
+      "footer",
+      "header",
+      "icon",
+      "label",
+      "menu",
+      "note",
+      "save-pdf",
+      "send",
+      "send-more",
+      "side",
+      "split",
+      "title",
+      "trigger",
+      "trigger-icon",
+      "trigger-text",
+      "trigger-tooltip",
+      "trigger-tooltip-text"
+    ],
+    "sent": [
+      {
+        "name": "report",
+        "headers": ["Content-Disposition: form-data; name=\"report\""],
+        "report": {
+          "id": "string",
+          "createdAt": "string",
+          "note": "string",
+          "screenshots": [
+            {
+              "marks": [],
+              "page": {
+                "url": "string",
+                "title": "string"
+              },
+              "viewport": {
+                "width": "number",
+                "height": "number",
+                "devicePixelRatio": "number"
+              },
+              "scroll": {
+                "x": "number",
+                "y": "number"
+              }
+            }
+          ],
+          "page": {
+            "url": "string",
+            "title": "string"
+          },
+          "viewport": {
+            "width": "number",
+            "height": "number",
+            "devicePixelRatio": "number"
+          },
+          "scroll": {
+            "x": "number",
+            "y": "number"
+          },
+          "userAgent": "string",
+          "language": "string",
+          "timeZone": "string",
+          "context": {}
+        }
+      },
+      {
+        "name": "image0",
+        "headers": [
+          "Content-Disposition: form-data; name=\"image0\"; filename=\"ID-0.webp\"",
+          "Content-Type: image/webp"
+        ]
+      }
+    ]
+  },
+  "webkit": {
+    "withShot": [
+      "add",
+      "backdrop",
+      "body",
+      "cancel",
+      "clear",
+      "composer",
+      "dialog",
+      "divider",
+      "footer",
+      "header",
+      "hint",
+      "icon",
+      "image",
+      "label",
+      "menu",
+      "minimise",
+      "note",
+      "remove",
+      "save-pdf",
+      "send",
+      "send-more",
+      "side",
+      "split",
+      "stage",
+      "strip",
+      "thumb",
+      "thumb-image",
+      "thumb-number",
+      "thumb-pick",
+      "title",
+      "tool",
+      "tool-active",
+      "toolbar",
+      "trigger",
+      "trigger-icon",
+      "trigger-text",
+      "trigger-tooltip",
+      "trigger-tooltip-text",
+      "undo"
+    ],
+    "withoutShot": [
+      "backdrop",
+      "cancel",
+      "composer",
+      "dialog",
+      "footer",
+      "header",
+      "icon",
+      "label",
+      "menu",
+      "note",
+      "save-pdf",
+      "send",
+      "send-more",
+      "side",
+      "split",
+      "title",
+      "trigger",
+      "trigger-icon",
+      "trigger-text",
+      "trigger-tooltip",
+      "trigger-tooltip-text"
+    ],
+    "sent": [
+      {
+        "name": "report",
+        "headers": ["Content-Disposition: form-data; name=\"report\""],
+        "report": {
+          "id": "string",
+          "createdAt": "string",
+          "note": "string",
+          "screenshots": [
+            {
+              "marks": [],
+              "page": {
+                "url": "string",
+                "title": "string"
+              },
+              "viewport": {
+                "width": "number",
+                "height": "number",
+                "devicePixelRatio": "number"
+              },
+              "scroll": {
+                "x": "number",
+                "y": "number"
+              }
+            }
+          ],
+          "page": {
+            "url": "string",
+            "title": "string"
+          },
+          "viewport": {
+            "width": "number",
+            "height": "number",
+            "devicePixelRatio": "number"
+          },
+          "scroll": {
+            "x": "number",
+            "y": "number"
+          },
+          "userAgent": "string",
+          "language": "string",
+          "timeZone": "string",
+          "context": {}
+        }
+      },
+      {
+        "name": "image0",
+        "headers": [
+          "Content-Disposition: form-data; name=\"image0\"; filename=\"ID-0.png\"",
+          "Content-Type: image/png"
+        ]
+      }
+    ]
+  }
+}

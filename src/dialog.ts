@@ -1,11 +1,19 @@
-const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100%);display:grid;gap:12px}.dialog.wide{width:fit-content;min-width:min(560px,100%);max-width:100%}.side{display:contents}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.minimise{margin-left:auto}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.stage:only-child{grid-column:1/-1}.stage{position:relative;display:grid;gap:8px;min-width:0}.image{display:block;width:auto;height:var(--_ih,auto);max-width:100%;max-height:var(--_ih,max(4em,min(60vh,100vh - 24.5em)));margin:0 auto;color:var(--_mark)}.toolbar+.stage>.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg,.draft svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.strip{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}.thumb{position:relative;display:flex}.thumb-pick{position:relative;display:block;margin:0;padding:0;line-height:0}.thumb-image{display:block;height:3em;width:auto}.thumb-number{position:absolute;left:4px;top:4px;line-height:1.2}.thumb-remove{position:absolute;top:-.5em;right:-.5em}.add,.capture-view{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.composer{display:grid;gap:8px}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.split{position:relative;display:flex;margin-left:auto}.send-more{display:inline-flex;align-items:center}.menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:1;display:grid;min-width:max-content}.menu[hidden]{display:none}.save-pdf{display:inline-flex;align-items:center;gap:8px}.draft{position:fixed;z-index:var(--_z);box-sizing:border-box;max-width:calc(100% - 2 * var(--_off));display:flex;flex-wrap:wrap;align-items:center;gap:8px}.draft-thumbs{display:flex;gap:4px}.draft-thumbs .thumb-image{height:1.75em}.drafting>.trigger{display:none}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}@media (max-height:760px){.toolbar{display:grid;grid-template-columns:repeat(2,auto);align-content:start}.divider{grid-column:1/-1}}@media (max-height:700px){.dialog{position:relative}.dialog>.confirm{position:absolute;z-index:2;top:0;left:0;right:0}}@media (orientation:landscape) and (max-height:500px){.dialog.wide{width:100%;grid-template-columns:minmax(0,1fr) 12em;grid-template-rows:auto minmax(0,1fr) auto;row-gap:0}.wide>.header{grid-area:1/1/2/-1;margin-bottom:8px}.wide>.body{grid-area:2/1}.wide>.error{grid-area:3/1;margin-top:8px}.wide>.side{grid-area:2/2/4/3;display:flex;flex-direction:column;gap:12px;min-height:0}.wide>.side>.composer{flex:1;grid-template-rows:minmax(0,1fr)}.wide .note{height:100%;resize:none}.wide .footer{flex-wrap:wrap}.wide .hint{flex:1 1 100%}}`;
+const LAYOUT = `.backdrop{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));border:0;box-sizing:border-box;background:none;color:inherit;display:grid;place-items:center;overflow:auto}.backdrop:not([open]){display:none}.backdrop::backdrop{background:none}.dialog{box-sizing:border-box;width:min(560px,100%);display:grid;gap:12px}.dialog.wide{width:fit-content;min-width:min(560px,100%);max-width:100%}.side{display:contents}.header{display:flex;align-items:center;justify-content:space-between;gap:8px}.title{margin:0}.minimise{margin-left:auto}.body{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start}.body>.stage:only-child{grid-column:1/-1}.stage{position:relative;display:grid;gap:8px;min-width:0}.image{display:block;width:auto;height:var(--_ih,auto);max-width:100%;max-height:var(--_ih,max(4em,min(60vh,100vh - 24.5em)));margin:0 auto;color:var(--_mark)}.toolbar+.stage>.image{touch-action:none}.selection{position:absolute;pointer-events:none;box-sizing:border-box}.text-input{position:absolute;transform:translateY(-50%);min-width:6em;margin:0;box-sizing:content-box}.toolbar{display:flex;flex-direction:column;gap:4px}.dialog svg,.draft svg{width:1.15em;height:1.15em;flex:none;stroke-linecap:round}.divider{display:block}.strip{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px}.thumb{position:relative;display:flex}.thumb-pick{position:relative;display:block;margin:0;padding:0;line-height:0}.thumb-image{display:block;height:3em;width:auto}.thumb-number{position:absolute;left:4px;top:4px;line-height:1.2}.thumb-remove{position:absolute;top:-.5em;right:-.5em}.add,.capture-view{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.composer{display:grid;gap:8px}.files{list-style:none;margin:0;padding:0;display:grid;gap:4px}.files[hidden]{display:none}.file{display:flex;align-items:center;gap:8px;min-width:0}.file-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attach{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.note{box-sizing:border-box;width:100%;min-height:64px;resize:vertical}.footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-bar,.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}.send{display:inline-flex;align-items:center;gap:6px}.split{position:relative;display:flex;margin-left:auto}.send-more{display:inline-flex;align-items:center}.menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:1;display:grid;min-width:max-content}.menu[hidden]{display:none}.save-pdf{display:inline-flex;align-items:center;gap:8px}.draft{position:fixed;z-index:var(--_z);box-sizing:border-box;max-width:calc(100% - 2 * var(--_off));display:flex;flex-wrap:wrap;align-items:center;gap:8px}.draft-thumbs{display:flex;gap:4px}.draft-thumbs .thumb-image{height:1.75em}.drafting>.trigger{display:none}.live{position:fixed;width:1px;height:1px;margin:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}@media (max-height:760px){.toolbar{display:grid;grid-template-columns:repeat(2,auto);align-content:start}.divider{grid-column:1/-1}}@media (max-height:700px){.dialog{position:relative}.dialog>.confirm{position:absolute;z-index:2;top:0;left:0;right:0}}@media (orientation:landscape) and (max-height:500px){.dialog.wide{width:100%;grid-template-columns:minmax(0,1fr) 12em;grid-template-rows:auto minmax(0,1fr) auto;row-gap:0}.wide>.header{grid-area:1/1/2/-1;margin-bottom:8px}.wide>.body{grid-area:2/1}.wide>.error{grid-area:3/1;margin-top:8px}.wide>.side{grid-area:2/2/4/3;display:flex;flex-direction:column;gap:12px;min-height:0}.wide>.side>.composer{flex:1;grid-template-rows:minmax(0,1fr)}.wide .note{height:100%;resize:none}.wide .footer{flex-wrap:wrap}.wide .hint{flex:1 1 100%}}`;
 
-const THEME = `.backdrop{background:var(--_bd)}.dialog,.draft{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.draft{padding:8px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header button,.toolbar button,.thumb-remove{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header button:hover:not(:disabled),.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.header button:disabled,.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.stage>.image{cursor:crosshair}.selection{border:2px dashed var(--_f);border-radius:4px}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.thumb-pick{border:2px solid transparent;border-radius:calc(var(--_r) / 2.5);background:none;overflow:hidden;cursor:pointer}.thumb-pick[aria-current=true]{border-color:var(--_a)}.thumb-image{border-radius:calc(var(--_r) / 4);box-shadow:0 0 0 1px var(--_b)}.thumb-number{font-size:.75em;font-weight:600;padding:0 4px;border-radius:4px;background:var(--_s);color:var(--_t)}.thumb-remove{width:1.5em;height:1.5em;border:1px solid var(--_b);border-radius:50%;background:var(--_s)}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button,.add,.draft button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.add{border-style:dashed;color:var(--_m)}.send,.draft .capture-view{background:var(--_a);color:var(--_at);border-color:var(--_a)}.split .send{border-radius:calc(var(--_r) / 1.6) 0 0 calc(var(--_r) / 1.6)}.send-more{font:inherit;height:2.25em;padding:0 .55em;border:1px solid var(--_a);border-left-color:color-mix(in srgb,var(--_at) 40%,var(--_a));border-radius:0 calc(var(--_r) / 1.6) calc(var(--_r) / 1.6) 0;background:var(--_a);color:var(--_at);cursor:pointer}.send-more:disabled{opacity:.6;cursor:progress}.send:where([data-ink=dark]),.send-more:where([data-ink=dark]),.draft .capture-view:where([data-ink=dark]){color:#000}.menu{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:var(--_t);box-shadow:var(--_sh)}.save-pdf{font:inherit;padding:.5em .8em;border:0;border-radius:calc(var(--_r) / 2.5);background:none;color:inherit;cursor:pointer;white-space:nowrap}.save-pdf:hover,.save-pdf:focus-visible{background:color-mix(in srgb,var(--_t) 8%,transparent)}.draft button:disabled{opacity:.5;cursor:default}.draft-label{margin:0 4px;font-size:.9em;font-weight:600}[aria-disabled=true]{opacity:.6;cursor:progress}.send[data-empty]{cursor:not-allowed}.composer.wanted{border-color:var(--_mark);box-shadow:0 0 0 3px color-mix(in srgb,var(--_mark) 22%,transparent)}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}@media (max-height:700px){.dialog>.confirm{min-height:2.15em;padding:14px;border-bottom:1px solid var(--_b);border-radius:calc(var(--_r) - 1px) calc(var(--_r) - 1px) 0 0;background:var(--_s);box-shadow:var(--_sh)}}`;
+const THEME = `.backdrop{background:var(--_bd)}.dialog,.draft{background:var(--_s);color:var(--_t);border:1px solid var(--_b);border-radius:var(--_r);box-shadow:var(--_sh);padding:14px}.draft{padding:8px}.title{margin-left:4px;font-size:1.1em;font-weight:600}.header button,.toolbar button,.thumb-remove,.file-remove{font:inherit;width:2.15em;height:2.15em;padding:0;display:grid;place-items:center;border:0;border-radius:calc(var(--_r) / 2);background:none;color:var(--_m);cursor:pointer}.header button:hover:not(:disabled),.toolbar button:hover:not(:disabled){background:color-mix(in srgb,var(--_t) 8%,transparent);color:var(--_t)}.body{padding:12px;border-radius:calc(var(--_r) * .75);background:color-mix(in srgb,var(--_t) 5%,var(--_s))}.toolbar{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) * .75);background:var(--_s)}.toolbar [aria-pressed=true]{background:color-mix(in srgb,var(--_a) 16%,transparent);color:var(--_a)}.header button:disabled,.toolbar button:disabled{opacity:.35;cursor:default}.divider{width:20px;margin:4px auto;border-top:1px solid var(--_b)}.image{border-radius:calc(var(--_r) / 2);box-shadow:0 0 0 1px var(--_b),0 2px 8px rgb(0 0 0/10%)}.toolbar+.stage>.image{cursor:crosshair}.selection{border:2px dashed var(--_f);border-radius:4px}.text-input{font-family:inherit;font-weight:600;line-height:1.2;color:var(--_mark);background:color-mix(in srgb,var(--_s) 85%,transparent);border:1px dashed var(--_mark);border-radius:4px;padding:0 4px;outline:none}.thumb-pick{border:2px solid transparent;border-radius:calc(var(--_r) / 2.5);background:none;overflow:hidden;cursor:pointer}.thumb-pick[aria-current=true]{border-color:var(--_a)}.thumb-image{border-radius:calc(var(--_r) / 4);box-shadow:0 0 0 1px var(--_b)}.thumb-number{font-size:.75em;font-weight:600;padding:0 4px;border-radius:4px;background:var(--_s);color:var(--_t)}.thumb-remove,.file-remove{width:1.5em;height:1.5em;border:1px solid var(--_b);border-radius:50%;background:var(--_s)}.file-size{font-size:.85em;color:var(--_m)}.label{font-size:.9em;font-weight:600;color:var(--_m)}.composer{padding:8px;border:1px solid var(--_b);border-radius:var(--_r);background:var(--_s);transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:var(--_f);box-shadow:0 0 0 3px color-mix(in srgb,var(--_f) 22%,transparent)}.note{font:inherit;color:inherit;background:none;border:0;border-radius:calc(var(--_r) / 2);padding:4px 6px}.note:focus-visible{outline:none}.note::placeholder{color:var(--_m)}.category{font:inherit;color:inherit;background:color-mix(in srgb,var(--_t) 5%,var(--_s));border:1px solid var(--_b);border-radius:calc(var(--_r) / 2);padding:6px 8px}.send,.actions button,.add,.attach,.draft button{font:inherit;font-weight:600;height:2.25em;padding:0 .9em;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:inherit;cursor:pointer}.add,.attach{border-style:dashed;color:var(--_m)}.send,.draft .capture-view{background:var(--_a);color:var(--_at);border-color:var(--_a)}.split .send{border-radius:calc(var(--_r) / 1.6) 0 0 calc(var(--_r) / 1.6)}.send-more{font:inherit;height:2.25em;padding:0 .55em;border:1px solid var(--_a);border-left-color:color-mix(in srgb,var(--_at) 40%,var(--_a));border-radius:0 calc(var(--_r) / 1.6) calc(var(--_r) / 1.6) 0;background:var(--_a);color:var(--_at);cursor:pointer}.send-more:disabled{opacity:.6;cursor:progress}.send:where([data-ink=dark]),.send-more:where([data-ink=dark]),.draft .capture-view:where([data-ink=dark]){color:#000}.menu{padding:4px;border:1px solid var(--_b);border-radius:calc(var(--_r) / 1.6);background:var(--_s);color:var(--_t);box-shadow:var(--_sh)}.save-pdf{font:inherit;padding:.5em .8em;border:0;border-radius:calc(var(--_r) / 2.5);background:none;color:inherit;cursor:pointer;white-space:nowrap}.save-pdf:hover,.save-pdf:focus-visible{background:color-mix(in srgb,var(--_t) 8%,transparent)}.draft button:disabled{opacity:.5;cursor:default}.draft-label{margin:0 4px;font-size:.9em;font-weight:600}[aria-disabled=true]{opacity:.6;cursor:progress}.send[data-empty]{cursor:not-allowed}.composer.wanted{border-color:var(--_mark);box-shadow:0 0 0 3px color-mix(in srgb,var(--_mark) 22%,transparent)}.note:disabled,.category:disabled{opacity:.6}.hint{margin:0 4px;font-size:.85em;color:var(--_m)}.error{margin:0 4px;font-weight:500}.status{margin:8px 4px}@media (max-height:700px){.dialog>.confirm{min-height:2.15em;padding:14px;border-bottom:1px solid var(--_b);border-radius:calc(var(--_r) - 1px) calc(var(--_r) - 1px) 0 0;background:var(--_s);box-shadow:var(--_sh)}}`;
 
 import { type Annotator, annotate, type Tool } from "./annotate";
 import { icon } from "./icon";
 import { look, type Seen, shots } from "./seen";
-import { type FeedbackReport, type Mark, SCREENSHOT_LIMIT } from "./shared/report";
+import {
+  ATTACHMENT_TYPES,
+  attachmentLimits,
+  checkAttachment,
+  type FeedbackReport,
+  fileType,
+  type Mark,
+  SCREENSHOT_LIMIT,
+} from "./shared/report";
 import type { FeedbackEvent, FeedbackEvents, FeedbackOptions, FeedbackStrings } from "./widget";
 
 const ICONS = {
@@ -24,6 +32,8 @@ const ICONS = {
   camera: "M4 8h3l2-3h6l2 3h3v11H4zm8 8.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
   more: "m7 10 5 5 5-5",
   pdf: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6m-6 4h6",
+  attach:
+    "M15 7l-6.5 6.5a2 2 0 0 0 2.8 2.8L18 9.6a4 4 0 0 0-5.6-5.6L5.7 10.6a6 6 0 0 0 8.5 8.5L20 13",
 };
 
 type Texts = Omit<FeedbackStrings, "trigger" | "triggerText">;
@@ -68,6 +78,14 @@ const ENGLISH: Texts = {
   savePdf: "Save as PDF",
   pdfError: "Couldn't save the PDF.",
   noteTooLong: "Too long to send: the most is 1 MB of text. Shorten the note, then send again.",
+  attach: "Attach files",
+  attachments: "Attached files",
+  removeAttachment: "Remove",
+  attachTooMany: "{file} is not attached: the most is {limit} files.",
+  attachTooBig: "{file} is not attached: the most for one file is {limit}.",
+  attachTooBigTogether: "{file} is not attached: the most for all files together is {limit}.",
+  attachType: "{file} is not attached: only images, PDFs and text files can be.",
+  attachUnreadable: "{file} is not attached: what it holds is not what its name says.",
 };
 
 // A key given as undefined, as an i18n lookup can return, keeps its English text.
@@ -103,7 +121,7 @@ export type View = { error: true } | { error?: false; image: HTMLCanvasElement |
 export type Shot = { image: HTMLCanvasElement; marks: Mark[]; seen: Seen };
 
 /** What the user wrote and drew, taken once when Send is pressed. */
-export type Draft = { note: string; category: string | undefined; shots: Shot[] };
+export type Draft = { note: string; category: string | undefined; shots: Shot[]; files: File[] };
 
 export type Handlers = {
   close(): void;
@@ -123,7 +141,26 @@ export type Settings = {
   categories?: readonly { id: string; label: string }[] | undefined;
   requireNote?: boolean | undefined;
   strings?: Partial<FeedbackStrings> | undefined;
+  attachments?: FeedbackOptions["attachments"] | undefined;
 };
+
+/** What the file picker offers: every safe type and its endings. */
+const ACCEPT = Object.entries(ATTACHMENT_TYPES).flat(2).join(",");
+
+/** The safe type a name's ending gives; browsers type .md and .log as nothing, .csv as Excel. */
+function typeOf(name: string): string | undefined {
+  const lower = name.toLowerCase();
+  const found = Object.entries(ATTACHMENT_TYPES).find(([, endings]) =>
+    endings.some((ending) => lower.endsWith(ending)),
+  );
+  return found?.[0];
+}
+
+function megabytes(bytes: number): string {
+  if (bytes < 1000) return `${bytes} bytes`;
+  if (bytes < 1_000_000) return `${Math.round(bytes / 1000)} KB`;
+  return `${Math.round(bytes / 100_000) / 10} MB`;
+}
 
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -326,6 +363,10 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
   let failure: HTMLElement | undefined;
   // The Esc hint and its footer: a send takes the hint away, and a refused one puts it back.
   let hint: [HTMLElement, HTMLElement] | undefined;
+  // The files attached to this draft, in the order Send carries them.
+  let files: File[] = [];
+  // Picks are checked one at a time, and Send waits for the last, so no file is half added.
+  let checking = Promise.resolve();
   const root = () => parent.getRootNode() as ShadowRoot;
   // Where this tab keeps its draft's id: one per widget tag, as the loader reads it.
   const key = `visual-feedback:${root().host.localName}`;
@@ -353,6 +394,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     if (over || busy()) return false;
     return Boolean(
       note?.value.trim() ||
+        files.length ||
         picker?.selectedIndex ||
         taken.length > 1 ||
         taken.some((shot) => shot.annotator?.marks.length),
@@ -738,6 +780,9 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     pdfError?.remove();
     annotator?.end();
     const font = getComputedStyle(panel).fontFamily;
+    const attached = files.length
+      ? [text.attachments, ...files.map((file) => `${file.name} (${megabytes(file.size)})`)]
+      : [];
     try {
       // Copied before the first await: a screenshot added, removed or marked while the PDF
       // builds must not change it.
@@ -755,7 +800,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       const capture = await import("./capture");
       const writer = await import("./pdf");
       const [first, ...rest] = pages;
-      const front = writer.cover(note, category, first, font);
+      const front = writer.cover(note, category, first, font, attached);
       // Each copy is freed once encoded, so a phone holds one fewer at a time.
       const file = await writer.pdf(
         [...front, ...rest.map((page) => () => page)],
@@ -877,18 +922,24 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         if (send.getAttribute("aria-disabled") !== "true") void deliver(draft);
         return;
       }
-      if (send.hasAttribute("data-empty")) return;
+      if (send.hasAttribute("data-empty") || busy()) return;
       annotator?.end();
-      draft = {
-        note: field.value,
-        category: category?.value,
-        shots: taken.map((shot) => ({
-          image: shot.image,
-          marks: [...(shot.annotator?.marks ?? [])],
-          seen: shot.seen,
-        })),
-      };
-      void deliver(draft);
+      // Sending at once: Attach, Esc and Keep as draft wait while the last pick is checked.
+      sending();
+      void checking.then(() => {
+        if (!mounted || draft) return;
+        draft = {
+          note: field.value,
+          category: category?.value,
+          shots: taken.map((shot) => ({
+            image: shot.image,
+            marks: [...(shot.annotator?.marks ?? [])],
+            seen: shot.seen,
+          })),
+          files: [...files],
+        };
+        void deliver(draft);
+      });
     });
     send.append(icon(ICONS.send, "icon"));
     send.addEventListener("pointerenter", () => {
@@ -902,6 +953,12 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     locked.push(field, ...(category ? [category] : []));
     const box = element("div", "composer");
     box.append(field);
+    const limits = attachmentLimits(settings.attachments);
+    if (limits) {
+      const [attach, pick, list] = attaching(limits);
+      box.append(pick, list);
+      fields.unshift(attach);
+    }
     // The category, when there is one, stays with the note; Send goes to the footer.
     if (fields.length) {
       const bar = element("div", "composer-bar");
@@ -972,6 +1029,89 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     ink(send);
     ink(more);
     field.focus();
+  }
+
+  // The Attach button and the list of files, with a message for each file a limit keeps out.
+  function attaching(
+    limits: NonNullable<ReturnType<typeof attachmentLimits>>,
+  ): [HTMLButtonElement, HTMLInputElement, HTMLElement] {
+    const list = element("ul", "files", { "aria-label": text.attachments });
+    const pick = element("input", "attach-input", {
+      type: "file",
+      multiple: "",
+      accept: ACCEPT,
+      hidden: "",
+      tabindex: "-1",
+    });
+    const attach = button("attach", text.attach, () => pick.click());
+    attach.prepend(icon(ICONS.attach, "icon"));
+    let refusal: HTMLElement | undefined;
+    const render = () => {
+      list.hidden = !files.length;
+      list.replaceChildren(
+        ...files.map((file, i) => {
+          const row = element("li", "file");
+          const name = element("span", "file-name");
+          name.textContent = file.name;
+          const size = element("span", "file-size");
+          size.textContent = megabytes(file.size);
+          const remove = iconButton(
+            "file-remove",
+            `${text.removeAttachment} ${file.name}`,
+            ICONS.cancel,
+            () => {
+              files = files.filter((_, at) => at !== i);
+              refusal?.remove();
+              render();
+              attach.focus();
+            },
+          );
+          locked.push(remove);
+          row.append(name, size, remove);
+          return row;
+        }),
+      );
+    };
+    pick.addEventListener("change", () => {
+      const picked = [...(pick.files ?? [])];
+      pick.value = "";
+      checking = checking.then(() => take(picked)).catch(() => {});
+    });
+    const take = async (picked: File[]) => {
+      const messages: string[] = [];
+      for (const given of picked) {
+        const type = typeOf(given.name);
+        const say = (message: string, limit = "") =>
+          messages.push(message.replaceAll("{file}", given.name).replaceAll("{limit}", limit));
+        const total = files.reduce((sum, file) => sum + file.size, given.size);
+        let fits = Boolean(type);
+        try {
+          if (type) checkAttachment({ name: given.name, type, size: given.size });
+        } catch {
+          fits = false;
+        }
+        if (!type || !fits) say(text.attachType);
+        else if (files.length >= limits.maxFiles) say(text.attachTooMany, String(limits.maxFiles));
+        else if (given.size > limits.maxBytes) say(text.attachTooBig, megabytes(limits.maxBytes));
+        else if (total > limits.maxTotalBytes) {
+          say(text.attachTooBigTogether, megabytes(limits.maxTotalBytes));
+        } else if ((await fileType(given, type).catch(() => null)) !== type) {
+          // A file deleted or moved since it was picked cannot be read either.
+          say(text.attachUnreadable);
+        } else files.push(new File([given], given.name, { type }));
+      }
+      refusal?.remove();
+      refusal = undefined;
+      if (messages.length) {
+        refusal = element("p", "error", { role: "alert" });
+        refusal.textContent = messages.join(" ");
+        list.after(refusal);
+      }
+      render();
+    };
+    render();
+    locked.push(attach);
+    return [attach, pick, list];
   }
 
   function sending(): void {
@@ -1052,6 +1192,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
     } else handlers.close();
   };
   backdrop.addEventListener("cancel", (event) => {
+    // A file picker closed with nothing chosen fires a cancel that bubbles up to here.
+    if (event.target !== backdrop) return;
     event.preventDefault();
     onEscape();
   });

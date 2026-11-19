@@ -1,23 +1,29 @@
 import {
-  ATTACHMENT_BYTES,
-  ATTACHMENT_LIMIT,
   type Attachment,
+  type AttachmentLimits,
+  attachmentLimits,
   checkReport,
   type FeedbackReport,
+  fileType,
+  imageType,
   REPORT_LIMIT,
   type ReportFields,
   SCREENSHOT_LIMIT,
-  TEXT_TYPES,
 } from "../shared/report";
 
-export type { Attachment, FeedbackReport, Mark, Screenshot } from "../shared/report";
+export type {
+  Attachment,
+  AttachmentLimits,
+  FeedbackReport,
+  Mark,
+  Screenshot,
+} from "../shared/report";
 
 const DEFAULT_MAX_IMAGE_BYTES = 10_000_000;
 // Room for the multipart boundaries and part headers around every part.
 const FRAMING_BYTES = 65_536;
 const IMAGE_PART = /^image\d+$/;
 const FILE_PART = /^file\d+$/;
-const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 export class FeedbackRequestError extends Error {
   readonly status: 400 | 413;
@@ -56,69 +62,11 @@ async function read(request: Request, limit: number): Promise<Blob> {
   }
 }
 
-function imageType(bytes: Uint8Array): string | null {
-  if (PNG.every((byte, i) => bytes[i] === byte)) return "image/png";
-  const header = String.fromCharCode(...bytes.subarray(0, 12));
-  if (header.startsWith("RIFF") && header.slice(8, 12) === "WEBP") return "image/webp";
-  return null;
-}
-
 async function checkImage(part: File, maxImageBytes: number): Promise<Blob> {
   if (part.size > maxImageBytes) throw new FeedbackRequestError(413, "The image is too large.");
   const type = imageType(new Uint8Array(await part.slice(0, 12).arrayBuffer()));
   if (!type) throw new FeedbackRequestError(400, "The image is not a PNG or WebP.");
   return part.slice(0, part.size, type);
-}
-
-/** The type a file's own bytes show, or null for none a report may carry. */
-function fileType(bytes: Uint8Array, claimed: string): string | null {
-  const image = imageType(bytes);
-  if (image) return image;
-  const header = String.fromCharCode(...bytes.subarray(0, 6));
-  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
-  if (header === "GIF87a" || header === "GIF89a") return "image/gif";
-  if (header.startsWith("%PDF-")) return "application/pdf";
-  // Text has no magic bytes: it is text when it is all UTF-8, with no NUL in it.
-  if (!TEXT_TYPES.includes(claimed) || bytes.includes(0)) return null;
-  try {
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
-  }
-  return claimed;
-}
-
-type Files = { maxFiles?: number; maxBytes?: number; maxTotalBytes?: number };
-const LIMIT_KEYS = ["maxFiles", "maxBytes", "maxTotalBytes"];
-
-function fileLimits(given: boolean | Files | undefined) {
-  if (given === undefined || given === false) return undefined;
-  // A string such as "false" from a config file, or a Map or a typo in a key, must not turn them on.
-  if (given !== true) {
-    const proto = typeof given === "object" && given !== null && Object.getPrototypeOf(given);
-    if (proto !== Object.prototype && proto !== null) {
-      throw new RangeError("attachments must be true, false or a plain object of limits.");
-    }
-    const unknown = Object.keys(given).find((key) => !LIMIT_KEYS.includes(key));
-    if (unknown) throw new RangeError(`attachments has no limit named ${unknown}.`);
-  }
-  const { maxFiles = ATTACHMENT_LIMIT, maxBytes = ATTACHMENT_BYTES } = given === true ? {} : given;
-  if (!Number.isInteger(maxFiles) || maxFiles < 0 || maxFiles > ATTACHMENT_LIMIT) {
-    throw new RangeError(
-      `attachments.maxFiles must be a whole number from 0 to ${ATTACHMENT_LIMIT}.`,
-    );
-  }
-  if (typeof maxBytes !== "number" || !(maxBytes >= 0 && maxBytes <= ATTACHMENT_BYTES)) {
-    throw new RangeError(
-      `attachments.maxBytes must be a number of bytes up to ${ATTACHMENT_BYTES}.`,
-    );
-  }
-  // Only after both are numbers: a BigInt would throw a TypeError when multiplied.
-  const maxTotalBytes =
-    given === true || given.maxTotalBytes === undefined ? maxFiles * maxBytes : given.maxTotalBytes;
-  if (typeof maxTotalBytes !== "number" || !(maxTotalBytes >= 0))
-    throw new RangeError("attachments.maxTotalBytes must be a number of bytes.");
-  return { maxFiles, maxBytes, maxTotalBytes: Math.min(maxTotalBytes, maxFiles * maxBytes) };
 }
 
 async function checkFile(part: File, claimed: Omit<Attachment, "file">, i: number): Promise<Blob> {
@@ -128,10 +76,7 @@ async function checkFile(part: File, claimed: Omit<Attachment, "file">, i: numbe
       `The file${i} part is not the size attachments[${i}] gives.`,
     );
   }
-  const head = new Uint8Array(
-    await part.slice(0, TEXT_TYPES.includes(claimed.type) ? part.size : 12).arrayBuffer(),
-  );
-  const type = fileType(head, claimed.type);
+  const type = await fileType(part, claimed.type);
   if (type !== claimed.type) {
     throw new FeedbackRequestError(
       400,
@@ -143,11 +88,11 @@ async function checkFile(part: File, claimed: Omit<Attachment, "file">, i: numbe
 
 export async function parseFeedbackRequest(
   request: Request,
-  limits: { maxImageBytes?: number; attachments?: boolean | Files } = {},
+  limits: { maxImageBytes?: number; attachments?: boolean | AttachmentLimits } = {},
 ): Promise<{ report: FeedbackReport }> {
   const maxImageBytes = limits.maxImageBytes ?? DEFAULT_MAX_IMAGE_BYTES;
   if (!(maxImageBytes >= 0)) throw new RangeError("maxImageBytes must be a number of bytes.");
-  const files = fileLimits(limits.attachments);
+  const files = attachmentLimits(limits.attachments);
   const contentType = request.headers.get("content-type") ?? "";
   if (!/^multipart\/form-data\s*;/i.test(contentType)) {
     throw new FeedbackRequestError(400, "The request is not multipart/form-data.");

@@ -72,6 +72,7 @@ export function cover(
   category: string | undefined,
   image: HTMLCanvasElement | undefined,
   font: string,
+  attached: readonly string[] = [],
 ): Page[] {
   const width = image?.width ?? 1200;
   const scale = width / 1200;
@@ -104,6 +105,8 @@ export function cover(
   };
   if (category) wrap(category, "600");
   for (const paragraph of (note || " ").split("\n")) wrap(paragraph, "400");
+  // A heading, then one row per file: the files are listed, never drawn.
+  for (const [i, row] of attached.entries()) wrap(row, i ? "400" : "600");
   // A screenshot too narrow for any text rounds the line to 0: one page, as before paging.
   const count = Math.max(1, Math.ceil(lines.length / fit));
   return Array.from({ length: count }, (_, n) => () => {

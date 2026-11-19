@@ -1,7 +1,7 @@
 import type { Tool } from "./annotate";
 import type { CaptureOptions } from "./capture";
 import { match } from "./match";
-import type { FeedbackReport } from "./shared/report";
+import type { AttachmentLimits, FeedbackReport } from "./shared/report";
 
 const SVG = "http://www.w3.org/2000/svg";
 
@@ -59,7 +59,15 @@ export type FeedbackStrings = Record<
   | "moreSend"
   | "savePdf"
   | "pdfError"
-  | "noteTooLong",
+  | "noteTooLong"
+  | "attach"
+  | "attachments"
+  | "removeAttachment"
+  | "attachTooMany"
+  | "attachTooBig"
+  | "attachTooBigTogether"
+  | "attachType"
+  | "attachUnreadable",
   string
 >;
 
@@ -83,6 +91,7 @@ export type FeedbackOptions = {
   container?: HTMLElement;
   tagName?: string;
   draft?: "session" | "memory";
+  attachments?: boolean | AttachmentLimits;
 };
 
 export type FeedbackWidget = {

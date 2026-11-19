@@ -50,7 +50,7 @@ export type Shot = { image: Blob; marks: Mark[]; seen: Seen };
 
 /** Builds the report and checks it with the same shape check the server uses. */
 export async function build(
-  draft: { note: string; category: string | undefined },
+  draft: { note: string; category: string | undefined; files?: readonly File[] },
   shots: Shot[],
   seen: Seen,
   settings: Settings,
@@ -67,24 +67,35 @@ export async function build(
     note: draft.note,
     ...(draft.category === undefined ? {} : { category: draft.category }),
     screenshots: shots.map((shot) => ({ marks: shot.marks, ...facts(shot.seen) })),
+    ...(draft.files?.length
+      ? { attachments: draft.files.map(({ name, type, size }) => ({ name, type, size })) }
+      : {}),
     ...facts(seen),
     userAgent: navigator.userAgent,
     language: navigator.language,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     context,
   };
-  const { attachments: _, ...checked } = checkReport(report);
+  const { attachments, ...checked } = checkReport(report);
   const screenshots = checked.screenshots.map((shot, i) => ({
     ...shot,
     image: (shots[i] as Shot).image,
   }));
-  return { ...checked, screenshots };
+  const files = draft.files ?? [];
+  return {
+    ...checked,
+    screenshots,
+    ...(attachments
+      ? { attachments: attachments.map((a, i) => ({ ...a, file: files[i] as File })) }
+      : {}),
+  };
 }
 
 /** The report part an endpoint receives: the report without its images, as JSON. */
 function part(report: FeedbackReport): string {
   const screenshots = report.screenshots.map(({ image: _, ...shot }) => shot);
-  return JSON.stringify({ ...report, screenshots });
+  const attachments = report.attachments?.map(({ file: _, ...entry }) => entry);
+  return JSON.stringify({ ...report, screenshots, ...(attachments ? { attachments } : {}) });
 }
 
 /** Whether the report part stays within what parseFeedbackRequest accepts; onSubmit has no cap. */
@@ -136,6 +147,9 @@ async function send(
   for (const [i, { image }] of report.screenshots.entries()) {
     const extension = image.type === "image/png" ? "png" : "webp";
     body.append(`image${i}`, image, `${report.id}-${i}.${extension}`);
+  }
+  for (const [i, { file, name }] of (report.attachments ?? []).entries()) {
+    body.append(`file${i}`, file, name);
   }
   const { headers: given } = settings;
   const headers = typeof given === "function" ? await host(given) : (given ?? {});

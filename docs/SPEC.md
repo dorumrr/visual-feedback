@@ -107,6 +107,17 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   puts the focus on the menu button; Tab closes it too. A PDF that cannot be made, a page the browser has no memory to draw
   included (as on iOS), shows the `pdfError` text, never a blank page, and
   neither `saved` nor `error` fires, since nothing failed to send; one asked for while another is being made is ignored.
+- **Attachments:** with `attachments` on, "Attach files" (`attach`) beside the category picks
+  files, and a list under the note shows each one's name and size with a remove button
+  (`removeAttachment` and the name). A file's type comes from its name's ending, and only PNG,
+  JPEG, WebP, GIF, PDF and text files (`.txt`, `.log`, `.csv`, `.md`, `.json`) are taken. A file
+  over a limit is kept out and the list says why, naming it: `attachTooMany`, `attachTooBig`,
+  `attachTooBigTogether` or `attachType`, where `{file}` is its name and `{limit}` the limit.
+  A file whose bytes are not the type its ending gives, as the server checks them, is kept out
+  with `attachUnreadable`.
+  Cancel asks first when a file would be lost. It works after "Send without screenshot" too, and
+  Save as PDF lists the files by name and size under the note. A fold keeps them; a page load
+  does not.
 - **Screenshots:** a report holds up to 10. Each keeps its own marks and its own Undo; the tool
   chosen stays the same across them. The strip numbers them in the order they are sent: a click
   shows one, and its remove button, there only when there are two or more, takes one out. "Add
@@ -134,7 +145,8 @@ Defined in `docs/API.md` (`FeedbackReport`). It holds:
 - the screenshots, at most 10, or none after "Send without screenshot". Each has its flattened
   image with the marks painted in, the marks as vectors, and the page URL and title, the viewport
   and the scroll position as they were when it was taken;
-- the note and the category;
+- the note and the category, and with `attachments` on, each attached file with its name, type
+  and size;
 - the page URL and title, the viewport and the scroll position, as they were at the first
   screenshot, or at the capture error after "Send without screenshot";
 - the user agent, the language, the time zone and the time of Send;
@@ -248,3 +260,9 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | moreSend / savePdf | More send options / Save as PDF |
 | pdfError | Couldn't save the PDF. |
 | noteTooLong | Too long to send: the most is 1 MB of text. Shorten the note, then send again. |
+| attach / attachments / removeAttachment | Attach files / Attached files / Remove (with the file's name, as "Remove steps.log") |
+| attachTooMany | {file} is not attached: the most is {limit} files. |
+| attachTooBig | {file} is not attached: the most for one file is {limit}. |
+| attachTooBigTogether | {file} is not attached: the most for all files together is {limit}. |
+| attachType | {file} is not attached: only images, PDFs and text files can be. |
+| attachUnreadable | {file} is not attached: what it holds is not what its name says. |

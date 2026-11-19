@@ -242,7 +242,7 @@ test("every element of every view has its ::part() name, and the page can style 
     ),
   });
   await failable(page);
-  await mount(page, { categories: [{ id: "bug", label: "Bug" }] });
+  await mount(page, { categories: [{ id: "bug", label: "Bug" }], attachments: true });
   const dialog = page.getByRole("dialog");
   const found: string[][] = [];
   const scan = async (view: string) => {
@@ -324,6 +324,11 @@ test("every element of every view has its ::part() name, and the page can style 
   );
   await open();
   await page.getByRole("textbox", { name: "Your note" }).fill("A note");
+  // A file in the list: its row, name, size and remove button are parts too.
+  await page
+    .locator("visual-feedback")
+    .locator("input.attach-input")
+    .setInputFiles([{ name: "a.txt", mimeType: "text/plain", buffer: Buffer.from("1") }]);
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await scan("send error");

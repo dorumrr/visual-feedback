@@ -1,5 +1,11 @@
 export type { CaptureOptions } from "./capture";
-export type { Attachment, FeedbackReport, Mark, Screenshot } from "./shared/report";
+export type {
+  Attachment,
+  AttachmentLimits,
+  FeedbackReport,
+  Mark,
+  Screenshot,
+} from "./shared/report";
 export type {
   FeedbackEvent,
   FeedbackEvents,

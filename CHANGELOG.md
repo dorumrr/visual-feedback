@@ -12,6 +12,13 @@
   to 10 files of 15 MB each, of safe types checked by their bytes, returned as
   `report.attachments`. Without it, nothing changes, and a request with files is refused with
   400. The report and server types export `Attachment`.
+- The `attachments` option lets the user attach files to the report: an "Attach files" button,
+  a list with a remove button for each, and a message naming the file and the limit for any it
+  keeps out (SPEC §4). Off by default; with `endpoint`, the files go as `file<n>` parts. New
+  strings `attach`, `attachments`, `removeAttachment`, `attachTooMany`, `attachTooBig`,
+  `attachTooBigTogether`, `attachType` and `attachUnreadable`; new parts `attach`, `attach-input`, `files`, `file`,
+  `file-name`, `file-size` and `file-remove`. Each storage recipe stores files behind its own
+  `ATTACHMENTS` switch, off as shipped. `AttachmentLimits` is exported from both entries.
 
 ## 0.4.3 (2026-10-16)
 
