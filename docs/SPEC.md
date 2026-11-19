@@ -115,8 +115,8 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   `attachTooBigTogether` or `attachType`, where `{file}` is its name and `{limit}` the limit; a name
   the server would refuse, over 255 bytes, only an ending such as `.png`, or with a control,
   bidi or path character, is kept out with `attachName`.
-  A file whose bytes are not the type its ending gives, as the server checks them, is kept out
-  with `attachUnreadable`.
+  A file whose bytes are not the type its ending gives, as the server checks them, or that cannot
+  be read, such as one moved since it was picked, is kept out with `attachUnreadable`.
   Cancel asks first when a file would be lost. It works after "Send without screenshot" too, and
   Save as PDF lists the files by name and size under the note. A fold and a page load keep
   them, with the exceptions §7 names. Brought back, they meet the page's limits again, as a pick
@@ -270,4 +270,4 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | attachTooBigTogether | {file} is not attached: the most for all files together is {limit}. |
 | attachType | {file} is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be. |
 | attachName | {file} is not attached: its name is too long, is only an ending, or holds a character that is not allowed. |
-| attachUnreadable | {file} is not attached: what it holds is not what its name says. |
+| attachUnreadable | {file} is not attached: it could not be read as the type its name says. |

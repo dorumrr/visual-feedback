@@ -395,9 +395,9 @@ test("a file whose bytes are not what its name says is kept out, as the server w
   ]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
     [
-      "photo.jpg is not attached: what it holds is not what its name says.",
-      "utf16.csv is not attached: what it holds is not what its name says.",
-      "empty.png is not attached: what it holds is not what its name says.",
+      "photo.jpg is not attached: it could not be read as the type its name says.",
+      "utf16.csv is not attached: it could not be read as the type its name says.",
+      "empty.png is not attached: it could not be read as the type its name says.",
     ].join(" "),
   );
   await expect(rows(page)).toHaveText(["good.png"]);
@@ -502,7 +502,7 @@ test("a file that cannot be read is kept out, and later picks and Send still wor
   });
   await picker(page).setInputFiles([text("gone.txt", "1")]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "gone.txt is not attached: what it holds is not what its name says.",
+    "gone.txt is not attached: it could not be read as the type its name says.",
   );
   await picker(page).setInputFiles([text("ok.txt", "2")]);
   await expect(rows(page)).toHaveText(["ok.txt"]);

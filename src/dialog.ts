@@ -88,7 +88,7 @@ const ENGLISH: Texts = {
     "{file} is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be.",
   attachName:
     "{file} is not attached: its name is too long, is only an ending, or holds a character that is not allowed.",
-  attachUnreadable: "{file} is not attached: what it holds is not what its name says.",
+  attachUnreadable: "{file} is not attached: it could not be read as the type its name says.",
 };
 
 // A key given as undefined, as an i18n lookup can return, keeps its English text.
