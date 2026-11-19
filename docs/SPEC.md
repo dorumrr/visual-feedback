@@ -112,7 +112,9 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   (`removeAttachment` and the name). A file's type comes from its name's ending, and only PNG,
   JPEG, WebP, GIF, PDF and text files (`.txt`, `.log`, `.csv`, `.md`, `.json`) are taken. A file
   over a limit is kept out and the list says why, naming it: `attachTooMany`, `attachTooBig`,
-  `attachTooBigTogether` or `attachType`, where `{file}` is its name and `{limit}` the limit.
+  `attachTooBigTogether` or `attachType`, where `{file}` is its name and `{limit}` the limit; a name
+  the server would refuse, over 255 bytes, only an ending such as `.png`, or with a control,
+  bidi or path character, is kept out with `attachName`.
   A file whose bytes are not the type its ending gives, as the server checks them, is kept out
   with `attachUnreadable`.
   Cancel asks first when a file would be lost. It works after "Send without screenshot" too, and
@@ -266,5 +268,6 @@ These are the default texts. Each one can be replaced through `strings` (`docs/A
 | attachTooMany | {file} is not attached: the most is {limit} files. |
 | attachTooBig | {file} is not attached: the most for one file is {limit}. |
 | attachTooBigTogether | {file} is not attached: the most for all files together is {limit}. |
-| attachType | {file} is not attached: only images, PDFs and text files can be. |
+| attachType | {file} is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be. |
+| attachName | {file} is not attached: its name is too long, is only an ending, or holds a character that is not allowed. |
 | attachUnreadable | {file} is not attached: what it holds is not what its name says. |

@@ -16,9 +16,10 @@
   a list with a remove button for each, and a message naming the file and the limit for any it
   keeps out (SPEC §4). Off by default; with `endpoint`, the files go as `file<n>` parts. New
   strings `attach`, `attachments`, `removeAttachment`, `attachTooMany`, `attachTooBig`,
-  `attachTooBigTogether`, `attachType` and `attachUnreadable`; new parts `attach`, `attach-input`, `files`, `file`,
+  `attachTooBigTogether`, `attachType`, `attachName` and `attachUnreadable`; new parts `attach`, `attach-input`, `files`, `file`,
   `file-name`, `file-size` and `file-remove`. Each storage recipe stores files behind its own
-  `ATTACHMENTS` switch, off as shipped. `AttachmentLimits` is exported from both entries. A folded draft keeps its files across
+  `ATTACHMENTS` switch, off as shipped. Code that types a full `FeedbackStrings` object needs
+  every string key this release adds, `noteTooLong` included. `AttachmentLimits` is exported from both entries. A folded draft keeps its files across
   a page load, as it keeps its screenshots (SPEC §7).
 - AGENTS.md asks whether users may attach files, and turns them on only with a yes, the widget
   option and the recipe's switch together. A new safety rule serves an attached file only as a

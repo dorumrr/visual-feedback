@@ -158,8 +158,8 @@ const { report } = await parseFeedbackRequest(request, { maxImageBytes: 5_000_00
   must be one of these types, its name ending as the type does, and its bytes must show that type:
   PNG, JPEG, WebP, GIF, PDF (by magic bytes), or `text/plain` (`.txt`, `.log`), `text/csv`,
   `text/markdown` (`.md`) and `application/json` (UTF-8 with no NUL, and not starting as one of the
-  types above). A name over 255 bytes in UTF-8, a path, or one holding a control or bidi control
-  character, is refused. `report.attachments[n].file` is the checked file, typed from its bytes. A
+  types above). A name over 255 bytes in UTF-8, a path, only an ending such as `.png`, or one
+  holding a control or bidi control character, is refused. `report.attachments[n].file` is the checked file, typed from its bytes. A
   `maxFiles` above 10, a `maxBytes` above `15_000_000`, or a limit that is not a count or a number
   of bytes, throws a `RangeError`; a `maxTotalBytes` above `maxFiles` times `maxBytes` adds nothing.
 - If any check fails, it throws a `FeedbackRequestError` that carries a `status` (400 or 413), and

@@ -84,7 +84,10 @@ const ENGLISH: Texts = {
   attachTooMany: "{file} is not attached: the most is {limit} files.",
   attachTooBig: "{file} is not attached: the most for one file is {limit}.",
   attachTooBigTogether: "{file} is not attached: the most for all files together is {limit}.",
-  attachType: "{file} is not attached: only images, PDFs and text files can be.",
+  attachType:
+    "{file} is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be.",
+  attachName:
+    "{file} is not attached: its name is too long, is only an ending, or holds a character that is not allowed.",
   attachUnreadable: "{file} is not attached: what it holds is not what its name says.",
 };
 
@@ -1090,7 +1093,7 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
       for (const given of picked) {
         const type = typeOf(given.name);
         const say = (message: string, limit = "") =>
-          messages.push(message.replaceAll("{file}", given.name).replaceAll("{limit}", limit));
+          messages.push(message.replaceAll("{limit}", limit).replaceAll("{file}", given.name));
         const total = files.reduce((sum, file) => sum + file.size, given.size);
         let fits = Boolean(type);
         try {
@@ -1098,7 +1101,8 @@ export function mount(parent: HTMLElement, handlers: Handlers, settings: Setting
         } catch {
           fits = false;
         }
-        if (!type || !fits) say(text.attachType);
+        if (!type) say(text.attachType);
+        else if (!fits) say(text.attachName);
         else if (files.length >= limits.maxFiles) say(text.attachTooMany, String(limits.maxFiles));
         else if (given.size > limits.maxBytes) say(text.attachTooBig, megabytes(limits.maxBytes));
         else if (total > limits.maxTotalBytes) {

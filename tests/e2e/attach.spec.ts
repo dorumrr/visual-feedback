@@ -166,9 +166,27 @@ test("each limit keeps the file out and says which limit it met", async ({ page 
   await open(page, { attachments: { maxFiles: 2, maxBytes: 10, maxTotalBytes: 15 } });
   const alert = page.locator("visual-feedback").locator(".composer [role=alert]");
   await picker(page).setInputFiles([text("a.svg", "<svg/>", "image/svg+xml")]);
-  await expect(alert).toHaveText("a.svg is not attached: only images, PDFs and text files can be.");
+  await expect(alert).toHaveText(
+    "a.svg is not attached: only PNG, JPEG, WebP and GIF images, PDFs and .txt, .log, .csv, .md and .json files can be.",
+  );
+  // An allowed type whose name the server would refuse: over 255 bytes.
+  const long = `${"n".repeat(252)}.png`;
+  await picker(page).setInputFiles([{ name: long, mimeType: "image/png", buffer: PNG }]);
+  await expect(alert).toHaveText(
+    `${long} is not attached: its name is too long, is only an ending, or holds a character that is not allowed.`,
+  );
+  // 256 bytes in 88 characters, and a bidi mark that would hide the real ending.
+  for (const name of [`${"\u5408".repeat(84)}.png`, "photo\u202egnp.png", ".png"]) {
+    await picker(page).setInputFiles([{ name, mimeType: "image/png", buffer: PNG }]);
+    await expect(alert).toHaveText(
+      `${name} is not attached: its name is too long, is only an ending, or holds a character that is not allowed.`,
+    );
+  }
   await picker(page).setInputFiles([text("big.txt", "12345678901")]);
   await expect(alert).toHaveText("big.txt is not attached: the most for one file is 10 bytes.");
+  // A name holding a placeholder is shown as picked.
+  await picker(page).setInputFiles([text("{limit}.txt", "12345678901")]);
+  await expect(alert).toHaveText("{limit}.txt is not attached: the most for one file is 10 bytes.");
   await picker(page).setInputFiles([text("a.txt", "12345678"), text("b.txt", "12345678")]);
   await expect(alert).toHaveText(
     "b.txt is not attached: the most for all files together is 15 bytes.",
@@ -187,11 +205,17 @@ test("strings replace the attachment texts", async ({ page }) => {
       removeAttachment: "X remove",
       attachTooMany: "X {file} {limit}",
       attachType: "X type {file}",
+      attachName: "X name {file}",
     },
   });
-  await picker(page).setInputFiles([text("a.txt", "1"), text("b.txt", "2"), text("c.exe", "3")]);
+  await picker(page).setInputFiles([
+    text("a.txt", "1"),
+    text("b.txt", "2"),
+    text("c.exe", "3"),
+    text(`${"n".repeat(252)}.txt`, "4"),
+  ]);
   await expect(page.locator("visual-feedback").locator(".composer [role=alert]")).toHaveText(
-    "X b.txt 1 X type c.exe",
+    `X b.txt 1 X type c.exe X name ${"n".repeat(252)}.txt`,
   );
   await expect(button(page, "X remove a.txt")).toBeVisible();
   await expect(page.getByRole("list", { name: "X attachments" })).toBeVisible();
