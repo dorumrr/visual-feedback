@@ -7,6 +7,13 @@ Supabase user's uuid. The images are in Storage instead of a second table, and e
 `image` in `report` is its file name. Row-level security lets only your app's admins read either,
 and nobody but your server can write.
 
+Files the user attaches are off. To take them, set `ATTACHMENTS` at the top of the route to `true`,
+only together with the widget's `attachments` option; off, a report with files is refused with 400.
+On, each file goes into the same folder as `<id>/file-<n>` plus its type's ending, such as
+`file-0.png` or `file-1.log`, numbered from 0, with its content type, never under the user's file
+name. Each entry of `attachments` in `report` keeps the user's `name`, its `type` and `size`, and
+`file`, the stored name.
+
 `user_id` is the proof of who sent a report; `report.context` is not (docs/API.md). The images show
 the screen as the user saw it, with nothing masked (SPEC §7).
 
@@ -52,8 +59,8 @@ create policy "Admins read feedback images" on storage.objects for select to aut
 ```
 
 No policy allows an insert, an update or a delete, so only the service role, on your server, writes.
-Deleting a user deletes their rows, which list their report ids, so remove their images under
-`<id>/` first.
+Deleting a user deletes their rows, which list their report ids, so remove their images and files
+under `<id>/` first.
 
 Check it: with the anon key, `select` on `feedback_reports` returns an empty list or a permission
 error, never a row, and a download from `feedback` is refused.
@@ -61,8 +68,8 @@ error, never a row, and a download from `feedback` is refused.
 An admin screen reads with the admin's own session, never the service role key:
 `from("feedback_reports").select()` for the rows, filtered and paged as the screen needs, and
 `storage.from("feedback").createSignedUrl("<id>/<image>", 60)` for a screenshot, where `<image>` is
-its `image` in `report`, such as `screenshot-0.png`. A signed URL works for anyone who holds it for
-those 60 seconds: show it, never share it.
+its `image` in `report`, such as `screenshot-0.png`, or an attachment's `file`. A signed URL works
+for anyone who holds it for those 60 seconds: show it, never share it.
 
 Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` on the server. The service role key bypasses
 row-level security: never send it to the browser.
@@ -77,6 +84,9 @@ signed-in user can send, so put a rate limit in front of it before production.
 // app/api/feedback/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { FeedbackRequestError, parseFeedbackRequest } from "visual-feedback/server";
+
+// Set to true only together with the widget's attachments option; false refuses files.
+const ATTACHMENTS = false;
 
 // Replace with your own session: the signed-in user's Supabase id (a uuid), for example from
 // supabase.auth.getUser() in @supabase/ssr. Until then, nobody can send. Never use report.context.
@@ -98,20 +108,31 @@ export async function POST(request: Request): Promise<Response> {
   const user = await currentUser(request);
   if (!user) return new Response(null, { status: 401 });
   try {
-    const { report } = await parseFeedbackRequest(request);
+    const { report } = await parseFeedbackRequest(request, { attachments: ATTACHMENTS });
     const db = supabase();
-    const name = (image: Blob, i: number) =>
-      `screenshot-${i}.${image.type === "image/png" ? "png" : "webp"}`;
-    const screenshots = report.screenshots.map((shot, i) => ({ ...shot, image: name(shot.image, i) }));
-    // The images first, so a row never lacks its images.
-    for (const [i, { image }] of report.screenshots.entries()) {
+    const put = async (file: string, body: Blob) => {
       const upload = await db.storage
         .from("feedback")
-        .upload(`${report.id}/${name(image, i)}`, image, { contentType: image.type, upsert: false });
-      // A resend finds its image there (409); the id comes from the browser, so never replace it.
+        .upload(`${report.id}/${file}`, body, { contentType: body.type, upsert: false });
+      // A resend finds its file there (409); the id comes from the browser, so never replace it.
       const error = upload.error;
       const stored = error && "statusCode" in error && error.statusCode === "409";
       if (error && !stored) throw error;
+    };
+    const name = (image: Blob, i: number) =>
+      `screenshot-${i}.${image.type === "image/png" ? "png" : "webp"}`;
+    // The server checked that each name ends as its type does, so this is one of a known few.
+    const fileName = (original: string, i: number) =>
+      `file-${i}${original.slice(original.lastIndexOf(".")).toLowerCase()}`;
+    const screenshots = report.screenshots.map((shot, i) => ({ ...shot, image: name(shot.image, i) }));
+    const attachments = report.attachments?.map((item, i) => ({
+      ...item,
+      file: fileName(item.name, i),
+    }));
+    // The files first, so a row never lacks its files.
+    for (const [i, { image }] of report.screenshots.entries()) await put(name(image, i), image);
+    for (const [i, item] of (report.attachments ?? []).entries()) {
+      await put(fileName(item.name, i), item.file);
     }
     // A "Try again" sends the same id, so the row it already wrote stays as it is.
     const insert = await db.from("feedback_reports").upsert(
@@ -119,7 +140,7 @@ export async function POST(request: Request): Promise<Response> {
         id: report.id,
         user_id: user,
         created_at: report.createdAt,
-        report: { ...report, screenshots },
+        report: { ...report, screenshots, ...(attachments && { attachments }) },
       },
       { onConflict: "id", ignoreDuplicates: true },
     );

@@ -42,6 +42,7 @@ let server: Server;
 let url = "";
 let route: Route;
 let signedIn: Route;
+let withFiles: Route;
 const objects = new Map<string, { body: Buffer; type: string }>();
 const requests: string[] = [];
 let failing: "storage" | "storage-404" | "rest" | "" = "";
@@ -156,6 +157,10 @@ beforeAll(async () => {
   expect(source.split(stub)).toHaveLength(2);
   const filled = source.replace(stub, '  return _request.headers.get("x-test-user");\n}');
   signedIn = await load<Route>(filled, imports);
+  // Attachments on, as the doc says to set them with the widget's attachments option.
+  const off = "const ATTACHMENTS = false;";
+  expect(filled.split(off)).toHaveLength(2);
+  withFiles = await load<Route>(filled.replace(off, "const ATTACHMENTS = true;"), imports);
 });
 
 afterAll(async () => {
@@ -193,6 +198,28 @@ function post(
     method: "POST",
     body: form,
     headers: user ? { "x-test-user": user } : {},
+  });
+}
+
+const LOG = new TextEncoder().encode("TypeError: x is undefined\n");
+const files = [
+  { name: "Screen shot.png", type: "image/png", bytes: PNG },
+  { name: "Crash Report.LOG", type: "text/plain", bytes: LOG },
+];
+
+/** A report with one screenshot and the files above, as the widget sends them. */
+function postFiles(report: Record<string, unknown>, user: string, list = files) {
+  const form = new FormData();
+  const attachments = list.map(({ name, type, bytes }) => ({ name, type, size: bytes.length }));
+  form.append("report", JSON.stringify({ ...report, attachments }));
+  form.append("image0", new Blob([PNG], { type: "image/png" }), "x");
+  for (const [i, { type, bytes }] of list.entries()) {
+    form.append(`file${i}`, new Blob([bytes as Uint8Array<ArrayBuffer>], { type }), "x");
+  }
+  return new Request("http://localhost/api/feedback", {
+    method: "POST",
+    body: form,
+    headers: { "x-test-user": user },
   });
 }
 
@@ -471,4 +498,81 @@ it("the browser's roles cannot change or delete a stored report or image", async
   expect((await db.query("select name from storage.objects")).rows).toEqual([
     { name: `${report.id}/screenshot-0.png` },
   ]);
+});
+
+it("as shipped, attachments are off: a report with files is refused, and Supabase is not asked", async () => {
+  const response = await signedIn.POST(postFiles(valid(), USER));
+  expect(response.status).toBe(400);
+  expect(await response.text()).toBe("This endpoint takes no attachments.");
+  expect(requests).toEqual([]);
+});
+
+it("with attachments on, each file is stored under the report's folder and read back by an admin", async () => {
+  const report = valid();
+  expect((await withFiles.POST(postFiles(report, USER))).status).toBe(204);
+  // The files before the row, so a row never lacks them, each named by its index, not by the user.
+  expect(requests).toEqual([
+    `POST /storage/v1/object/feedback/${report.id}/screenshot-0.png`,
+    `POST /storage/v1/object/feedback/${report.id}/file-0.png`,
+    `POST /storage/v1/object/feedback/${report.id}/file-1.log`,
+    "POST /rest/v1/feedback_reports",
+  ]);
+  expect(objects.get(`feedback/${report.id}/file-0.png`)).toEqual({
+    body: Buffer.from(PNG),
+    type: "image/png",
+  });
+  expect(objects.get(`feedback/${report.id}/file-1.log`)).toEqual({
+    body: Buffer.from(LOG),
+    type: "text/plain",
+  });
+  const [row] = (await readAs("authenticated", adminClaims, "feedback_reports")) as {
+    report: Record<string, unknown>;
+  }[];
+  expect(row?.report.attachments).toEqual([
+    { name: "Screen shot.png", type: "image/png", size: PNG.length, file: "file-0.png" },
+    { name: "Crash Report.LOG", type: "text/plain", size: LOG.length, file: "file-1.log" },
+  ]);
+  const seen = (await readAs("authenticated", adminClaims, "storage.objects")) as {
+    name: string;
+  }[];
+  expect(seen.map((object) => object.name).sort()).toEqual([
+    `${report.id}/file-0.png`,
+    `${report.id}/file-1.log`,
+    `${report.id}/screenshot-0.png`,
+  ]);
+});
+
+it("with attachments on, an anonymous read, or a user who is not an admin, sees no file", async () => {
+  await withFiles.POST(postFiles(valid(), USER));
+  // The control: the row and all three objects are there.
+  expect((await db.query("select 1 from storage.objects")).rows).toHaveLength(3);
+  for (const [role, claims] of [
+    ["anon", {}],
+    ["authenticated", userClaims],
+    ["authenticated", selfMadeAdmin],
+  ] as const) {
+    expect(await readAs(role, claims, "feedback_reports"), role).toEqual([]);
+    expect(await readAs(role, claims, "storage.objects"), role).toEqual([]);
+  }
+});
+
+it("with attachments on, a report without files is stored exactly as with them off", async () => {
+  const report = valid();
+  expect((await withFiles.POST(post(report, USER, PNG))).status).toBe(204);
+  expect(requests).toEqual([
+    `POST /storage/v1/object/feedback/${report.id}/screenshot-0.png`,
+    "POST /rest/v1/feedback_reports",
+  ]);
+  const [shot] = report.screenshots as Record<string, unknown>[];
+  const [row] = (await db.query<{ report: unknown }>("select report from feedback_reports")).rows;
+  expect(row?.report).toEqual({ ...report, screenshots: [{ ...shot, image: "screenshot-0.png" }] });
+});
+
+it("with attachments on, a resend with the same id cannot replace a stored file", async () => {
+  const report = valid();
+  await withFiles.POST(postFiles(report, USER));
+  const other = new TextEncoder().encode("replaced\n");
+  const resend = [files[0], { name: "Crash Report.LOG", type: "text/plain", bytes: other }];
+  expect((await withFiles.POST(postFiles(report, ADMIN, resend as typeof files))).status).toBe(204);
+  expect(objects.get(`feedback/${report.id}/file-1.log`)?.body).toEqual(Buffer.from(LOG));
 });
