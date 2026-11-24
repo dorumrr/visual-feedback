@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.1 (not released yet)
+## 0.5.1 (2026-11-24)
 
 - With `attachments` on, "Attach files" sits in the footer just before Send, in a new part
   `send-group` that keeps the two on one row where the width allows; before, it sat in the
