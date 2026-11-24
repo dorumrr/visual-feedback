@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1 (not released yet)
+
+- With `attachments` on, "Attach files" sits in the footer just before Send, in a new part
+  `send-group` that keeps the two on one row where the width allows; before, it sat in the
+  composer bar beside the category, which now holds only the category (SPEC §4). The footer wraps:
+  on a narrow dialog the Esc hint takes its own row above them.
+- The GitHub Issues recipe says so when the issue shows only part of a long note: a line under
+  it links `report.json`, which holds all of it.
+
 ## 0.5.0 (2026-11-19)
 
 - The note has no length limit; it was 2000 characters. With `endpoint`, a report whose part

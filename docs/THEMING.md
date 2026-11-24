@@ -66,11 +66,11 @@ Every visible element has a part name: `trigger`, `trigger-icon`, `trigger-text`
 `trigger-tooltip-text`, `backdrop`, `dialog`, `header`, `title`, `minimise`, `body`, `stage`, `image`, `toolbar`, `tool`, `tool-active`,
 `divider`, `undo`, `clear`, `remove`, `icon`, `text-input`, `selection`, `strip`, `thumb`,
 `thumb-pick`, `thumb-image`, `thumb-number`, `thumb-remove`, `add`, `label`, `composer`, `note`,
-`composer-bar`, `category`, `footer`, `split`, `send-more`, `menu`, `save-pdf`, `actions`, `cancel`,
+`composer-bar`, `category`, `footer`, `send-group`, `split`, `send-more`, `menu`, `save-pdf`, `actions`, `cancel`,
 `send`, `hint`, `status`, `error`, `retry`, `send-without`, `attach`, `attach-input`, `files`, `file`,
 `file-name`, `file-size`, `file-remove`, `draft`, `draft-label`, `draft-thumbs`,
 `capture-view`, `reopen`, `discard`, `confirm`, `confirm-text`, `confirm-clear`, `keep-draft`, `keep-editing`, `side`. Cancel's
-question is `confirm`, also an `actions` part, with its own `discard` button; Clear's is `confirm` too, with `confirm-clear`. `side` holds the label, the composer and the footer; it lays nothing out except beside the image on a short landscape screen. After a send error, the Send button's part is `retry` until it
+question is `confirm`, also an `actions` part, with its own `discard` button; Clear's is `confirm` too, with `confirm-clear`. `send-group`, only with `attachments` on, holds Attach and Send's `split` on one row, Attach first. `side` holds the label, the composer and the footer; it lays nothing out except beside the image on a short landscape screen. After a send error, the Send button's part is `retry` until it
 sends again, the same part as the capture error's "Try again". While Send waits for a note it carries
 `data-empty`, and the pointer on it gives the composer the class `wanted`; `css` can restyle both.
 

@@ -186,7 +186,7 @@ function files(report: FeedbackReport, fileUrls: string[], share: number): strin
     .join("\n\n");
 }
 
-type Links = { imageUrls: string[]; fileUrls: string[] };
+type Links = { imageUrls: string[]; fileUrls: string[]; reportUrl: string };
 
 function issueBody(report: FeedbackReport, links: Links, unassigned: string[]): string {
   // A fence can be as long as its text, so a report of backticks can pass GitHub's limit at the
@@ -201,7 +201,7 @@ function issueBody(report: FeedbackReport, links: Links, unassigned: string[]): 
 
 function bodyAt(
   report: FeedbackReport,
-  { imageUrls, fileUrls }: Links,
+  { imageUrls, fileUrls, reportUrl }: Links,
   unassigned: string[],
   share: number,
 ): string {
@@ -210,6 +210,9 @@ function bodyAt(
   // Each fence starts its own line: after other text on that line it is no block.
   return [
     fenced(report.note || "(no note)", 10_000 * share),
+    ...(Array.from(report.note).length > 10_000 * share
+      ? [`The note is cut here: [report.json](<${reportUrl}>) holds all of it.`]
+      : []),
     // The angle brackets keep a ( or ) in a branch name from ending the link.
     shots(report, imageUrls, share) || "No screenshot.",
     ...(fileUrls.length ? [`**Files:**\n\n${files(report, fileUrls, share)}`] : []),
@@ -289,7 +292,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     const issue = await api("POST", "/issues", {
       title,
-      body: issueBody(report, { imageUrls, fileUrls }, unassigned),
+      body: issueBody(report, { imageUrls, fileUrls, reportUrl: link("report.json") }, unassigned),
       labels: ["feedback", ...(category ? [category] : [])],
       ...(assigned.length ? { assignees: assigned } : {}),
     });

@@ -372,6 +372,20 @@ it("a long first line is cut to a title GitHub accepts", async () => {
   expect(issues[0]?.title).toBe(`${"a".repeat(80)}…`);
 });
 
+it("a note cut in the issue says report.json holds all of it, and a whole one says nothing", async () => {
+  const id = crypto.randomUUID();
+  const report = { ...valid(), id, screenshots: [], note: "b".repeat(10_001) };
+  expect((await route.POST(post(report))).status).toBe(204);
+  expect(issues[0]?.body).toContain(
+    `${"b".repeat(10_000)}…\n\`\`\`\n\nThe note is cut here: [report.json](<https://github.com/${REPO}/blob/main/feedback/${id}/report.json>) holds all of it.`,
+  );
+  await route.POST(
+    post({ ...valid(), id: crypto.randomUUID(), screenshots: [], note: "b".repeat(10_000) }),
+  );
+  expect(issues).toHaveLength(2);
+  expect(issues[1]?.body).not.toContain("The note is cut here");
+});
+
 it("a repo whose default branch is not main gets the image and the link on that branch", async () => {
   repo = { ...repo, default_branch: "trunk" };
   branches.add("trunk");

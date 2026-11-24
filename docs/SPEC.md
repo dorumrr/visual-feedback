@@ -23,7 +23,8 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   screenshot" (annotating with no image: no toolbar, no screenshots in the report) and Cancel or Esc
   (idle). This is the first screenshot only; a later one that fails is the draft's (below).
 - **annotating:** a full-viewport overlay shows the image with a tool rail beside it, a strip of
-  the report's screenshots under it, and the note field, with Send in a footer row under that.
+  the report's screenshots under it, and the note field, with Send in a footer row under that,
+  after Attach when files can be attached.
   The dialog fits the window, 16 px from its edges (or the safe area's), with nothing to scroll:
   the image takes the height the rest leaves, growing past the screenshot's own size on a large
   screen, and the dialog is as wide as the image needs. Below
@@ -114,9 +115,10 @@ annotating, draft --Cancel (it may ask first, below) / Discard--> idle
   until the user closes it; one the
   dialog is gone before, by Cancel, Discard, `close()`, `discardDraft()`, `destroy()` or the element
   leaving the page, even after a Send that failed, is not saved.
-- **Attachments:** with `attachments` on, "Attach files" (`attach`) beside the category picks
-  files, and a list under the note shows each one's name and size with a remove button
-  (`removeAttachment` and the name). A file's type comes from its name's ending, and only PNG,
+- **Attachments:** with `attachments` on, "Attach files" (`attach`) in the footer, just before Send
+  and on its row where the width allows, picks files, and a list under the note shows each one's
+  name and size with a remove button (`removeAttachment` and the name). A file's type comes from
+  its name's ending, and only PNG,
   JPEG, WebP, GIF, PDF and text files (`.txt`, `.log`, `.csv`, `.md`, `.json`) are taken. A file
   over a limit is kept out and the list says why, naming it: `attachTooMany`, `attachTooBig`,
   `attachTooBigTogether` or `attachType`, where `{file}` is its name and `{limit}` the limit; a name

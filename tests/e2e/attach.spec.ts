@@ -347,6 +347,74 @@ test("the Attach button opens the file picker, and the list shows each size", as
   ]);
 });
 
+test("Attach sits in the footer right before Send, on its row, and Tab goes from it to Send", async ({
+  page,
+}) => {
+  await open(page, { categories: [{ id: "bug", label: "Bug" }] });
+  const place = await page.evaluate(() => {
+    const root = document.querySelector("visual-feedback")?.shadowRoot;
+    const attach = root?.querySelector(".attach");
+    return {
+      parent: attach?.parentElement?.className,
+      next: attach?.nextElementSibling?.className,
+      category: root?.querySelector(".category")?.parentElement?.className,
+      files: root?.querySelector(".files")?.parentElement?.className,
+    };
+  });
+  expect(place).toEqual({
+    parent: "send-group",
+    next: "split",
+    category: "composer-bar",
+    files: "composer",
+  });
+  const attach = await button(page, "Attach files").boundingBox();
+  const send = await button(page, "Send").boundingBox();
+  expect(attach && send && attach.x + attach.width <= send.x).toBe(true);
+  const middle = (box: typeof attach) => (box?.y ?? 0) + (box?.height ?? 0) / 2;
+  expect(Math.abs(middle(attach) - middle(send))).toBeLessThan(2);
+  await note(page).fill("Steps.");
+  await page.getByRole("combobox").focus();
+  await page.keyboard.press("Tab");
+  await expect(button(page, "Attach files")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(button(page, "Send")).toBeFocused();
+});
+
+for (const [width, height, row] of [
+  [390, 844, true],
+  [667, 375, false],
+] as const)
+  test(`at ${width}x${height} Attach and Send fit the dialog, right-aligned, ${row ? "on one row" : "Attach above Send"}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await open(page, { categories: [{ id: "bug", label: "Bug" }] });
+    const dialog = await page.getByRole("dialog").boundingBox();
+    const attach = await button(page, "Attach files").boundingBox();
+    const send = await button(page, "Send").boundingBox();
+    const split = await page.locator("visual-feedback").locator(".split").boundingBox();
+    const inside = (box: typeof attach) =>
+      Boolean(box && dialog && box.x >= dialog.x && box.x + box.width <= dialog.x + dialog.width);
+    expect([inside(attach), inside(split)]).toEqual([true, true]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    const right = (box: typeof attach) => (box?.x ?? 0) + (box?.width ?? 0);
+    if (row) {
+      expect(right(attach) <= (send?.x ?? 0)).toBe(true);
+      expect(Math.abs((attach?.y ?? 0) - (send?.y ?? 0))).toBeLessThan(2);
+    } else {
+      expect((attach?.y ?? 0) + (attach?.height ?? 0) <= (send?.y ?? 0)).toBe(true);
+      expect(Math.abs(right(attach) - right(split))).toBeLessThan(2);
+    }
+  });
+
+test("without categories, Attach before Send leaves no empty bar under the note", async ({
+  page,
+}) => {
+  await open(page, {});
+  expect(await page.locator("visual-feedback").locator(".composer-bar").count()).toBe(0);
+  await expect(button(page, "Attach files")).toBeVisible();
+});
+
 test("a fold keeps the files, and Open brings them back to send", async ({ page }) => {
   await open(page, {});
   await picker(page).setInputFiles([text("a.txt", "1")]);
